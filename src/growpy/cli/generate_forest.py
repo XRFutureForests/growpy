@@ -62,10 +62,11 @@ def _resolve_forest_data(args, config, project_root):
             logger.error("Cannot build job rows for %s: %s", args.species, e)
             return None
         logger.info(
-            "Dataset mode: %s, %d job row(s) from config (radii %s)",
+            "Dataset mode: %s, %d job row(s) from config (radii %s, %d to export)",
             args.species,
             len(forest_data),
-            ", ".join(f"{r:g}" for r in forest_data["surround_radius"]),
+            ", ".join(f"{r:g}" for r in sorted(set(forest_data["surround_radius"]))),
+            int(forest_data["export"].sum()),
         )
         return forest_data
 
@@ -494,10 +495,17 @@ Unreal Engine Integration:
         skip_pve_json = not config.unreal_generate_pve_presets
         skip_validation = config.export_skip_validation
 
-        # Export-trees filter (config value already merged with CLI by resolve())
+        # Export-trees filter (config value already merged with CLI by resolve()).
+        # A job matrix with real neighbours marks the centre tree (export = 1);
+        # the neighbours grow but are never exported.
         export_tree_ids = None
         if config.forest_export_trees:
             export_tree_ids = set(config.forest_export_trees)
+        elif "export" in forest_data.columns and not forest_data["export"].all():
+            export_tree_ids = {
+                int(f) for f in forest_data.loc[forest_data["export"] == 1, "fid"]
+            }
+        if export_tree_ids is not None:
             logger.info(
                 "\n[Export Filter] Only exporting trees with fid: %s",
                 sorted(export_tree_ids),

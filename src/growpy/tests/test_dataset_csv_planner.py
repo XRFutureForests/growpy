@@ -15,11 +15,41 @@ from growpy.pipelines.dataset_csv_planner import (
 )
 
 
-def _mock_radii(radii):
+def _mock_radii(radii, neighbours=0):
     return patch(
         "growpy.config.get_config",
-        return_value=SimpleNamespace(surround_radii=radii),
+        return_value=SimpleNamespace(
+            surround_radii=radii, surround_neighbours=neighbours
+        ),
     )
+
+
+class TestRealNeighbours:
+    """[surround] neighbours = N plants a ring of N trees around each radius > 0."""
+
+    def test_ring_around_each_competed_radius_only(self):
+        with _mock_radii([0.0, 7.0, 10.0], neighbours=6):
+            df = generate_merged_csv("Test Species", 25)
+        assert len(df) == 1 + 7 + 7
+        assert df["fid"].tolist() == list(range(1, 16))
+        assert (df[df["surround_radius"] == 0.0]["export"] == 1).all()
+
+    def test_one_export_per_radius_group_at_its_centre(self):
+        with _mock_radii([0.0, 7.0], neighbours=6):
+            df = generate_merged_csv("Test Species", 25)
+        ring = df[df["surround_radius"] == 7.0]
+        centre = ring[ring["export"] == 1]
+        assert len(centre) == 1
+        assert centre.iloc[0]["x"] == OPEN_TREE_X and centre.iloc[0]["y"] == 0.0
+        others = ring[ring["export"] == 0]
+        dist = ((others["x"] - OPEN_TREE_X) ** 2 + others["y"] ** 2) ** 0.5
+        assert dist.round(3).tolist() == [7.0] * 6
+
+    def test_zero_neighbours_is_the_shell_matrix(self):
+        with _mock_radii([0.0, 7.0, 15.0], neighbours=0):
+            df = generate_merged_csv("Test Species", 25)
+        assert len(df) == 3
+        assert (df["export"] == 1).all()
 
 
 class TestGenerateMergedCsv:

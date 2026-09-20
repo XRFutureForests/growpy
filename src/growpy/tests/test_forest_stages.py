@@ -170,14 +170,38 @@ class TestComputeRadialScale:
         assert ctx.radial_scale == pytest.approx(5.0)  # clamped at 5.0, not 10x
         assert ctx.filename_dbh == pytest.approx(0.1 * 5.0)
 
-    def test_non_csv_clamps_narrower_range_with_correction_weight(self):
+    def test_allometry_nudges_by_the_configured_weight(self):
+        """Grove 0.1 m, table 1.0 m: at w = 0.5 the scale is sqrt(10), not the
+        old clamp at 2.0 -- Grove's own diameter keeps half its say."""
         ctx = _make_ctx(target_dbh_m=1.0, grove_dbh=0.1, dbh_from_csv=False)
         ctx.cfg.export_dbh_from_allometry = True
+        ctx.cfg.export_dbh_nudge_weight = 0.5
         with patch(
             "growpy.pipelines.forest_stages.correction_weight", return_value=1.0
         ):
             compute_radial_scale(ctx)
-        assert ctx.radial_scale == pytest.approx(2.0)  # clamped at 2.0
+        assert ctx.radial_scale == pytest.approx(10.0**0.5)
+        assert ctx.filename_dbh == pytest.approx(0.1 * 10.0**0.5)
+
+    def test_nudge_weight_one_is_the_full_correction_unclamped(self):
+        ctx = _make_ctx(target_dbh_m=1.0, grove_dbh=0.1, dbh_from_csv=False)
+        ctx.cfg.export_dbh_from_allometry = True
+        ctx.cfg.export_dbh_nudge_weight = 1.0
+        with patch(
+            "growpy.pipelines.forest_stages.correction_weight", return_value=1.0
+        ):
+            compute_radial_scale(ctx)
+        assert ctx.radial_scale == pytest.approx(10.0)
+
+    def test_correction_weight_fades_the_nudge(self):
+        ctx = _make_ctx(target_dbh_m=0.4, grove_dbh=0.1, dbh_from_csv=False)
+        ctx.cfg.export_dbh_from_allometry = True
+        ctx.cfg.export_dbh_nudge_weight = 0.5
+        with patch(
+            "growpy.pipelines.forest_stages.correction_weight", return_value=0.5
+        ):
+            compute_radial_scale(ctx)
+        assert ctx.radial_scale == pytest.approx(1.0 + (2.0 - 1.0) * 0.5)
 
     def test_allometry_disabled_keeps_scale_one(self):
         ctx = _make_ctx(target_dbh_m=1.0, grove_dbh=0.1)

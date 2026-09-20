@@ -80,6 +80,17 @@ max_height = 25
 # correction fades out and Grove's own pipe-model diameter is kept.
 # Replaces the deprecated calibration.align_dbh / export.radial_scale keys.
 dbh_from_allometry = true
+# How far that scaling goes. The exported DBH is grove^(1-w) * allometry^w, so
+# 1.0 is the full correction and 0.0 leaves Grove's pipe model alone. Owner
+# decision 2026-09-18: Grove's logic drives the stem and the yield table only
+# NUDGES it. Measured on the 2026-09-17 catalog: the old hard clamp to
+# [0.5, 2.0] bound for every broadleaf (Grove ash/beech 68-92 cm at h25 against
+# a 26 cm table), and the table itself is a closed-stand MEAN stem (h/d 85-100
+# at 25 m for every species), applied identically to both radii -- so the stems
+# read slim in VR and carried none of Grove's own response to the shell. At
+# 0.5 ash r08 h25 lands at 43 cm (h/d 58) and spruce at 32 cm, and half of
+# Grove's r-dense/r-open difference survives.
+dbh_nudge_weight = 0.5
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.

@@ -9,9 +9,11 @@ from growpy.utils import allometry
 from growpy.utils.allometry import (
     BLEND_FLOOR_FRAC,
     _smoothstep,
+    _store_envelope_max,
     correction_weight,
     get_height_dbh_model,
     load_species_allometry,
+    nudge_radial_scale,
     write_species_allometry,
 )
 from growpy.utils.yield_tables import MIN_FIT_DBH_M, fit_height_dbh_model
@@ -123,6 +125,76 @@ class TestCorrectionWeight:
     def test_missing_artifact_gives_full_weight(self, monkeypatch):
         monkeypatch.setattr(allometry, "load_species_allometry", lambda species: None)
         assert correction_weight("unknown", 3.0) == 1.0
+
+
+class TestNudgeRadialScale:
+    """scale = (target / grove) ** w: Grove drives, the table nudges."""
+
+    def test_half_weight_is_the_geometric_mean(self):
+        # Grove 0.68 m, table 0.27 m (ash r08 h25 on the 2026-09-17 catalog)
+        s = nudge_radial_scale(0.68, 0.27, 0.5)
+        assert 0.68 * s == pytest.approx((0.68 * 0.27) ** 0.5)
+
+    def test_weight_endpoints(self):
+        assert nudge_radial_scale(0.1, 0.4, 1.0) == pytest.approx(4.0)
+        assert nudge_radial_scale(0.1, 0.4, 0.0) == pytest.approx(1.0)
+
+    def test_keeps_part_of_groves_radius_response(self):
+        """Two radii with the same table target but different Grove DBHs stay
+        different after the nudge -- the point of not clamping."""
+        dense = 0.43 * nudge_radial_scale(0.43, 0.27, 0.5)
+        open_ = 0.72 * nudge_radial_scale(0.72, 0.27, 0.5)
+        assert dense < open_
+        assert open_ / dense == pytest.approx((0.72 / 0.43) ** 0.5)
+
+    def test_degenerate_inputs_leave_the_stem_alone(self):
+        assert nudge_radial_scale(0.0, 0.3, 0.5) == 1.0
+        assert nudge_radial_scale(0.3, 0.0, 0.5) == 1.0
+
+
+class TestStoreEnvelopeMax:
+    """Per-height maximum over every store table of the resolved species."""
+
+    def _store(self, tmp_path):
+        (tmp_path / "manifest.csv").write_text(
+            "filename,standardized_name,species_latin,region,management,site_index,h50,source,table_id,n_rows\n"
+            "sp_si1.csv,test_sp,Testus,DE,normal,1.0,20,x,t1,3\n"
+            "sp_si3.csv,test_sp,Testus,DE,normal,3.0,14,x,t3,3\n"
+            "other.csv,other_sp,Otherus,DE,normal,1.0,20,x,o1,2\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "sp_si1.csv").write_text(
+            "age,height,dbh\n20,10,10\n40,20,20\n60,30,30\n", encoding="utf-8"
+        )
+        # The poorer site is thicker at 20 m and does not reach 30 m.
+        (tmp_path / "sp_si3.csv").write_text(
+            "age,height,dbh\n30,10,9\n60,20,26\n90,25,33\n", encoding="utf-8"
+        )
+        (tmp_path / "other.csv").write_text(
+            "age,height,dbh\n20,10,90\n40,20,90\n", encoding="utf-8"
+        )
+        return tmp_path
+
+    def test_takes_the_thickest_table_at_each_height(self, tmp_path):
+        store = self._store(tmp_path)
+        heights, dbhs, tables = _store_envelope_max("Store: sp_si1.csv", store)
+        assert tables == ["sp_si1.csv", "sp_si3.csv"]
+        env = dict(zip(heights, dbhs, strict=True))
+        assert env[10.0] == pytest.approx(0.10)  # si1 wins
+        assert env[20.0] == pytest.approx(0.26)  # si3 wins
+        assert env[25.0] == pytest.approx(0.33)  # si3 row; si1 interpolates to 0.25
+        # only si1 reaches 30 m; the running max holds si3's 0.33
+        assert env[30.0] == pytest.approx(0.33)
+
+    def test_other_species_never_leak_in(self, tmp_path):
+        store = self._store(tmp_path)
+        _, dbhs, tables = _store_envelope_max("Store: sp_si3.csv", store)
+        assert "other.csv" not in tables
+        assert max(dbhs) < 0.9
+
+    def test_non_store_title_returns_none(self, tmp_path):
+        assert _store_envelope_max("beech_local.csv", self._store(tmp_path)) is None
+        assert _store_envelope_max("Store: missing.csv", self._store(tmp_path)) is None
 
 
 class TestArtifactRoundTrip:

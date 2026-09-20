@@ -19,10 +19,18 @@ Growth-pacing calibration belongs to that path, not this one. Note that Grove
 disables Surround once several trees share a grove, so surround-based
 competition and true co-growth are mutually exclusive by construction.
 
-Each row's surround_radius selects its competition level: 0 = open-grown (no
-shell), >0 = Grove's built-in Surround light-competition shell at that distance
-(see growpy.core.grove.enable_surround), giving the tall, slender, self-pruned
-form of a forest-grown tree without simulating neighbour trees.
+Each row's surround_radius selects its competition level: 0 = open-grown, >0 =
+competition at that distance. With ``[surround] neighbours = 0`` that is Grove's
+built-in Surround shell (see growpy.core.grove.enable_surround); with
+``neighbours = N`` the planner instead plants N trees of the same species on a
+ring at that radius around the dataset tree, they grow together in one grove
+under Grove's own light competition, and only the centre (``export = 1``) is
+exported. Owner decision 2026-09-18: the shell is a thin wall of shade -- a
+limb that crosses it stands in full light, so a ring tighter than the crown's
+reach made the tree lean out and balloon (ash r03 39 m wide at h25) -- while
+real neighbours occupy the space at every height and the centre can only grow
+up. Measured on ash: stand at 7 / 10 m and open-grown give 13.0 / 18.3 /
+23.6 m crowns at h25, monotone in base, DBH and foliage, at 8 min per stand.
 """
 
 import logging
@@ -111,23 +119,43 @@ def _job_rows(
     max_height: int,
     twig_density: float,
 ) -> pd.DataFrame:
-    """One row per configured surround radius. Single source for job rows."""
+    """One grove per configured surround radius. Single source for job rows.
+
+    Each radius group sits OPEN_TREE_X apart. A group is one tree (the shell
+    case, or radius 0) or, with ``[surround] neighbours = N`` and radius > 0,
+    the dataset tree plus N neighbours on a ring of that radius; the ``export``
+    column marks the tree the export keeps (the centre).
+    """
+    import math
+
     from growpy.config import get_config
 
-    radii = get_config().surround_radii
-    rows = [
-        {
-            "fid": i + 1,
-            "species": species_name,
-            "x": OPEN_TREE_X * i,
-            "y": 0.0,
-            "z": 0.0,
-            "height": max_height,
-            "twig_density": twig_density,
-            "surround_radius": radius,
-        }
-        for i, radius in enumerate(radii)
-    ]
+    cfg = get_config()
+    rows = []
+    for i, radius in enumerate(cfg.surround_radii):
+        cx = OPEN_TREE_X * i
+        count = getattr(cfg, "surround_neighbours", 0) if radius > 0 else 0
+        offsets = [(0.0, 0.0)] + [
+            (
+                radius * math.cos(2.0 * math.pi * k / count),
+                radius * math.sin(2.0 * math.pi * k / count),
+            )
+            for k in range(count)
+        ]
+        for k, (dx, dy) in enumerate(offsets):
+            rows.append(
+                {
+                    "fid": len(rows) + 1,
+                    "species": species_name,
+                    "x": round(cx + dx, 4),
+                    "y": round(dy, 4),
+                    "z": 0.0,
+                    "height": max_height,
+                    "twig_density": twig_density,
+                    "surround_radius": radius,
+                    "export": 1 if k == 0 else 0,
+                }
+            )
     return pd.DataFrame(rows)
 
 

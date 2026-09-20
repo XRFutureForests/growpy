@@ -13,8 +13,17 @@ nothing but the height and DBH columns of a yield table:
 
 That makes it cheap enough to rebuild on demand, and it is the only yield-table
 product dataset production needs: trees are grown to height milestones, and
-their DBH is realised at export by scaling the stem mesh toward the diameter
-this model predicts for the height actually measured.
+their DBH is realised at export by nudging the stem mesh from Grove's own
+diameter toward the diameter this model predicts for the height actually
+measured (``nudge_radial_scale``).
+
+WHICH TABLE. A yield table describes the MEAN stem of a stocked stand, and at
+a given height that stem barely moves with bonity or thinning (spruce 23-31 cm
+at 25 m over 30 tables; ash 26-28; oak is the exception at 30-46). The owner's
+rule (2026-09-18) is "whatever makes the stems thicker", so the default
+reference is the per-height ENVELOPE MAXIMUM over every store table of the
+species (``[yield_sources] allometry_reference = "envelope_max"``) rather than
+one configured site index; ``"table"`` restores the single-table fit.
 
 Artifacts are written to ``data/assets/allometry/<standardized_species>.json``.
 They are deliberately kept out of the per-species ``seed.json`` files, whose
@@ -147,7 +156,25 @@ def build_species_allometry(
             yield_data.title,
         )
 
-    model = fit_height_dbh_model(yield_data.heights, yield_data.dbhs)
+    reference = getattr(config, "yield_sources_allometry_reference", "table")
+    heights, dbhs = list(yield_data.heights), list(yield_data.dbhs)
+    envelope_tables: list[str] = []
+    if reference == "envelope_max":
+        store_dir = Path(config.yield_sources_store_dir)
+        if not store_dir.is_absolute():
+            from growpy.config.paths import get_project_root
+
+            store_dir = get_project_root() / store_dir
+        envelope = _store_envelope_max(yield_data.title, store_dir)
+        if envelope is not None:
+            heights, dbhs, envelope_tables = envelope
+            logger.info(
+                "  %s: envelope max over %d store tables",
+                species_common,
+                len(envelope_tables),
+            )
+
+    model = fit_height_dbh_model(heights, dbhs)
     if model is None:
         logger.warning("Height-DBH fit failed for %s", species_common)
         return None
@@ -158,7 +185,7 @@ def build_species_allometry(
 
     pairs = [
         (h, d)
-        for h, d in zip(yield_data.heights, yield_data.dbhs, strict=False)
+        for h, d in zip(heights, dbhs, strict=False)
         if h > 0 and d >= MIN_FIT_DBH_M
     ]
     height_range = [min(h for h, _ in pairs), max(h for h, _ in pairs)]
@@ -173,13 +200,101 @@ def build_species_allometry(
             "yield_class": yield_data.yield_class,
             "region": yield_data.region,
             "site_index": yield_data.site_index,
+            "reference": "envelope_max" if envelope_tables else "table",
+            "envelope_tables": envelope_tables,
         },
         "height_dbh_model": model,
         "height_range_m": height_range,
-        "heights": list(yield_data.heights),
-        "dbhs": list(yield_data.dbhs),
+        "heights": heights,
+        "dbhs": dbhs,
         "generated": datetime.now(UTC).isoformat(timespec="seconds"),
     }
+
+
+def _store_envelope_max(
+    table_title: str, store_dir: Path
+) -> tuple[list[float], list[float], list[str]] | None:
+    """Per-height maximum DBH over every store table of the resolved table's species.
+
+    ``table_title`` is the ``"Store: <file>"`` title pylometree gives a store
+    table; its manifest row names the standardized species (so a surrogate
+    species follows its proxy). The envelope is evaluated on the union of the
+    tables' height rows, each table contributing only inside its own height
+    range, and then made monotone with a running maximum: a poor-site table
+    ends low with an old, thick stem, and without the running max the envelope
+    saws down by 2-7 cm wherever such a table runs out, which bends the power
+    fit (spruce b 0.89 over 28 tables). A thick-stem reference cannot get
+    thinner with height. None when the title is not a store table or the store
+    is missing.
+    """
+    import csv
+
+    from pylometree.yield_tables.store import StoreManifest
+
+    prefix = "Store: "
+    manifest_path = store_dir / "manifest.csv"
+    if not table_title.startswith(prefix) or not manifest_path.exists():
+        return None
+    manifest = StoreManifest.load(manifest_path)
+    filename = table_title[len(prefix) :]
+    own = [e for e in manifest.entries if e.get("filename") == filename]
+    if not own:
+        return None
+
+    tables: list[tuple[str, list[tuple[float, float]]]] = []
+    for entry in manifest.find_tables_for_species(own[0]["standardized_name"]):
+        path = store_dir / entry["filename"]
+        if not path.exists():
+            continue
+        points: list[tuple[float, float]] = []
+        with open(path, newline="", encoding="utf-8") as f:
+            for row in csv.DictReader(f):
+                try:
+                    h, d = float(row["height"]), float(row["dbh"]) / 100.0
+                except (KeyError, ValueError):
+                    continue
+                if h > 0 and d > 0:
+                    points.append((h, d))
+        points.sort()
+        if len(points) >= 2:
+            tables.append((entry["filename"], points))
+    if not tables:
+        return None
+
+    def at(points: list[tuple[float, float]], h: float) -> float | None:
+        if not points[0][0] <= h <= points[-1][0]:
+            return None
+        for (h0, d0), (h1, d1) in zip(points, points[1:], strict=False):
+            if h0 <= h <= h1:
+                return d0 if h1 == h0 else d0 + (h - h0) / (h1 - h0) * (d1 - d0)
+        return None
+
+    heights: list[float] = []
+    dbhs: list[float] = []
+    running = 0.0
+    for h in sorted({h for _, pts in tables for h, _ in pts}):
+        candidates = [d for d in (at(pts, h) for _, pts in tables) if d is not None]
+        if candidates:
+            running = max(running, *candidates)
+            heights.append(h)
+            dbhs.append(running)
+    return heights, dbhs, [name for name, _ in tables]
+
+
+def nudge_radial_scale(grove_dbh_m: float, target_dbh_m: float, weight: float) -> float:
+    """Radial scale that moves Grove's DBH part of the way to the allometric one.
+
+    Geometric blend: the exported DBH is ``grove**(1-w) * target**w``, so the
+    scale is ``(target / grove)**w``. ``w = 1`` is the full allometric
+    correction, ``w = 0`` leaves Grove's pipe model alone. Owner decision
+    2026-09-18: Grove's logic drives the stem and the yield table only nudges
+    it (w = 0.5), which keeps half of Grove's own response to the surround
+    shell -- the earlier hard clamp to [0.5, 2.0] flattened exactly that
+    response for every broadleaf.
+    """
+    if grove_dbh_m <= 0.0 or target_dbh_m <= 0.0:
+        return 1.0
+    return (target_dbh_m / grove_dbh_m) ** weight
 
 
 def write_species_allometry(record: dict) -> Path:

@@ -201,6 +201,7 @@ class GrowPyConfig:
         "export_max_skeleton_joints": "internal tuning, no CLI need identified",
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
+        "export_dbh_nudge_weight": "scenario-level setting (owner decision), config-only",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
         "quality_build_cutoff_thickness_per_species": (
@@ -211,6 +212,7 @@ class GrowPyConfig:
         "surround_grow_per_species": "nested dict structure, config-only by design",
         "surround_freeze_height": "scenario-level setting, config-only by design",
         "surround_freeze_height_per_species": "nested dict, config-only by design",
+        "surround_freeze_height_per_species_radius": "nested dict, config-only by design",
         "surround_height_per_species": "nested dict, config-only by design",
         "surround_density_per_species": "nested dict structure, config-only by design",
         "surround_density_per_species_radius": (
@@ -272,8 +274,10 @@ class GrowPyConfig:
         "yield_sources_yield_tables_dir": "environment-level path, config-only",
         "yield_sources_preferred_region": "scenario-level setting, config-only",
         "yield_sources_preferred_site_index": "scenario-level setting, config-only",
+        "yield_sources_allometry_reference": "scenario-level setting, config-only",
         "yield_sources_documents": "nested dict of source paths, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
+        "surround_neighbours": "scenario-level setting, config-only by design",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
         "surround_grow": "scenario-level setting, config-only by design",
@@ -404,6 +408,11 @@ class GrowPyConfig:
     # which is far cheaper. A tree's surround_radius value (0 = none, >0 = shell
     # distance in meters) picks which of these configured radii applies.
     surround_radii: list = field(default_factory=lambda: [0.0])
+    # Real neighbours instead of Grove's shell: >0 plants this many trees of the
+    # same species on a ring at the radius around the dataset tree, grows them
+    # together (Grove's own light competition; Surround is off for a multi-tree
+    # grove) and exports only the centre. 0 = the single-tree Surround shell.
+    surround_neighbours: int = 0
     surround_density: float = 0.7
     surround_height: float = 5.0
     surround_grow: bool = True
@@ -559,6 +568,13 @@ class GrowPyConfig:
     surround_density_per_species_radius: dict[str, dict[str, float]] = field(
         default_factory=dict
     )
+    # Freeze height for one species AT ONE RADIUS (rNN label), over the
+    # per-species table: the release height is where the r08/r16 crown
+    # diameters of a frozen conifer separate (2026-09-17), so it is a
+    # per-cell quantity like the density above.
+    surround_freeze_height_per_species_radius: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
 
 
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
@@ -637,6 +653,10 @@ class GrowPyConfig:
     # DBH realisation at export. Independent of calibration: its input is the
     # height-DBH allometry artifact, which needs no simulation.
     export_dbh_from_allometry: bool = True
+    # How far the export moves Grove's DBH toward the allometric one:
+    # scale = (target / grove) ** weight (utils.allometry.nudge_radial_scale).
+    # 1.0 = the full correction, 0.0 = Grove's pipe model untouched.
+    export_dbh_nudge_weight: float = 0.5
     calibration_plot: bool = True
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -650,6 +670,10 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
+    # Which height-DBH pairs the allometry is fitted on: "table" = the one
+    # resolved table, "envelope_max" = the per-height maximum over every store
+    # table of the species (see utils/allometry.py, WHICH TABLE).
+    yield_sources_allometry_reference: str = "envelope_max"
     # Per-provider source document for the yield-table providers that parse a
     # local file (PDF or XLSX). Keyed on the pylometree provider name, because
     # every PDF provider reads the same "pdf_path" key and so must be handed its
@@ -880,6 +904,13 @@ class GrowPyConfig:
         # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
+        if "dbh_nudge_weight" in export:
+            w = float(export["dbh_nudge_weight"])
+            if not 0.0 <= w <= 1.0:
+                raise ValueError(
+                    f"[export] dbh_nudge_weight must be in [0, 1], got {w}"
+                )
+            kwargs["export_dbh_nudge_weight"] = w
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "build_cutoff_thickness_per_species" in export:
@@ -1044,6 +1075,14 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+        if "allometry_reference" in ys:
+            ref = str(ys["allometry_reference"])
+            if ref not in ("table", "envelope_max"):
+                raise ValueError(
+                    "[yield_sources] allometry_reference must be 'table' or "
+                    f"'envelope_max', got {ref!r}"
+                )
+            kwargs["yield_sources_allometry_reference"] = ref
         if "documents" in ys:
             kwargs["yield_sources_documents"] = {
                 str(name): str(path) for name, path in ys["documents"].items()
@@ -1064,6 +1103,11 @@ class GrowPyConfig:
             # and because it rewrote them the assembly count kept climbing while
             # data was being lost. Callers that want the baseline list 0.0.
             kwargs["surround_radii"] = sorted({float(r) for r in surr["radii"]})
+        if "neighbours" in surr:
+            n = int(surr["neighbours"])
+            if n < 0:
+                raise ValueError(f"[surround] neighbours must be >= 0, got {n}")
+            kwargs["surround_neighbours"] = n
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:
@@ -1090,6 +1134,13 @@ class GrowPyConfig:
         if "freeze_height_per_species" in surr:
             kwargs["surround_freeze_height_per_species"] = {
                 str(k): float(v) for k, v in surr["freeze_height_per_species"].items()
+            }
+        if "freeze_height_per_species_radius" in surr:
+            kwargs["surround_freeze_height_per_species_radius"] = {
+                str(species): {
+                    str(label): float(value) for label, value in per_radius.items()
+                }
+                for species, per_radius in surr["freeze_height_per_species_radius"].items()
             }
         if "height_per_species" in surr:
             kwargs["surround_height_per_species"] = {
@@ -1228,17 +1279,28 @@ class GrowPyConfig:
                 return self.surround_density_per_species[key]
         return self.surround_density
 
-    def get_surround_freeze_height(self, species: str) -> float:
+    def get_surround_freeze_height(
+        self, species: str, radius: float | None = None
+    ) -> float:
         """Height (m) at which this species' growing shell is frozen; 0 = never.
 
-        Resolves ``[surround.freeze_height_per_species]`` first, falling back
-        to the global ``[surround] freeze_height``. Accepts a common name or a
-        standardized one.
+        Resolves ``[surround.freeze_height_per_species_radius.<species>]`` by
+        the ``rNN`` label when a radius is given, then
+        ``[surround.freeze_height_per_species]``, then the global ``[surround]
+        freeze_height``. Accepts a common name or a standardized one.
         """
         from growpy.utils.naming import standardize_species_name
 
+        key = standardize_species_name(species) if species else ""
+        if radius is not None and self.surround_freeze_height_per_species_radius:
+            from growpy.config.paths import radius_label
+
+            per_radius = self.surround_freeze_height_per_species_radius.get(key)
+            if per_radius:
+                label = radius_label(radius)
+                if label in per_radius:
+                    return per_radius[label]
         if self.surround_freeze_height_per_species:
-            key = standardize_species_name(species)
             if key in self.surround_freeze_height_per_species:
                 return self.surround_freeze_height_per_species[key]
         return self.surround_freeze_height

@@ -134,6 +134,16 @@ preferred_region = ""
 # Per-species overrides in [calibration.species."..."] take priority.
 # 0 = no preference (auto-select by simulated grove h50)
 preferred_site_index = 0
+# Which height/DBH pairs the DBH allometry (growpy-build-allometry) is fitted
+# on. "table" = the single table the two keys above select. "envelope_max" =
+# the per-height MAXIMUM over every store table of the species (all bonities
+# and thinning regimes), fitted to the same power law. Owner decision
+# 2026-09-18 ("whatever makes the stems thicker"): at a given height the mean
+# stem moves only 10-20 % across tables for most species (spruce 23-31 cm at
+# 25 m), oak 30-46 cm, so the envelope is the thickest reference the tables
+# can give -- and it is still a closed-stand mean, see [export]
+# dbh_nudge_weight in forest.toml for the other half of the stem rule.
+allometry_reference = "envelope_max"
 
 # 3. Source documents for the providers that parse a local file, keyed on the
 # pylometree provider name (`--list-providers`). Paths are relative to the

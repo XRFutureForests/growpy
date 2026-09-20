@@ -252,23 +252,32 @@
   "silver_birch": {
     "drop_decay": 0.36,
     "drop_weak": 0.3,
-    "add_regenerate": 0.3
+    "add_regenerate": 0.3,
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
   },
   "small_leaved_linden": {
     "drop_decay": 0.36,
     "drop_weak": 0.12,
-    "add_regenerate": 0.71
+    "add_regenerate": 0.71,
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
   },
   "wild_cherry": {
     "drop_decay": 0.24,
-    "drop_weak": 0.18
+    "drop_weak": 0.18,
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
   },
   "european_beech": {
     "add_regenerate": 0.87,
-    "drop_shaded": 0.1
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
   },
   "common_ash": {
-    "add_chance": 0.7
+    "add_chance": 0.7,
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
   },
   "_why_crown_shape": [
     "add_regenerate is the CROWN BASE lever. It controls whether shed branches",
@@ -362,5 +371,43 @@
     "r05 still does not reach h20 at 0.18. Per the owner's rule that admissibility",
     "beats completeness, that is the answer, not a reason to lower the start."
   ],
-  "_why_conifer_patches_removed_2026_09_15": "Owner decision 2026-09-15 (afternoon): the four conifers run Grove's authored presets unmodified, as the 2026-08-13 catalog did. norway_spruce and silver_fir carried drop_decay/drop_weak ramps (start 0.18 -> end 0.3, ease_in, transition_cycle 15; c477dff/c058f07) and silver_fir drop_shaded 0.05 (e8e6f8e); douglas_fir and scots_pine were already unpatched. The ramps were fitted to a static shell that the conifers no longer use (surround.toml: grow = true for every species) and A78 measured a ramp making the bole worse, not better. Removed keys: {\"norway_spruce\": {\"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}, \"silver_fir\": {\"drop_shaded\": 0.05, \"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}}"
+  "_why_conifer_patches_removed_2026_09_15": "Owner decision 2026-09-15 (afternoon): the four conifers run Grove's authored presets unmodified, as the 2026-08-13 catalog did. norway_spruce and silver_fir carried drop_decay/drop_weak ramps (start 0.18 -> end 0.3, ease_in, transition_cycle 15; c477dff/c058f07) and silver_fir drop_shaded 0.05 (e8e6f8e); douglas_fir and scots_pine were already unpatched. The ramps were fitted to a static shell that the conifers no longer use (surround.toml: grow = true for every species) and A78 measured a ramp making the bole worse, not better. Removed keys: {\"norway_spruce\": {\"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}, \"silver_fir\": {\"drop_shaded\": 0.05, \"drop_decay\": 0.3, \"drop_decay_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}, \"drop_weak\": 0.3, \"drop_weak_curve\": {\"start\": 0.18, \"end\": 0.3, \"easing\": \"ease_in\", \"transition_cycle\": 15}}}",
+  "_why_drop_shaded_obsolete": [
+    "OWNER DECISION 2026-09-18 (stem/stand trials, data/tmp/stem_trials_2026-09-18/):",
+    "every dataset species gets drop_shaded 0.15 and drop_obsolete 0.15 on top of",
+    "its vendor preset, nothing else. The Grove presets ship both at 0.0 (beech",
+    "0.1), so a shaded or superseded branch never falls and a stand-grown crown",
+    "keeps every limb it ever made. With the two at 0.15 the crown self-prunes",
+    "under real neighbours ([surround] neighbours = 6): ash 7 m stand 13.0 m",
+    "crown / 16.2 m base at h25 against 23.6 / 13.9 open-grown. Measured 2026-09-18",
+    "on all 11 species at 15 m: this arm (B) and a uniform recipe with",
+    "drop_decay 0.75 / drop_weak 0.15 (A) differ within seed noise, so the",
+    "smaller departure wins. Higher is lethal: drop_shaded 0.5 or drop_weak 0.3",
+    "killed ash before h15. (The birch/linden/cherry decay+weak values below are",
+    "older, stall fixes and stay.)"
+  ],
+  "norway_spruce": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  },
+  "scots_pine": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  },
+  "silver_fir": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  },
+  "european_oak": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  },
+  "sycamore_maple": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  },
+  "douglas_fir": {
+    "drop_shaded": 0.15,
+    "drop_obsolete": 0.15
+  }
 }

@@ -14,7 +14,27 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [8.0, 16.0]  # 0 = no surround; >0 = shell distance (meters)
+radii = [0.0, 7.0, 10.0]  # 0 = open-grown; >0 = neighbour distance (m), see neighbours
+# Real neighbours instead of the shell. >0 plants this many trees of the same
+# species on a ring at each radius around the dataset tree; they grow together
+# in one grove under Grove's own light competition (Grove switches Surround off
+# for a multi-tree grove) and only the centre is exported. 0 = the single-tree
+# Surround shell below, with `density` / `height` / `grow` as before.
+neighbours = 6
+# OWNER DECISION 2026-09-18: stand ladder r07 (dense) / r10 (mid) / r00 (open),
+# 6 real neighbours, 11 x 5 x 3 = 165 rows. Why not the shell: it is a thin
+# wall of shade at one distance -- a limb that crosses it stands in full light,
+# favor_bright feeds it and the tree leans out and balloons -- so a ring
+# tighter than the crown's reach gave a WIDER crown (ash h25: r03 39 m, r05
+# 20 m, r10 13 m) and above the crown's reach the ring only moved the crown
+# base and foliage amount. Real neighbours fill the space at every height and
+# the centre can only grow up. Ash centre, recipe drops, h25: 7 m stand 13.0 m
+# crown / base 16.2 / DBH 39 cm, 10 m stand 18.3 / 13.5 / 44, open 23.6 / 13.9
+# / 54 -- monotone in every axis, 8 min per 7-tree stand. A 4 m stand kills
+# the centre (lost the race at 10 m). Trials: data/tmp/stem_trials_2026-09-18/.
+# The 2.5 / 5 m shell idea from the owner's Blender session is what the shell
+# cannot do; the slender ash there came from the drop rates.
+# Superseded: # radii = [3.0, 5.0, 10.0] (2026-09-18 morning), # radii = [8.0, 16.0]
 # Owner-set 2026-09-11: back to 8 m / 16 m. r05 was simply too tight -- it ran
 # short of the height ladder on every species measured (beech stopped at h20,
 # spruce and fir at h15), which forced the 'accept fewer models' compromise on
@@ -210,9 +230,10 @@ freeze_height = 0.0       # 0 = never; per-species table [surround.freeze_height
 # runs the full ladder under the growing shell and is deliberately NOT frozen --
 # this is a collapse fix, not a style choice.
 [surround.freeze_height_per_species]
-douglas_fir = 15.0
-norway_spruce = 15.0
-silver_fir = 15.0
+# Cleared 2026-09-18 (owner): the freeze was a collapse patch for the [8, 16]
+# shell without drop tuning; the drop-rate trials judge the new radii on their
+# own and a conifer that collapses under them gets its freeze back here.
+# Last values: douglas_fir 15.0, norway_spruce 15.0, silver_fir 15.0.
 
 # Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
 # ratio against Sharma's 0.52-0.68, with the r08 crown BASE sitting above r16's
@@ -248,9 +269,10 @@ silver_fir = 15.0
 # growing shell at 0.60 (wild cherry: -32 % -> -2 %, the best of its arms).
 # Ash, beech, spruce, fir and pine keep 0.75: no arm beat it. Record in
 # data/tmp/production_2026-09-16/promotion.json and the run handover.
-wild_cherry = 0.6
-small_leaved_linden = 0.9
-douglas_fir = 0.9
+# Cleared 2026-09-18 (owner): 0.75 for every species at [3, 5, 10]; 0.9 is the
+# backup arm for a species that fails the separation gate, not a fitted value.
+# Last values (fitted at [8, 16]): wild_cherry 0.6, small_leaved_linden 0.9,
+# douglas_fir 0.9.
 # Empty since 2026-09-15 (afternoon): 0.75 for every species, see [surround].
 # Last fitted values (2026-09-15 morning, r08/r16 sweeps, conifers static):
 #   common_ash 0.55  douglas_fir 0.85  european_beech 0.75  european_oak 0.55
@@ -289,3 +311,19 @@ douglas_fir = 0.9
 #   [surround.density_per_species_radius.european_beech]
 #   r05 = 0.6
 [surround.density_per_species_radius]
+
+# --- Per-species shell freeze height AT ONE RADIUS ---------------------------
+# Overrides [surround.freeze_height_per_species] for one species/radius cell,
+# keyed like the density table above (rNN labels). Owner, 2026-09-17, on the
+# finished catalog: the h25 conifers' crown diameters read the same at r08 and
+# r16 (spruce 4.8 / 4.7 m, douglas 6.7 / 6.3 m, gate_baseline.json) -- "both do
+# not seem as if they grew under competition except from the clean boles ...
+# the crown should have a different diameter though, like the broadleaves".
+# Cause: both radii freeze at 15 m and both crowns then grow in the open above
+# it and equalise. The tighter r08 shell must NOT be frozen later (that is the
+# h15 collapse the freeze exists for), so the wider stand is released earlier
+# instead: r16 freezes at 10 m and its crown broadens from there, r08 keeps
+# 15 m. A shaded crown is a narrow crown, so the per-radius release height is
+# the lever that puts r08 under r16 at h25 without touching density.
+# Cleared 2026-09-18 with the per-species table above (same reason). Last
+# values: norway_spruce / silver_fir / douglas_fir r16 = 10.0.
