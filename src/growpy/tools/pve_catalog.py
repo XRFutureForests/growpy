@@ -16,14 +16,16 @@ coverage manifest ``plan_pve_graphs`` wrote, in the running editor:
    (the parameter is a property bag, written through ``import_text`` and read
    back), so the join is live without a manual edit.
 
-THE JOIN, read off ``PCG_Trees`` (T3D, 2026-09-15): the catalog side builds
-``JoinKey = Species + Height + Competition``; the tree side builds
-``species_name + round(height_m / HeightIncrement) * HeightIncrement +
-(nn_distance_cm <= CompetitionThresholdCM)``. So ``Species`` must spell the
-twin database's display name exactly (``European Beech``, ``Small-leaved
-Linden``), ``Height`` is the STAGE height (5, 10, ... 25), and ``Competition``
-is a boolean. With the r08 / r16 matrix the tight shell is the competed tree
-(``true``) and the wide one the open tree (``false``).
+THE JOIN (``PCG_Trees``, XRFF-482, 2026-09-20): the catalog side builds
+``JoinKey = Species + Height + Radius``; the tree side builds
+``species_name + clamp(round(height_m / HeightIncrement) * HeightIncrement) +
+radius class of nn_distance_cm`` (<= DenseMaxCM -> 7, <= OpenMinCM -> 10,
+else 0). So ``Species`` must spell the twin database's display name exactly
+(``European Beech``, ``Small-leaved Linden``), ``Height`` is the STAGE height
+(5, 10, ... 25), and ``Radius`` is the integer neighbour distance of the stand
+ladder in metres (0 = open-grown, 7, 10 -- ``[surround] radii``), read off the
+``r<NN>`` tag of the tree id. The boolean ``Competition`` column it replaces
+collapsed r00 and r07 onto one key and called the open-grown tree competed.
 
 Usage::
 
@@ -55,9 +57,6 @@ PCG_PARAMETER = "TreeCatalogDataTable"
 # PCG join compares against. Title-casing the standardized name gives every
 # name but the hyphenated one.
 SPECIES_DISPLAY_OVERRIDES = {"small_leaved_linden": "Small-leaved Linden"}
-
-# Radius label of the competed variant: r08 is the tight shell, r16 the open one.
-COMPETED_RADIUS_MAX_M = 8.0
 
 _TREE_ID = re.compile(r"^r(\d+)_h(\d+)m$")
 
@@ -97,7 +96,7 @@ def catalog_rows(manifest: dict) -> list[dict]:
                     "Species": species_display_name(species),
                     "Height": height_m,
                     "DBH": round(float(mesh.get("dbh_cm") or 0.0), 2),
-                    "Competition": radius_m <= COMPETED_RADIUS_MAX_M,
+                    "Radius": int(radius_m),
                     # Not catalog columns; kept in the inventory beside it.
                     "species": species,
                     "tree_id": tree_id,
@@ -118,7 +117,7 @@ def rows_to_csv(rows: list[dict]) -> str:
     """UE DataTable CSV: ``---`` row-name header, the five struct columns."""
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["---", "SkeletalMesh", "Species", "Height", "DBH", "Competition"])
+    writer.writerow(["---", "SkeletalMesh", "Species", "Height", "DBH", "Radius"])
     for row in rows:
         writer.writerow(
             [
@@ -127,7 +126,7 @@ def rows_to_csv(rows: list[dict]) -> str:
                 row["Species"],
                 f"{row['Height']:g}",
                 f"{row['DBH']:g}",
-                "true" if row["Competition"] else "false",
+                str(row["Radius"]),
             ]
         )
     return out.getvalue()
