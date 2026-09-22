@@ -43,7 +43,10 @@ timeout = 300
 #
 # 2026-08-22: 15 -> 25 for the h05..h25 dataset ladder. Watch `timeout` below:
 # Pass 1 is uncalibrated and now has 10 more metres to climb per seed.
-max_height = 25
+# 2026-09-22: 25 -> 45 with [forest] max_height for the h05..h45 ladder
+# (in-step rule above). Step 3 is not on the production route while
+# pacing is disabled, so this only matters if models are rebuilt.
+max_height = 45
 
 # --- Growth-pacing calibration (integrated into create_growth_models.py) ---
 # Aligns Grove's growth SPEED to a yield table's height-at-age curve. Costs two

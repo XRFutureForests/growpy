@@ -563,8 +563,15 @@ def _simulate_height_threshold_mode(
 
     # Build set of target milestones per tree (for early-stop check), bounded by
     # each species' own ceiling.  Species without a ceiling run to plateau/cap.
+    # Only the exported trees count: with real neighbours ([surround]
+    # neighbours > 0) the ring trees are shaded and reach a milestone long
+    # after the centre -- oak's r10 centre captured h25 at cycle 101 and the
+    # run still went to the 160-cycle cap waiting for its neighbours
+    # (2026-09-18). Nothing of theirs is exported, so they never gate the
+    # stop; capture-at-crossing keeps the exported stages identical.
+    export_tree_ids = quality_params.get("export_tree_ids")
     target_milestones: dict[tuple[str, int], set] = {}
-    for grove_idx, (_grove, species_name, tree_count, _fids, *_r) in enumerate(forest):
+    for grove_idx, (_grove, species_name, tree_count, fids, *_r) in enumerate(forest):
         ceiling = species_ceiling.get(species_name, 0.0)
         if ceiling <= 0:
             continue
@@ -575,6 +582,8 @@ def _simulate_height_threshold_mode(
             milestones.add(m)
             m += height_interval
         for tree_idx in range(tree_count):
+            if export_tree_ids is not None and fids[tree_idx] not in export_tree_ids:
+                continue
             target_milestones[(species_name, offset + tree_idx)] = milestones
 
     # Count total milestone captures for progress reporting

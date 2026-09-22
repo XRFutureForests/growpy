@@ -78,6 +78,21 @@ class TestWarnUncapturedMilestones:
             _warn_uncaptured_milestones(mmap, {"European oak": 15.0}, 5.0, 140)
         assert caplog.text == ""
 
+    def test_neighbours_do_not_count(self, caplog):
+        # Stand ladder: tree 0 is the exported centre (r0), trees 1-2 its ring
+        # neighbours; the neighbours never reached 15 m. Only the centre is judged.
+        mmap = {1: {"Ash": {0: 5.0, 1: 5.0, 2: 5.0}}, 2: {"Ash": {0: 10.0}}, 3: {"Ash": {0: 15.0}}}
+        with caplog.at_level("WARNING"):
+            _warn_uncaptured_milestones(
+                mmap,
+                {"Ash": 15.0},
+                5.0,
+                140,
+                tree_radius_labels={"Ash": [7.0, 7.0, 7.0]},
+                tree_export_flags={"Ash": [True, False, False]},
+            )
+        assert caplog.text == ""
+
     def test_no_ceilings_is_silent(self, caplog):
         with caplog.at_level("WARNING"):
             _warn_uncaptured_milestones({}, {}, 5.0, 140)

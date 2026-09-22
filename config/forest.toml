@@ -5,12 +5,18 @@
 [forest]
 # Quality preset name -- must match a [quality.<name>] section in quality.toml
 quality = "high"
-# Maximum growth cycles per tree (1-250)
+# Maximum growth cycles per tree (unbounded in code)
 # Trees exceeding this limit are capped (not scaled), silently losing their
 # upper height stages. Measured uncalibrated cycles-to-max-height: Douglas fir
 # 147 (45m), Norway spruce / silver fir 131 (35m), common ash 124 (30m); every
-# other dataset species is under 105. 160 clears the tallest with margin.
-growth_cycle_limit = 160
+# other dataset species is under 105. 160 cleared the h25 ladder, barely:
+# in the 2026-09-18 stand ladder (6 real neighbours) ash r10 captured h25 at
+# cycle 158 and birch r10 at 149, and birch's h20->h25 took 74 cycles. 300
+# (owner, 2026-09-22) for the h30/h35 ladder. It costs nothing for the fast
+# species: the run stops as soon as every EXPORTED tree has captured its
+# milestones (neighbours no longer gate the stop), and plateau_cycles ends a
+# stalled grove.
+growth_cycle_limit = 300
 # Consecutive no-height-growth cycles (< 1cm gain) before a species' remaining
 # active surround-radius grove(s) are declared plateaued and simulation stops
 # early, short of growth_cycle_limit above. Height-milestone dataset
@@ -57,18 +63,24 @@ height_interval = 5
 # This is a step-4 (export) setting only; step 3's calibration has its own
 # independent [growth_models] max_height in growth_models.toml -- keep the two
 # in step, so calibration always covers at least the exported range.
-# 25 (owner, 2026-09-15 evening): the dataset target is the h05/h10/h15/h20/h25
-# ladder at the two surround radii in [surround] radii (r08/r16), i.e. up to
-# 110 assemblies (11 species x 5 stages x 2 radii). Raising this without
-# raising the calibration cap would export h20/h25 off the end of the fitted
-# curves.
+# 25 (owner, 2026-09-15 evening) was the h05..h25 ladder at the two shell
+# radii (r08/r16), 110 assemblies; the 2026-09-18 stand ladder kept 25 at
+# r00/r07/r10 with 6 real neighbours (165). Raising this without raising the
+# calibration cap would export stages off the end of the fitted curves.
 #
-# Above h25 the tall conifers need the height-LOD ladder (XRFF-324) that does
-# not exist yet -- at [quality.high] an open-grown silver fir already exhausts
-# a 63.5 GB host at h20. A species that collapses under the 0.75 growing
-# shell on the way to h25 gets a different seed, not a lower density (owner
-# rule, 2026-09-15). See docs/dataset/dataset-overview.md.
-max_height = 25
+# 45 (owner, 2026-09-22): the catalog needs the tall trees, and the ladder
+# must be ONE tree at its growth steps, so the whole set is regrown from
+# cycle 0 (a snapshot cannot be added to a finished run). Each species stops
+# at its own Max Height in tree_asset_lookup.csv, set from the database on
+# 2026-09-22 (measured + SILVA-projected heights, p99): beech/spruce/fir 40,
+# Douglas fir 45, oak 35, ash/linden/pine/maple 30, birch/cherry 25 -- 74
+# models per radius, 222 rows. This cap only stops nothing being taller than
+# the tallest species. Memory, not time, is the
+# limit: at h25 three species in parallel already OOMed a 63.5 GB host, so
+# the 35 m grow runs one species at a time. A species that collapses under
+# competition on the way up gets a different seed, not a lower density
+# (owner rule, 2026-09-15). See docs/dataset/dataset-overview.md.
+max_height = 45
 
 # --- Export options ---
 [export]

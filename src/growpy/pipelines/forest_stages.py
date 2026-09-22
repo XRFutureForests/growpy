@@ -116,6 +116,7 @@ def _warn_uncaptured_milestones(
     max_cycles: int,
     run_max_height: float = 0.0,
     tree_radius_labels: dict[str, list[float]] | None = None,
+    tree_export_flags: dict[str, list[bool]] | None = None,
 ) -> None:
     """Warn when a species failed to capture every milestone up to its ceiling.
 
@@ -170,7 +171,12 @@ def _warn_uncaptured_milestones(
             if radii
             else sorted(tree_idxs_by_species.get(species, set())) or [None]
         )
+        exported = tree_export_flags.get(species) if tree_export_flags else None
         for tree_idx in tree_ids:
+            # Real neighbours grow but are never exported; a shaded ring tree
+            # falling short is not a missing stage.
+            if exported and tree_idx is not None and not exported[tree_idx]:
+                continue
             reached = captured.get((species, tree_idx), set())
             missing = sorted(expected - reached)
             if not missing:
@@ -1470,6 +1476,10 @@ def generate_forest_stages(
             species_tree_radii[sp_name] = [
                 float(r) if pd.notna(r) else 0.0 for r in group["surround_radius"]
             ]
+    species_tree_export: dict[str, list[bool]] = {}
+    if "export" in forest_data.columns:
+        for sp_name, group in forest_data.groupby("species", sort=False):
+            species_tree_export[sp_name] = [bool(e) for e in group["export"]]
 
     # Run simulation with height-threshold-based snapshots
     with timer.track("simulate_with_snapshots"):
@@ -1497,6 +1507,7 @@ def generate_forest_stages(
         global_max_cycles,
         run_max_height=effective_max_height,
         tree_radius_labels=species_tree_radii,
+        tree_export_flags=species_tree_export or None,
     )
 
     # Every milestone the simulation captured is a stage that MUST reach disk.

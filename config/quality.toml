@@ -46,6 +46,12 @@
 #                         Squared internally before passing to Grove API.
 #   skeleton_bias       - Bone density distribution (0.0-1.0, Grove default 0.5).
 #                         0.0 = more bones on trunk/base, 1.0 = more bones at tips.
+#                         0.75 for high/ultra (2026-09-21, owner-confirmed
+#                         2026-09-22 for the h05..h35 regrow): shifts the bone
+#                         budget toward the branch tips, where wind moves the
+#                         crown. Affects only the USD skeletal export; the PVE
+#                         growth JSON resamples bones itself
+#                         ([unreal.growth_data_json] min_point_spacing).
 #   skeleton_connected  - Connected bone chains vs floating bones.
 #                         true = required for Unreal skeletal mesh animation.
 
@@ -58,7 +64,7 @@ build_blend = true
 build_end_cap = true
 skeleton_length = 0.5
 skeleton_reduce = 0.25
-skeleton_bias = 0.5
+skeleton_bias = 0.75
 skeleton_connected = true
 
 [quality.high]
@@ -75,7 +81,7 @@ build_end_cap = true
 # [export] max_skeleton_joints.
 skeleton_length = 0.5
 skeleton_reduce = 0.333
-skeleton_bias = 0.5
+skeleton_bias = 0.75
 skeleton_connected = true
 
 [quality.medium]
