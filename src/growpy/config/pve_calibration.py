@@ -457,6 +457,16 @@ class SpeciesCalibration:
     # ``min(max_base_scale, sqrt(target / area_at_cap))``, an uncapped one
     # stays at 1.0. Area goes as scale squared; leaves grow with it.
     max_base_scale: float = 1.0
+    # Crown floor by stand radius label (2026-09-21): the fraction of the
+    # tree's height below which no foliage is placed and side branches lying
+    # wholly under the line are dropped from the skeleton the chain reads.
+    # ``{"r07": 0.4, "r10": 0.3}``; a radius not listed (r00, open-grown)
+    # keeps its full crown. Exists because PVE foliates every branch it is
+    # given: Grove grew the r07 beech with a 16 m crown base at h20, and 40-52 %
+    # of the placed instances still sat below it on the stubs the stand had
+    # shed. Flat palettes only -- the gate is a Height-conditioned mask entry
+    # and a graded ladder already owns the picker's conditions.
+    crown_floor: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.relative_start < 1.0:
@@ -511,6 +521,12 @@ class SpeciesCalibration:
                 f"species {self.species!r} max_base_scale must be >= 1.0, "
                 f"got {self.max_base_scale}"
             )
+        for label, floor in self.crown_floor.items():
+            if not 0.0 <= floor < 1.0:
+                raise ValueError(
+                    f"species {self.species!r} crown_floor[{label!r}] must be in "
+                    f"[0, 1), got {floor}"
+                )
 
     def relative_start_for(self, height_m: float) -> float:
         """``relative_start`` for a tree of ``height_m`` (the species' flat
@@ -518,6 +534,11 @@ class SpeciesCalibration:
         if self.relative_start_by_height is None:
             return self.relative_start
         return _interp(self.relative_start_by_height, height_m)
+
+    def crown_floor_for(self, tree_id: str) -> float:
+        """Crown floor (fraction of height) for a tree, 0.0 when its radius
+        label (``r07`` of ``r07_h20m``) is not listed."""
+        return float(self.crown_floor.get(tree_id.split("_", 1)[0], 0.0))
 
     def builds_from_row(self, tree_id: str) -> bool:
         """Whether ``tree_id`` builds from its measured row rather than offline."""
@@ -825,6 +846,9 @@ def _species(
         compound=_compound(data.get("compound")),
         relative_start_by_height=_ramp(data.get("relative_start_by_height")),
         max_base_scale=float(data.get("max_base_scale", 1.0)),
+        crown_floor={
+            str(k): float(v) for k, v in (data.get("crown_floor") or {}).items()
+        },
         build_from=str(data.get("build_from", "measured")),
         derived=derived,
     )

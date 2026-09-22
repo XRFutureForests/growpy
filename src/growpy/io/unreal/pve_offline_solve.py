@@ -222,12 +222,19 @@ def solve_flat(
     mean_prototype_area_m2: float,
     target_m2: float,
     max_instances: int | None = None,
+    height_floor: float = 0.0,
 ) -> SolvedDensity:
     """Density for a flat palette: every instance carries the palette's mean area.
 
     ``max_instances`` caps the solve below the target when the target would
     need more instances than one Nanite assembly (or one click) can carry;
     the result then says ``capped`` and lands short of the target.
+
+    ``height_floor`` is a species' crown floor as a fraction of the tree's
+    height: a placement below it picks the graph's gate mask and spawns
+    nothing, so it is neither counted nor paid for here. The sample is the
+    Height condition's, min-max normalised over the plant's points, which is
+    what the gate in the graph reads.
     """
     from growpy.io.unreal.pve_distributor_model import (
         expected_area_factor,
@@ -242,11 +249,10 @@ def solve_flat(
 
     def instances_at(density: int) -> int:
         if density not in cache:
-            cache[density] = len(
-                simulate_placements(
-                    growth_json, dataclasses.replace(base, branch_density=density)
-                )
+            placements = simulate_placements(
+                growth_json, dataclasses.replace(base, branch_density=density)
             )
+            cache[density] = sum(1 for p in placements if p.height >= height_floor)
         return cache[density]
 
     density = _bisect_density(

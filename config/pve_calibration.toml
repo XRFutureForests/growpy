@@ -266,7 +266,12 @@ history_relative_start = 0.0
 # broadleaf fullness so h05..h25 at r08/r16 is one look; the rows below stay
 # as the measured record. Flat palette (no ladder), as measured.
 build_from = "offline"
-fullness = 2.0
+# Owner, 2026-09-21, on the r00/r07/r10 catalog: "a bit less leaves along the
+# branch". 2.0 -> 1.5 thins every uncapped tree by a quarter at the same
+# start/mask/pose; the open-grown h20/h25 trees sit on the instance cap, so
+# that re-plan ran `growpy-pve-plan --species european_beech --max-instances
+# 30000` (40k before) to thin them alike.
+fullness = 1.5
 # Owner, 2026-09-16 afternoon: beech rosettes toward the branch ends sit "in
 # close and regular succession". PVE spaces its samples evenly along a branch
 # and cannot randomise that; a masked palette makes a random 3 in 8 of them
@@ -274,6 +279,22 @@ fullness = 2.0
 # the density by 1/(1-0.375) so the expected count and leaf area are the
 # same. Flat palette only -- a graded ladder cannot take a mask.
 mask_fraction = 0.375
+# Crown floor by stand radius (owner, 2026-09-21: the r07 trees have "a low
+# crown base height and small branches and leaves along the trunk"). Grove
+# grew the r07 beech with its twigs high (crown base 6.2 / 11.6 / 16.0 / 21.4
+# m at h10-h25) but PVE foliates every branch it is given, so 40-52 % of the
+# placed rosettes sat below that line on the stubs the stand had shed. The
+# fraction of tree height below which (a) side branches lying wholly under
+# the line are dropped from the skeleton the chain reads and (b) a Height-
+# conditioned gate mask spawns nothing. Sharma et al. 2017 put a stand-grown
+# beech's crown base at 7-10 m on 20-25 m (ratio ~0.6): 0.40 at 7 m spacing,
+# 0.30 at the looser 10 m. r00 (open-grown) keeps its full crown. An
+# attachment-height cut cannot do this: the crown of a forking beech hangs
+# off branches that leave the trunk at 1.4-5 m.
+[pve_calibration.species.european_beech.crown_floor]
+r07 = 0.40
+r10 = 0.30
+
 
 # Fitted instances law, used only to seed a solve:
 #   instances ~ slope_per_s * s_ratio + floor_per_branch * branches

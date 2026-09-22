@@ -111,6 +111,7 @@ meaningful measure, not branch count.
 
 import json
 import logging
+import math
 from pathlib import Path
 from typing import Any
 
@@ -354,6 +355,58 @@ def _prune_below_height(data: dict, cut_height_m: float) -> dict:
 
     return _keep_branches(
         data, attached_above, f"pruned below {cut_height_m:.2f} m"
+    )
+
+
+def prune_subtrees_below_height(data: dict, cut_height_m: float) -> dict:
+    """Drop every side branch whose WHOLE subtree lies below ``cut_height_m``.
+
+    The attachment rule of :func:`_prune_below_height` is wrong for a forking
+    species: Grove hands a beech's entire crown to "side branches" that attach
+    to the trunk at 1.4-5 m and reach the top, so cutting by attachment height
+    takes the crown with the stubs (r07_h15m would lose 56 % of its points at
+    0.4 x height). This keeps any branch that reaches above the line and
+    removes only what stays under it -- the epicormic stubs and low forks a
+    stand-grown tree has shed. The trunk never goes. Same filter-and-renumber
+    post-process, so an emitted JSON can be pruned without a regrow; the plan
+    applies it beside a species' ``crown_floor`` so the skeleton and the
+    foliage gate draw the same line.
+    """
+    prims = data["primitives"]
+    branch_points = prims["points"]
+    if not branch_points or cut_height_m <= 0.0:
+        return data
+    positions = data["points"]["positions"]
+    parent_no = prims["attributes"]["branchParentNumber"]["values"]
+    children: dict[int, list[int]] = {}
+    for bi, par in enumerate(parent_no):
+        if par:
+            children.setdefault(par - 1, []).append(bi)
+
+    top: dict[int, float] = {}
+
+    def subtree_top(bi):
+        if bi in top:
+            return top[bi]
+        # Iterative: a beech skeleton nests deeper than the recursion limit.
+        stack = [bi]
+        order = []
+        while stack:
+            b = stack.pop()
+            order.append(b)
+            stack.extend(children.get(b, []))
+        for b in reversed(order):
+            own = max((positions[p][1] for p in branch_points[b]), default=-math.inf)
+            top[b] = max([own] + [top[c] for c in children.get(b, [])])
+        return top[bi]
+
+    def reaches_above(bi):
+        if parent_no[bi] == 0:
+            return True
+        return subtree_top(bi) >= cut_height_m
+
+    return _keep_branches(
+        data, reaches_above, f"pruned subtrees below {cut_height_m:.2f} m"
     )
 
 

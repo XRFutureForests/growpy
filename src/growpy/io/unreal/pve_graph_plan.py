@@ -233,6 +233,66 @@ def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]
     )
 
 
+CROWN_FLOOR_SUFFIX = "_growth_data.floor.json"
+
+
+def apply_crown_floor(entry: GrowthJson, floor: float) -> tuple[GrowthJson, float]:
+    """The skeleton a floored tree's chain reads, and the floor in metres.
+
+    Writes ``<stem>_growth_data.floor.json`` beside the emitted growth JSON
+    with every side branch dropped whose whole subtree lies below ``floor``
+    x the tree's height (the emitted file is untouched, and the suffix keeps
+    the copy out of :func:`discover_growth_jsons`). Derived at plan time,
+    not at emit, so the floor lives in one place -- the species' calibration
+    -- beside the foliage gate that draws the same line on the palette.
+    """
+    from growpy.io.unreal.pve_growth_data_exporter import (
+        prune_subtrees_below_height,
+    )
+
+    data = json.loads(entry.path.read_text(encoding="utf-8"))
+    ys = [p[1] for p in data["points"]["positions"]]
+    if not ys:
+        return entry, 0.0
+    lo, hi = min(ys), max(ys)
+    cut_m = lo + floor * (hi - lo)
+    pruned = prune_subtrees_below_height(data, cut_m)
+    out = entry.path.with_name(
+        entry.path.name[: -len(GROWTH_JSON_SUFFIX)] + CROWN_FLOOR_SUFFIX
+    )
+    out.write_text(json.dumps(pruned, separators=(",", ":")), encoding="utf-8")
+    return dataclasses.replace(entry, path=out), cut_m
+
+
+def crown_floor_gate(
+    floor: float, palette: Sequence[PaletteEntry]
+) -> tuple[tuple[PaletteEntry, ...], ConditionSpec]:
+    """A palette and picker that spawn nothing below ``floor`` of the height.
+
+    The picker sums ``|entry.attr - (sample + offset)| * weight`` per active
+    condition and min-max normalises across entries, so with the real entries
+    (and any thinning masks) advertising Height 1.0 and one gate mask
+    advertising 0.0 there are exactly two weights: the nearer group
+    normalises to 0 and is the candidate set, the other to 1 and is cut. The
+    real group is nearer iff ``h + offset > 0.5``, so ``offset = 0.5 - floor``
+    puts the line at ``floor``. Above it the thinning masks are picked at
+    their usual share; below it only the gate mask is.
+    """
+    if not 0.0 < floor < 1.0:
+        raise ValueError(f"crown floor must be in (0, 1), got {floor}")
+    high = PaletteAttributes(height=1.0)
+    gate = PaletteEntry(
+        mesh=None, use_as_mask=True, attributes=PaletteAttributes(height=0.0)
+    )
+    gated = tuple(dataclasses.replace(e, attributes=high) for e in palette) + (gate,)
+    conditions = ConditionSpec(
+        cutoff_threshold=0.5,
+        minimum_candidates=1,
+        height=ConditionInfluence(weight=1.0, offset=0.5 - floor),
+    )
+    return gated, conditions
+
+
 def bark_aspect_y_scale(texture: Path | str) -> float | None:
     """``YScale`` that keeps a W x H bark texture's pixel aspect on a PVE trunk.
 
@@ -508,6 +568,15 @@ def _offline_chain(
         tree_stats,
     )
 
+    crown_floor = calibration.crown_floor_for(entry.tree_id)
+    crown_floor_m = 0.0
+    if crown_floor > 0.0:
+        if calibration.palette != "twigs" or calibration.ladder is not None:
+            raise ValueError(
+                f"{entry.species} {entry.tree_id}: crown_floor needs a flat twig "
+                f"palette; a graded ladder or compound layout owns the picker"
+            )
+        entry, crown_floor_m = apply_crown_floor(entry, crown_floor)
     stats = tree_stats(entry.path, profile_mean)
     forrester_m2, model_id, extrapolated = forrester_target(entry.species, stats.dbh_cm)
     target_m2 = forrester_m2 * calibration.fullness
@@ -619,6 +688,13 @@ def _offline_chain(
             repeats, masks = mask_entries_for(mask, len(meshes))
             palette = masked_palette(meshes, masks, repeats=repeats)
             mask = mask_fraction_of(palette)
+        conditions = None
+        if crown_floor > 0.0:
+            # The gate mask is picked by height, not uniformly, so the
+            # thinning share above is read before it joins the palette.
+            palette, conditions = crown_floor_gate(
+                crown_floor, palette or masked_palette(meshes, 0)
+            )
         solved = solve_flat(
             entry.path,
             base,
@@ -627,6 +703,7 @@ def _offline_chain(
             max_instances=(
                 None if max_instances is None else int(max_instances / (1.0 - mask))
             ),
+            height_floor=crown_floor,
         )
         if mask > 0.0:
             solved = dataclasses.replace(
@@ -634,7 +711,13 @@ def _offline_chain(
             )
             detail["mask_fraction"] = round(mask, 4)
             detail["placements"] = int(round(solved.instances / (1.0 - mask)))
-        distributor = dataclasses.replace(base, branch_density=solved.density)
+        if crown_floor > 0.0:
+            detail["crown_floor"] = crown_floor
+            detail["crown_floor_m"] = round(crown_floor_m, 2)
+            detail["growth_json_floored"] = str(entry.path)
+        distributor = dataclasses.replace(
+            base, branch_density=solved.density, conditions=conditions
+        )
         layers = ()
         detail["layout"] = "flat"
     base_scale = 1.0
