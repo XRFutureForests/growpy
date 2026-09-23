@@ -5,6 +5,17 @@ name: Mirror back to GitLab
 # closes the loop: any commit pushed directly to GitHub is forwarded to both
 # GitLab remotes, keeping all three hosts in sync regardless of which one
 # received the original push.
+#
+# These pushes are deliberately NOT forced. If GitHub is momentarily behind a
+# GitLab through mirror lag, a forced push would silently replace the newer
+# GitLab commits with GitHub's stale copy -- real data loss, and invisible.
+# Without --force a genuine divergence is rejected as a non-fast-forward and
+# this workflow fails loudly, which is what we want: a human then decides.
+# --force-with-lease is NOT a substitute here. The remotes below are added
+# fresh, so there is no remote-tracking ref to lease against: without a prior
+# fetch the push is rejected outright ("stale info"), and with one the lease is
+# taken milliseconds before the push and happily overwrites newer commits
+# anyway. Verified both behaviours 2026-09-23.
 
 on:
   push:
@@ -29,11 +40,11 @@ jobs:
       - name: Push to gitlab.uni-freiburg.de
         run: |
           git remote add gitlab-uni "https://oauth2:${{ secrets.MIRROR_GITLAB_UNI_TOKEN }}@gitlab.uni-freiburg.de/xr-future-forests-lab/growpy.git"
-          git push gitlab-uni --all --force
-          git push gitlab-uni --tags --force
+          git push gitlab-uni --all
+          git push gitlab-uni --tags
 
       - name: Push to gitlab.com
         run: |
           git remote add gitlab-com "https://oauth2:${{ secrets.MIRROR_GITLABCOM_TOKEN }}@gitlab.com/xr-future-forests-lab/growpy.git"
-          git push gitlab-com --all --force
-          git push gitlab-com --tags --force
+          git push gitlab-com --all
+          git push gitlab-com --tags
