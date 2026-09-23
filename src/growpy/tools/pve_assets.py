@@ -61,8 +61,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--content-root",
-        default="/Game/PVE",
-        help="UE package path to import under (default: /Game/PVE)",
+        default="/Game/Assets/Trees",
+        help="UE package path to import under (default: /Game/Assets/Trees)",
     )
     parser.add_argument(
         "--master-material",

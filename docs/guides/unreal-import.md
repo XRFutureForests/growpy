@@ -42,7 +42,7 @@ data/output/forest/
 ## Fastest path — manual drag-drop
 
 1. Open UE, enable required plugins, restart editor.
-2. Copy `data/output/forest/` into `<Project>/Content/GrowPy/` (or symlink).
+2. Copy `data/output/forest/` into `<Project>/Content/Assets/Trees/` (or symlink).
 3. Drag `Instances/combined_twigs.usda` into Content Browser first (populates shared twig meshes).
 4. Drag per-species `<species>_assembly.usda` files to spawn Nanite Assembly actors.
 5. Done. Wind data already embedded in skeleton prim (`unreal:dynamicWind:jointNames`).
@@ -59,13 +59,13 @@ Generated scripts land in `unreal_scripts/`. Each is idempotent and VRAM-aware.
 # config/unreal.toml
 [unreal]
 import_to_unreal         = true
-project_path             = "/Game/GrowPy/Trees"
-db_path                  = "/Game/Assets/TheGrove"
+project_path             = "/Game/Assets/Trees"
+db_path                  = "/Game/Templates"   # ST_TreeCatalogEntry lives here; keep it out of project_path, which gets wiped
 voxelization             = true
 generate_wind_data       = true
 generate_pve_presets     = false   # deprecated Preset-Loader route; leave false
 generate_pve_graphs      = false   # the live PVE route (growth JSON → authored graphs); XRFF-452 decides the default
-pve_import_base          = "/Game/GrowPy/PVE"
+pve_import_base          = ""                  # empty = follow project_path
 
 [unreal.nanite]
 fallback_percent         = 1.0
@@ -167,8 +167,8 @@ Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assemb
 ## Troubleshooting
 
 - **"bone count exceeds 32767"**: run Step 4 with `--skeleton-reduce 0.5 --skeleton-length 2.5`. `skeleton-reduce` is the strongest lever.
-- **Twigs missing after import**: `Instances/` batch must run first. Check Content Browser at `/Game/GrowPy/Trees/Instances/`.
-- **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` expects `MA_Foliage_Trees` duplicated into the project at `{db_path}/Materials/MA_Foliage_Trees`. Duplicate it from the ProceduralVegetationEditor plugin (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`) via `EditorAssetLibrary.duplicate_asset`, then re-run the batch.
+- **Twigs missing after import**: the shared-foliage batch must run first. Check Content Browser at `{project_path}/Foliage/` (default `/Game/Assets/Trees/Foliage/`). Note the on-disk export folder is still called `Instances/`; only the UE destination is `Foliage/`.
+- **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` expects `MA_Foliage_Trees` duplicated into the project at `{db_path}/MA_Foliage_Trees` (default `/Game/Templates/MA_Foliage_Trees`) -- beside `ST_TreeCatalogEntry`, not under a `Materials/` subfolder. Duplicate it from the ProceduralVegetationEditor plugin (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`) via `EditorAssetLibrary.duplicate_asset`, then re-run the batch.
 - **DataTable missing / "ST_TreeCatalogEntry struct not found"**: `import_batch_100_datatable.py` expects the struct at `{db_path}/ST_TreeCatalogEntry`. If it exists elsewhere in the project, duplicate it to that path (or set `config.unreal_db_path` to wherever it already lives) before re-running.
 - **VRAM climbs until crash**: lower `target_residency_kb`, split per-species batches, or disable voxelization on first pass.
 - **DynamicWind attributes stripped**: re-enable USD Importer → Preserve Custom Prims. Fallback: `wind_import.py` applies JSON sidecars.

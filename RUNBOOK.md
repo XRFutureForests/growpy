@@ -256,7 +256,7 @@ through Windows UI Automation) and saves the result. It needs no focus and works
 workstation locked:
 
 ```bash
-growpy-pve-export /Game/PVE/Graphs/PVG_SilverFir_1 /Game/PVE/Graphs/PVG_SilverFir_2
+growpy-pve-export /Game/Assets/Trees/Graphs/PVG_SilverFir_1 /Game/Assets/Trees/Graphs/PVG_SilverFir_2
 ```
 
 One `Mesh exported successfully` line per export node marks success; targets that already

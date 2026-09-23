@@ -426,18 +426,22 @@ for ad in all_assets:
         continue
     mesh_assets.append((ad, pkg, cls))
 
-    # Derive species standardized-name from path
+    # Derive the species standardized-name from the path. The layout is sorted
+    # by TYPE, so the species is not the first segment any more:
+    #   Catalog/<species>/...   one finished tree
+    #   Foliage/<asset>/...     shared twig or spray -- species is in the NAME,
+    #                           because one twig can serve several species
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Instances":
+    if parts and parts[0] == "Foliage":
         name = str(ad.asset_name)
         for token in ("_foliage_", "_twigs_combined_", "_foliage"):
             idx = name.find(token)
             if idx > 0:
                 species_found.add(name[:idx])
                 break
-    elif parts:
-        species_found.add(parts[0])
+    elif len(parts) > 1 and parts[0] == "Catalog":
+        species_found.add(parts[1])
 
 print(f"Found {{len(mesh_assets)}} mesh assets covering {{len(species_found)}} species")
 
@@ -463,12 +467,12 @@ for ad in all_assets:
 
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Instances":
+    if parts and parts[0] == "Foliage":
         # One twig serves several species, so a leaf texture belongs to all of
         # them, not one.
         owners = _species_from_instances_name(str(ad.asset_name))
-    elif parts:
-        owners = [parts[0]]
+    elif len(parts) > 1 and parts[0] == "Catalog":
+        owners = [parts[1]]
     else:
         owners = []
     owners = [sp for sp in owners if sp in species_found]
@@ -513,7 +517,9 @@ if parent_mat is not None:
         bark_rgba = colors.get("bark")
         tex_bucket = species_textures.get(species, {{}})
         if leaf_rgba is not None:
-            mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat, role="leaves")
+            mic_l = _create_mic(
+                f"MI_{{species}}_Leaves", parent_mat, sub_path=species, role="leaves"
+            )
             if mic_l is not None:
                 # A cloned instance already carries a rendering configuration
                 # that works; overriding tints and scalars on top of it is what
@@ -541,7 +547,9 @@ if parent_mat is not None:
                 editor_asset_lib.save_loaded_asset(mic_l)
                 entry["leaves"] = mic_l
         if bark_rgba is not None:
-            mic_t = _create_mic(f"MI_{{species}}_Trunk", parent_mat, role="trunk")
+            mic_t = _create_mic(
+                f"MI_{{species}}_Trunk", parent_mat, sub_path=species, role="trunk"
+            )
             if mic_t is not None:
                 if not _is_cloned(mic_t):
                     _set_static_switch(mic_t, "DefaultLit Trunk", True)

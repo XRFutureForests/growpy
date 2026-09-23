@@ -815,8 +815,8 @@ def plan_pve_graphs(
     output_dir: Path,
     forest_root: Path,
     *,
-    content_root: str = "/Game/PVE",
-    graph_folder: str = "/Game/PVE/Graphs",
+    content_root: str = "/Game/Assets/Trees",
+    graph_folder: str = "/Game/Assets/Trees/Graphs",
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",
@@ -880,6 +880,7 @@ def plan_pve_graphs(
         PALETTE_SOURCES,
         PVEAssetPlan,
         build_species_asset_spec,
+        camel_species,
         generate_pve_asset_script,
     )
     from growpy.io.unreal.pve_offline_solve import mean_triangles_per_prototype
@@ -941,7 +942,9 @@ def plan_pve_graphs(
                     import_spec, prototypes=import_spec.prototypes + extra.prototypes
                 )
         asset_specs.append(import_spec)
-        mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
+        # From the species, not from the folder: folders are lowercase, exported
+        # ASSET names keep the UE-idiomatic spelling (SK_SilverFir_r05_h05m).
+        mesh_prefix = f"SK_{camel_species(species)}"
         triangles = species_cal.palette_flat_mean_triangles
         if triangles is None:
             triangles = mean_triangles_per_prototype(
@@ -1009,7 +1012,9 @@ def plan_pve_graphs(
             triangles,
             triangle_cap,
         )
-        label = assets.content_folder.rsplit("/", 1)[-1]
+        # Folders take the pipeline's lowercase species name; ASSET names keep
+        # the UE-idiomatic spelling (PVG_CommonAsh_1). See camel_species.
+        label = camel_species(species)
         # The calibration may pin the bark aspect; otherwise it follows the
         # texture's own W/H (the fir's hand-set 0.5 is exactly its 1024/2048).
         bark_y_scale = species_cal.bark_y_scale
@@ -1030,7 +1035,7 @@ def plan_pve_graphs(
                     palette_meshes=assets.palette_meshes,
                     bark_material=assets.bark_material,
                     bark_y_scale=bark_y_scale,
-                    export_folder=f"{content_root}/Exported/{label}",
+                    export_folder=f"{content_root}/Catalog/{species}",
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,
                     nanite_shape_preservation=nanite_shape_preservation,

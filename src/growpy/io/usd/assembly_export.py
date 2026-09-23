@@ -915,7 +915,7 @@ def create_assembly(
                 cfg = get_config()
                 if getattr(cfg, "export_external_refs", False):
                     project_path = getattr(
-                        cfg, "unreal_project_path", "/Game/Assets/TheGrove"
+                        cfg, "unreal_project_path", "/Game/Assets/Trees"
                     )
                     asset_paths = {
                         proto: _external_ref_asset_path(asset, project_path)

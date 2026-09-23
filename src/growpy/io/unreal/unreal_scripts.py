@@ -217,9 +217,9 @@ def _build_consolidation_script(project_path: str) -> str:
 
     When Unreal imports tree assembly USDAs, it follows external references to
     twig files and re-imports them into each tree's local folder — even though
-    batch 0 already imported the shared copies into Instances/.  This script
+    batch 0 already imported the shared copies into Foliage/.  This script
     finds those local duplicates, redirects all references to the shared
-    Instances version via consolidate_assets(), and deletes the leftovers.
+    Foliage version via consolidate_assets(), and deletes the leftovers.
     """
     return f"""
 import unreal
@@ -231,20 +231,20 @@ print("GrowPy Post-Import: Consolidate Duplicate Twig Assets")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-INSTANCES_PATH = IMPORT_PATH + "/Instances"
+FOLIAGE_PATH = IMPORT_PATH + "/Foliage"
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 
-# Step 1: Build lookup of canonical foliage assets in Instances/
-instances_assets = asset_registry.get_assets_by_path(INSTANCES_PATH, recursive=True)
+# Step 1: Build lookup of canonical foliage assets in Foliage/
+instances_assets = asset_registry.get_assets_by_path(FOLIAGE_PATH, recursive=True)
 canonical = {{}}  # asset_name -> asset_path
 for asset in instances_assets:
     name = str(asset.asset_name)
     if "_foliage" in name.lower():
         canonical[name] = str(asset.package_name)
 
-print(f"Found {{len(canonical)}} canonical foliage assets in Instances/")
+print(f"Found {{len(canonical)}} canonical foliage assets in Foliage/")
 
 if not canonical:
     print("No shared foliage assets found — skipping consolidation")
@@ -254,8 +254,8 @@ else:
     duplicates = []  # (duplicate_path, canonical_path)
     for asset in all_assets:
         asset_path = str(asset.package_name)
-        # Skip assets already in Instances/
-        if asset_path.startswith(INSTANCES_PATH):
+        # Skip assets already in Foliage/
+        if asset_path.startswith(FOLIAGE_PATH):
             continue
         name = str(asset.asset_name)
         if name in canonical:
@@ -313,7 +313,7 @@ print("=" * 60)
 
 
 def _build_datatable_script(
-    project_path: str, scripts_dir: str, db_path: str = "/Game/Assets/TheGrove"
+    project_path: str, scripts_dir: str, db_path: str = "/Game/Templates"
 ) -> str:
     """Build Unreal Python code that creates a DataTable cataloguing all imported trees.
 
@@ -376,8 +376,10 @@ for asset_data in all_assets:
     if "assembly" not in asset_name.lower():
         continue
     pkg = str(asset_data.package_name)
-    # Skip assets in Instances/ (shared twigs, not tree assemblies)
-    if "/Instances/" in pkg:
+    # Skip the shared foliage library (twigs and sprays, not tree assemblies).
+    # This guard is what keeps them out of DT_TreeCatalog -- it must track the
+    # folder name, or every twig is catalogued as a tree.
+    if "/Foliage/" in pkg:
         continue
     assemblies.append((asset_name, pkg))
 
@@ -634,7 +636,7 @@ def _get_ue_world():
 def _fixup_dest_redirectors(dest_path):
     """Resolve and delete ObjectRedirectors under dest_path before import.
 
-    Prior runs + batch_99_consolidate move shared twigs to /Instances/ and
+    Prior runs + batch_99_consolidate move shared twigs to /Foliage/ and
     leave ObjectRedirectors behind. USDStageImporter then crashes UE with
     "Renaming an object on top of an existing object is not allowed" when
     it tries to create a new SkeletalMesh at a redirector's path.
@@ -839,11 +841,11 @@ print("=" * 60)
 
 def generate_unreal_import_script(
     output_dir: Path,
-    project_path: str = "/Game/GrowPy/Trees",
+    project_path: str = "/Game/Assets/Trees",
     include_static: bool = False,
     voxelization: bool = True,
     nanite_cfg: dict[str, Any] | None = None,
-    db_path: str = "/Game/Assets/TheGrove",
+    db_path: str = "/Game/Templates",
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 
@@ -974,7 +976,7 @@ def generate_unreal_import_script(
         blocks += 'print("Importing shared twig/foliage instances...")\n'
         for inst_file in sorted_instances:
             inst_path = str(inst_file.resolve()).replace("\\", "/")
-            blocks += _build_import_block(inst_path, "Instances", inst_file.stem)
+            blocks += _build_import_block(inst_path, "Foliage", inst_file.stem)
 
         batch_name = "import_batch_00_instances.py"
         batch_label = f"Shared instances ({len(sorted_instances)} files)"
@@ -999,11 +1001,13 @@ def generate_unreal_import_script(
         for variant_name, variant_trees in sorted(variants.items()):
             for usd_file in sorted(variant_trees):
                 usd_path = str(usd_file.resolve()).replace("\\", "/")
-                dest_subpath = (
-                    f"{species_folder}/{variant_name}"
-                    if variant_name
-                    else species_folder
-                )
+                # Type-sorted layout: every finished tree mesh lands under
+                # Catalog/<species>/, whichever route produced it. The surround
+                # radius is deliberately NOT a folder -- it is a token in the
+                # asset name, which is what the catalog builder parses, and a
+                # radius folder is the only reason the two routes could not
+                # share a destination.
+                dest_subpath = f"Catalog/{species_folder}"
 
                 is_assembly = "_assembly" in usd_file.stem
                 wind_json = ""
@@ -1131,7 +1135,7 @@ def generate_unreal_import_script(
 
 def generate_unreal_cleanup_script(
     output_dir: Path,
-    project_path: str = "/Game/GrowPy/Trees",
+    project_path: str = "/Game/Assets/Trees",
     dry_run: bool = True,
 ) -> Path:
     """Generate a standalone Unreal Python script for cleaning GrowPy assets.
@@ -1253,7 +1257,7 @@ else:
 
 def generate_wind_reimport_script(
     output_dir: Path,
-    project_path: str = "/Game/GrowPy/Trees",
+    project_path: str = "/Game/Assets/Trees",
 ) -> Path:
     """Generate a UE Python script that re-imports wind data for all assemblies.
 

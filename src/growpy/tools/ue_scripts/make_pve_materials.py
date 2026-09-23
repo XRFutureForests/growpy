@@ -39,8 +39,7 @@ PVE_MASTER = (
 # disabled; it is the fallback, not the default.
 FALLBACK_MASTER = "/Game/Templates/MA_Foliage_Trees"
 
-TARGET_ROOT = "/Game/GrowpyMaterials"
-TWIG_TEXTURE_ROOT = "/Game/GrowpyTextures"
+TARGET_ROOT = "/Game/Assets/Trees/Materials"
 
 
 def _load_master():

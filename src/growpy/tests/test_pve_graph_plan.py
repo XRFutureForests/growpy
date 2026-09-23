@@ -664,7 +664,7 @@ class TestPlanEndToEnd:
         graph_text = plan.script.read_text(encoding="utf-8")
         asset_text = plan.asset_script.read_text(encoding="utf-8")
         mesh = (
-            "/Game/PVE_Test/EuropeanBeech/Foliage/european_beech_foliage_a"
+            "/Game/PVE_Test/Foliage/european_beech/european_beech_foliage_a"
             "/StaticMeshes/SM_european_beech_foliage_a"
         )
         assert mesh in graph_text

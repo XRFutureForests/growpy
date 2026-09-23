@@ -598,13 +598,17 @@ class GrowPyConfig:
 
     # [unreal]
     unreal_import_to_unreal: bool = True
-    unreal_project_path: str = "/Game/GrowPy"
+    unreal_project_path: str = "/Game/Assets/Trees"
     unreal_voxelization: bool = True
     unreal_generate_wind_data: bool = True
     unreal_nanite_fallback_percent: float = 0.01
     unreal_nanite_fallback_target: str = "percent_triangles"
     unreal_nanite_lerp_uvs: bool = True
-    unreal_db_path: str = "/Game/Assets/TheGrove"
+    # Where ST_TreeCatalogEntry lives. Deliberately NOT under
+    # unreal_project_path: that folder is working content, wiped and
+    # re-imported between dataset runs, and the struct is schema that has to
+    # survive it. /Game/Templates is the stable home for schema-only assets.
+    unreal_db_path: str = "/Game/Templates"
     unreal_generate_pve_presets: bool = True
     # The live PVE route (XRFF-442). Deliberately NOT the same flag as
     # generate_pve_presets, which drives the deprecated Preset Loader: that
@@ -614,7 +618,7 @@ class GrowPyConfig:
     # UE package path the twig palette and bark material were imported under
     # by growpy-pve-assets. A graph names its palette meshes by path, so this
     # must match what that step used.
-    unreal_pve_content_root: str = "/Game/PVE"
+    unreal_pve_content_root: str = "/Game/Assets/Trees"
     # Predicted-triangle ceiling per graph, i.e. per Export click. One click
     # builds every chain in its graph and holds the result in memory until it
     # finishes, so a click that dies takes its whole graph with it -- an

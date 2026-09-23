@@ -243,7 +243,7 @@ main()
 
 def generate_nanite_voxelize_script(
     output_dir: Path,
-    import_path: str = "/Game/Assets/TheGrove",
+    import_path: str = "/Game/Assets/Trees",
 ) -> Path:
     """Write a UE Python script that batch-sets Nanite Voxelize shape preservation.
 

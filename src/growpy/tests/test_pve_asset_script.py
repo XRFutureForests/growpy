@@ -106,7 +106,13 @@ class TestSpecResolution:
 
     def test_folder_name_can_be_overridden(self):
         spec = build_species_asset_spec("european_beech", folder_name="Beech")
-        assert spec.content_folder == "/Game/PVE/Beech"
+        assert spec.content_folder == "/Game/Assets/Trees/Foliage/Beech"
+        assert spec.materials_folder == "/Game/Assets/Trees/Materials/Beech"
+
+    def test_the_palette_and_the_materials_are_sorted_by_type(self):
+        spec = build_species_asset_spec("european_beech")
+        assert spec.foliage_folder == "/Game/Assets/Trees/Foliage/european_beech"
+        assert spec.bark_folder == "/Game/Assets/Trees/Materials/european_beech"
 
     def test_content_root_can_be_overridden(self):
         spec = build_species_asset_spec("silver_fir", content_root="/Game/PVE_Test")
@@ -305,4 +311,4 @@ class TestCli:
         main(["european_beech", "--output-dir", str(tmp_path),
               "--content-root", "/Game/PVE_Test"])
         text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
-        assert "/Game/PVE_Test/EuropeanBeech" in text
+        assert "/Game/PVE_Test/Foliage/european_beech" in text

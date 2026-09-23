@@ -152,6 +152,7 @@ class SpeciesAssetSpec:
     prototypes: tuple[PalettePrototype, ...]
     bark_color: Path
     bark_normal: Path
+    materials_folder: str = ""
 
     def __post_init__(self) -> None:
         if not self.prototypes:
@@ -170,14 +171,31 @@ class SpeciesAssetSpec:
                 f"content_folder must be a UE package path, got "
                 f"{self.content_folder!r}"
             )
+        if not self.materials_folder:
+            # Keeps a hand-built spec self-consistent: bark beside the palette,
+            # as it sat before the type-sorted layout split the two apart.
+            object.__setattr__(
+                self, "materials_folder", f"{self.content_folder}/Bark"
+            )
 
     @property
     def foliage_folder(self) -> str:
-        return f"{self.content_folder}/Foliage"
+        """Where the palette prototypes live.
+
+        The species folder under ``Foliage/`` IS the palette -- assets are
+        sorted by type, not by the pipeline that produced them, so there is no
+        second ``/Foliage`` level inside it.
+        """
+        return self.content_folder
 
     @property
     def bark_folder(self) -> str:
-        return f"{self.content_folder}/Bark"
+        """Where the bark textures and the bark material instance live.
+
+        Under ``Materials/<species>/`` -- a material is a material wherever it
+        came from, and the palette folder holds meshes.
+        """
+        return self.materials_folder
 
     @property
     def bark_material(self) -> str:
@@ -228,7 +246,14 @@ class PVEAssetPlan:
             )
 
 
-def _camel(species: str) -> str:
+def camel_species(species: str) -> str:
+    """``common_ash`` -> ``CommonAsh``, for ASSET names only.
+
+    Folders stay in the pipeline's own lowercase spelling, because the material
+    and texture batches key a species off the folder-name string and match it
+    against the lowercase keys in ``config/tree_asset_lookup.csv``. Asset names
+    are never looked up that way, so they keep the UE-idiomatic spelling.
+    """
     return "".join(part.capitalize() for part in species.split("_") if part)
 
 
@@ -265,7 +290,7 @@ def _compound_prototypes(species: str) -> tuple[PalettePrototype, ...]:
 
 def build_species_asset_spec(
     species: str,
-    content_root: str = "/Game/PVE",
+    content_root: str = "/Game/Assets/Trees",
     folder_name: str | None = None,
     palette: str = "twigs",
 ) -> SpeciesAssetSpec:
@@ -321,10 +346,11 @@ def build_species_asset_spec(
 
     return SpeciesAssetSpec(
         species=species,
-        content_folder=f"{content_root}/{folder_name or _camel(species)}",
+        content_folder=f"{content_root}/Foliage/{folder_name or species}",
         prototypes=prototypes,
         bark_color=color,
         bark_normal=normal,
+        materials_folder=f"{content_root}/Materials/{folder_name or species}",
     )
 
 

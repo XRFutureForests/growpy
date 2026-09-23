@@ -206,7 +206,7 @@ main()
 
 def generate_prune_intermediates_script(
     output_dir: Path,
-    import_path: str = "/Game/Assets/TheGrove",
+    import_path: str = "/Game/Assets/Trees",
     dry_run: bool = False,
 ) -> Path:
     """Write the UE Python script that prunes ``SK_*_stems`` meshes.

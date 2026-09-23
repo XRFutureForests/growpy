@@ -147,9 +147,9 @@ from growpy.io.unreal import generate_pve_preset_import_script
 script_path = generate_pve_preset_import_script(
     output_dir=Path("data/output/forest/unreal_scripts"),
     forest_root=Path("data/output/forest"),
-    package_path="/Game/Assets/TheGrove/PVE",
-    foliage_folder="/Game/Assets/TheGrove/PVE/Foliage",
-    materials_folder="/Game/Assets/TheGrove/PVE/Materials",
+    package_path="/Game/Assets/Trees/PVE",
+    foliage_folder="/Game/Assets/Trees/PVE/Foliage",
+    materials_folder="/Game/Assets/Trees/PVE/Materials",
 )
 ```
 

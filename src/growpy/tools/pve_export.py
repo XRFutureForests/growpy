@@ -21,7 +21,7 @@ desktop:
 
 Usage::
 
-    growpy-pve-export /Game/PVE/Graphs/PVG_SilverFir_1 /Game/PVE/Graphs/PVG_SilverFir_2
+    growpy-pve-export /Game/Assets/Trees/Graphs/PVG_SilverFir_1 /Game/Assets/Trees/Graphs/PVG_SilverFir_2
     growpy-pve-export /Game/PVE_Test/Graphs/PVG_Wind_Probe --no-save --keep-open
     growpy-pve-export ... --log "D:/Unreal/XRLabDB 5.8/Saved/Logs/XRLabDB.log"
 
@@ -386,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "graphs",
         nargs="+",
-        help="PVE graph asset paths, e.g. /Game/PVE/Graphs/PVG_SilverFir_1",
+        help="PVE graph asset paths, e.g. /Game/Assets/Trees/Graphs/PVG_SilverFir_1",
     )
     parser.add_argument(
         "--log",

@@ -1635,12 +1635,13 @@ def main() -> None:
     )
     parser.add_argument(
         "--library-package",
-        default="/Game/CompoundLib",
+        default="/Game/Assets/Trees/Foliage",
         help=(
             "UE content folder the library stage will be imported into. The "
             "part package paths in an external-ref assembly are derived from "
             "it, and a wrong one yields an assembly with no parts and an "
-            "import that still reports success (default /Game/CompoundLib)"
+            "import that still reports success (default "
+            "/Game/Assets/Trees/Foliage)"
         ),
     )
     parser.add_argument(

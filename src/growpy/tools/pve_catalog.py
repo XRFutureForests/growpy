@@ -30,7 +30,7 @@ collapsed r00 and r07 onto one key and called the open-grown tree competed.
 Usage::
 
     growpy-pve-catalog data/output/forest/unreal_scripts/pve_export_manifest.json
-    growpy-pve-catalog <manifest> --catalog /Game/PVE/DT_TreeCatalog --no-pcg
+    growpy-pve-catalog <manifest> --catalog /Game/Assets/Trees/DT_TreeCatalog --no-pcg
 """
 
 from __future__ import annotations
@@ -48,7 +48,7 @@ logger = logging.getLogger("growpy.pve_catalog")
 
 TEMPLATE_STRUCT = "/Game/Templates/ST_TreeCatalogEntry"
 TEMPLATE_TABLE = "/Game/Templates/DT_TreeCatalog"
-DEFAULT_CATALOG = "/Game/PVE/DT_TreeCatalog"
+DEFAULT_CATALOG = "/Game/Assets/Trees/DT_TreeCatalog"
 DEFAULT_PCG_GRAPH = "/Game/PCG/PCG_Trees"
 PCG_PARAMETER = "TreeCatalogDataTable"
 

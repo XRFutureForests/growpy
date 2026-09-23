@@ -634,7 +634,7 @@ class PVEGraphSpec:
     palette_meshes: tuple[str, ...]
     bark_material: str
     export_folder: str
-    graph_folder: str = "/Game/PVE/Graphs"
+    graph_folder: str = "/Game/Assets/Trees/Graphs"
     profile_asset: str = (
         "/ProceduralVegetationEditor/SampleAssets/StarterContent"
         "/Trunk_Profiles/Trunk_Profiles_01"

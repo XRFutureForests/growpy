@@ -612,7 +612,7 @@ main()
 def generate_pve_graph_script(
     output_dir: Path,
     forest_root: Path,
-    import_base: str = "/Game/Assets/TheGrove",
+    import_base: str = "/Game/Assets/Trees",
     species_twig_map: dict | None = None,
 ) -> Path:
     """Write a UE Python script that creates combined PVE presets and graphs.

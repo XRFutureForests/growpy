@@ -91,9 +91,9 @@ class TestBuildConsolidationScript:
         assert "import unreal" in script
         assert "import gc" in script
 
-    def test_instances_subpath(self):
+    def test_foliage_subpath(self):
         script = _build_consolidation_script("/Game/Trees")
-        assert 'INSTANCES_PATH = IMPORT_PATH + "/Instances"' in script
+        assert 'FOLIAGE_PATH = IMPORT_PATH + "/Foliage"' in script
 
 
 class TestImportBlockDoneMarker:

@@ -334,7 +334,7 @@ main()
 def generate_wind_import_script(
     output_dir: Path,
     forest_root: Path,
-    import_base: str = "/Game/Assets/TheGrove",
+    import_base: str = "/Game/Assets/Trees",
 ) -> Path:
     """Write a UE Python script that imports DynamicWind data into skeletal meshes.
 

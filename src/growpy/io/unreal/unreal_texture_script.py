@@ -52,7 +52,7 @@ print("GrowPy Post-Import: Import Auxiliary Textures")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-INSTANCES_PATH = IMPORT_PATH + "/Instances"
+FOLIAGE_PATH = IMPORT_PATH + "/Foliage"
 TEXTURES_DIR = r"{textures_dir}"
 TWIGS_DIR = r"{twigs_dir}"
 
@@ -102,6 +102,8 @@ def _configure(task, kind):
 
 
 # --- bark normals: beside each species' existing bark diffuse ---------------
+# Bark textures come in with the tree mesh, so they sit under Catalog/<species>/.
+# The layout is sorted by type, so the species is parts[1], not parts[0].
 bark_targets = {{}}
 for a in ar.get_assets_by_path(IMPORT_PATH, True):
     if str(a.asset_class_path.asset_name) != "Texture2D":
@@ -113,9 +115,9 @@ for a in ar.get_assets_by_path(IMPORT_PATH, True):
     pkg = str(a.package_name)
     rel = pkg[len(IMPORT_PATH):].lstrip("/")
     parts = rel.split("/")
-    if not parts or parts[0] == "Instances":
+    if len(parts) < 2 or parts[0] != "Catalog":
         continue
-    bark_targets[(parts[0], pkg.rsplit("/", 1)[0])] = name
+    bark_targets[(parts[1], pkg.rsplit("/", 1)[0])] = name
 
 bark_tasks = []
 for (species, folder), diffuse in sorted(bark_targets.items()):
@@ -126,11 +128,11 @@ for (species, folder), diffuse in sorted(bark_targets.items()):
 
 # --- packed PVE twig maps: beside each twig asset's leaf textures ------------
 twig_folders = {{}}
-for a in ar.get_assets_by_path(INSTANCES_PATH, True):
+for a in ar.get_assets_by_path(FOLIAGE_PATH, True):
     if str(a.asset_class_path.asset_name) != "Texture2D":
         continue
     pkg = str(a.package_name)
-    top = pkg[len(INSTANCES_PATH):].lstrip("/").split("/")[0]
+    top = pkg[len(FOLIAGE_PATH):].lstrip("/").split("/")[0]
     base = top
     for suffix in ("_twigs_combined_skeletal", "_twigs_combined", "_twigs"):
         if base.endswith(suffix):
@@ -204,7 +206,7 @@ print("=" * 60)
 
 def generate_texture_import_script(
     output_dir: Path,
-    project_path: str = "/Game/Assets/TheGrove",
+    project_path: str = "/Game/Assets/Trees",
     textures_dir: Path | None = None,
     twigs_dir: Path | None = None,
 ) -> Path:
