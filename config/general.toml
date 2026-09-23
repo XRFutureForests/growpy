@@ -29,3 +29,30 @@ profile = false
 # change; everything else keeps random_seed. A sub-table captures every key
 # after it, so this MUST stay the last entry of the file.
 [general.random_seed_per_species]
+# THE SHIPPED common_ash IS A PER-RADIUS PICK AND NO SINGLE SEED REPRODUCES IT.
+# Owner decision, 2026-09-23: r00 from seed 7, r07 AND r10 from seed 512.
+# Seeds are per species, not per radius, so the pick cannot be expressed here;
+# this value only records which seed a plain re-grow would use.
+#
+# Three seeds were grown to 30 m, each wrong in its own way:
+#
+#   512  the OPEN-GROWN tree collapsed above h20 -- r00 crown 21.7 -> 19.8 ->
+#        19.6 m over h20/h25/h30, crown base 8.1 -> 18.8 m, leaf area 175 ->
+#        71 m2 -- so the open tree ended up NARROWEST of the three. Its STAND
+#        pair was correct throughout: r07 < r10 at every stage.
+#   999  cured the collapse (r00 to 22.7 m, leaf 119 m2) but put r07 widest,
+#        r07/r00 = 1.37 at h25.
+#   7    grew the best open tree by far (r00 23.3 -> 34.5 -> 42.0 m, leaf
+#        rising to 210 m2) but its r10 stayed stunted and never reached h30
+#        (17/18 assemblies in 242 cycles).
+#
+# r00 from 7 plus the stand pair from 512 gives r07 < r10 < r00 at EVERY stage,
+# with r07/r00 = 0.67 / 0.59 / 0.69 at h15 / h25 / h30. The stand pair comes
+# from one simulation, so r07 vs r10 stays internally consistent; r00 comes
+# from a different RNG stream, which is the cost of the pick.
+#
+# To rebuild: grow with 7, keep r00; grow with 512, keep r07 and r10.
+# Archives: data/tmp/ladder35_2026-09-22/prev_common_ash (512),
+# prev_common_ash_seed999 (999), prev_common_ash_seed7 (7).
+# Gate of the shipped tree: data/tmp/ladder35_2026-09-22/gate_ash_shipped.json.
+common_ash = 7
