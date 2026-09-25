@@ -492,6 +492,16 @@ class TestPlanEndToEnd:
         assert plan.manifest is not None
         assert plan.retune_script is not None
 
+    def test_it_writes_a_gallery_script_per_species(self, tmp_path, forest_root):
+        # The galleries come with every plan, not from a one-off command run.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        names = [p.name for p in plan.gallery_scripts]
+        assert names and all(p.is_file() for p in plan.gallery_scripts)
+        graphs = json.loads(plan.manifest.read_text())["graphs"]
+        species = {m["species"] for g in graphs for m in g["meshes"]}
+        for sp in species:
+            assert any(n.startswith(f"growpy_pve_gallery_{sp}") for n in names)
+
     def test_the_densities_are_the_calibrated_ones(self, tmp_path, forest_root):
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
         built = {

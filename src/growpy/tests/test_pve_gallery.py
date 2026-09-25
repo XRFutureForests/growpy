@@ -11,16 +11,19 @@ from __future__ import annotations
 
 import ast
 import itertools
+import json
 
 import pytest
 
 from growpy.tools.pve_gallery import (
     MAX_BONES,
     build_ue_script,
+    estimate_bones,
     gallery_groups,
     gallery_layout,
     gallery_records,
     row_framings,
+    write_gallery_scripts,
 )
 
 
@@ -250,6 +253,83 @@ class TestScript:
             "def gallery_layout(records, gap_cm=800.0, block_gap_cm=3000.0):"
             in self._script()
         )
+
+
+def _growth_json(tmp_path, name, points):
+    path = tmp_path / f"{name}_growth_data.json"
+    path.write_text(json.dumps({"points": {"positions": [[0, 0, 0]] * points}}))
+    return str(path)
+
+
+class TestWriteScripts:
+    """The planner writes these with every plan, so a re-plan must not leave a
+    script behind that rebuilds a level the new plan no longer has."""
+
+    def _fir_manifest(self, tmp_path, points):
+        manifest = _manifest([("douglas_fir", "r00_h45m"), ("douglas_fir", "r07_h45m")])
+        for mesh in manifest["graphs"][0]["meshes"]:
+            mesh["growth_json"] = _growth_json(tmp_path, mesh["mesh_name"], points)
+        return manifest
+
+    def test_one_script_per_species_level(self, tmp_path):
+        written = write_gallery_scripts(
+            _manifest([("silver_fir", "r07_h10m"), ("common_ash", "r10_h05m")]),
+            tmp_path,
+        )
+        assert [(level.rsplit("/", 1)[1], p.name) for level, p in written] == [
+            ("TreeGallery_CommonAsh", "growpy_pve_gallery_common_ash.py"),
+            ("TreeGallery_SilverFir", "growpy_pve_gallery_silver_fir.py"),
+        ]
+        script = written[0][1].read_text(encoding="utf-8")
+        ast.parse(script)
+        assert "STALE_PREFIXES = ['TreeGallery_CommonAsh']" in script
+        assert (
+            "KEEP_LEVELS = ['/Game/Levels/TreeGallery/TreeGallery_CommonAsh']" in script
+        )
+
+    def test_a_split_species_keeps_all_its_levels(self, tmp_path):
+        # 20,000 points ~ 22,600 bones a tree: one row fills a 30,000 budget.
+        written = write_gallery_scripts(
+            self._fir_manifest(tmp_path, 20_000), tmp_path, wind_bone_budget=30_000
+        )
+        levels = [level for level, _ in written]
+        assert [lv.rsplit("/", 1)[1] for lv in levels] == [
+            "TreeGallery_DouglasFir_r00",
+            "TreeGallery_DouglasFir_r07",
+        ]
+        for _, script in written:
+            text = script.read_text(encoding="utf-8")
+            assert f"KEEP_LEVELS = {levels!r}" in text
+            assert "STALE_PREFIXES = ['TreeGallery_DouglasFir']" in text
+
+    def test_a_re_plan_removes_the_species_old_scripts_only(self, tmp_path):
+        for name in ("douglas_fir", "douglas_fir_r00", "silver_fir"):
+            (tmp_path / f"growpy_pve_gallery_{name}.py").write_text("old")
+        write_gallery_scripts(
+            self._fir_manifest(tmp_path, 20_000), tmp_path, wind_bone_budget=30_000
+        )
+        assert sorted(p.name for p in tmp_path.glob("growpy_pve_gallery_*.py")) == [
+            "growpy_pve_gallery_douglas_fir_r00.py",
+            "growpy_pve_gallery_douglas_fir_r07.py",
+            "growpy_pve_gallery_silver_fir.py",
+        ]
+        assert (tmp_path / "growpy_pve_gallery_silver_fir.py").read_text() == "old"
+
+    def test_a_named_level_deletes_nothing(self, tmp_path):
+        (tmp_path / "growpy_pve_gallery_douglas_fir.py").write_text("old")
+        ((_, script),) = write_gallery_scripts(
+            self._fir_manifest(tmp_path, 100), tmp_path, level="/Game/Levels/Firs"
+        )
+        assert script.name == "growpy_pve_gallery_firs.py"
+        assert "STALE_PREFIXES = []" in script.read_text(encoding="utf-8")
+        assert (tmp_path / "growpy_pve_gallery_douglas_fir.py").read_text() == "old"
+
+    def test_an_unreadable_growth_json_counts_no_bones(self, tmp_path):
+        broken = tmp_path / "broken.json"
+        broken.write_text("{not json")
+        assert estimate_bones({"growth_json": str(broken)}) == 0.0
+        assert estimate_bones({"growth_json": str(tmp_path / "missing.json")}) == 0.0
+        assert estimate_bones({}) == 0.0
 
 
 class TestFramings:

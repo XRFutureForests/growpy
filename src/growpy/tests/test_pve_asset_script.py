@@ -338,6 +338,14 @@ class TestGeneratedScript:
         assert "duplicate_asset" not in body
         assert "delete_asset" not in body
 
+    def test_it_refuses_while_the_open_level_shows_trees(self, script):
+        # Re-parenting the leaves with a gallery open crashed the editor on the
+        # material save (2026-09-25): nothing may change before this check.
+        assert "def trees_in_open_level" in script
+        guard = script.index("trees = trees_in_open_level()")
+        assert guard < script.index("for spec in PLAN[")
+        assert "open an empty level" in script
+
     def test_every_prototype_reaches_the_script(self, script):
         for species, count in (("european_beech", 5), ("pacific_silver_fir", 9)):
             # once as the USD import, once as the re-framed part

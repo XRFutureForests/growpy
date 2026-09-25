@@ -34,10 +34,13 @@ the columns. Lit like ECOSENSE (BP_Sky_Sphere, one low sun, the PVE global folia
 actor, which drives foliage colour) on flat ground at z = 0, with a PlayerStart in
 front.
 
-The generated scripts (``growpy_pve_gallery_<species>.py`` beside the manifest) measure,
-lay out and place in the editor by themselves, so they can also be rerun with
-``growpy-ue-exec``. Everything they place carries the ``GALLERY_`` label prefix and is
-replaced on a rerun.
+The dataset planner writes the scripts (``growpy_pve_gallery_<level>.py`` beside the
+export manifest) with every plan -- ``growpy-dataset-pipeline`` step 4 and
+``growpy-pve-plan`` -- so each run brings its galleries along; run them after the
+export and ``growpy-pve-catalog``, with ``growpy-ue-exec`` or through this command,
+which also takes the shots. Each script measures, lays out and places by itself,
+deletes the levels an earlier plan left for its species (a split, or a merge), and
+replaces everything it placed before (``GALLERY_`` label prefix) on a rerun.
 
 Trees stand the way ``PCG_Trees`` spawns them, so they move in the wind: each is an
 actor holding an ``InstancedSkinnedMeshComponent`` with one instance and the PVE
@@ -74,6 +77,7 @@ import re
 import shutil
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 logger = logging.getLogger("growpy.pve_gallery")
@@ -199,7 +203,25 @@ eal = unreal.EditorAssetLibrary
 els = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 lvl = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 ues = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
-report = {"level": LEVEL, "placed": [], "skipped": [], "missing": [], "static": []}
+report = {"level": LEVEL, "placed": [], "skipped": [], "missing": [], "static": [],
+          "removed": []}
+
+# 0. levels an earlier plan left behind for this species -- it was split by the bone
+#    budget, or merged back. The asset registry, not list_assets: a stray level
+#    named like the folder (/Game/Levels/TreeGallery.umap) made list_assets return
+#    it instead of the folder's contents (2026-09-25).
+if STALE_PREFIXES:
+    world = ues.get_editor_world()
+    current = world.get_path_name().split(".")[0] if world else ""
+    registry = unreal.AssetRegistryHelpers.get_asset_registry()
+    for data in registry.get_assets_by_path(GALLERY_FOLDER, recursive=False):
+        path = str(data.package_name)
+        name = path.rsplit("/", 1)[1]
+        if path in KEEP_LEVELS or path == current:
+            continue
+        if any(name == p or name.startswith(p + "_") for p in STALE_PREFIXES):
+            if eal.delete_asset(path):
+                report["removed"].append(path)
 
 # 1. open (or create) the gallery level. Switching away from a level with unsaved
 #    changes opens a save dialog, which blocks a remote script indefinitely.
@@ -384,6 +406,8 @@ def build_ue_script(
     gap_cm: float = 800.0,
     block_gap_cm: float = 3000.0,
     wind_bone_budget: float = WIND_BONE_BUDGET,
+    keep_levels: Sequence[str] = (),
+    stale_prefixes: Sequence[str] = (),
 ) -> str:
     """The self-contained editor script: constants + gallery_layout + UE_BODY."""
     header = "\n".join(
@@ -393,6 +417,9 @@ def build_ue_script(
             "import unreal",
             "",
             f"LEVEL = {level!r}",
+            f"GALLERY_FOLDER = {DEFAULT_FOLDER!r}",
+            f"KEEP_LEVELS = {list(keep_levels)!r}",
+            f"STALE_PREFIXES = {list(stale_prefixes)!r}",
             f"PREFIX = {LABEL_PREFIX!r}",
             f"MAX_BONES = {MAX_BONES!r}",
             f"WIND_BONE_BUDGET = {int(wind_bone_budget)!r}",
@@ -572,29 +599,22 @@ def main(argv: list[str] | None = None) -> int:
     if not records:
         logger.error("nothing to place")
         return 1
-    groups = gallery_groups(records, args.level, args.wind_bone_budget)
-    scripts = []
-    for level, name, group in groups:
-        script = args.manifest.parent / f"growpy_pve_gallery_{name}.py"
-        script.write_text(
-            build_ue_script(
-                group,
-                level=level,
-                gap_cm=args.gap_m * 100.0,
-                block_gap_cm=args.block_gap_m * 100.0,
-                wind_bone_budget=args.wind_bone_budget,
-            ),
-            encoding="utf-8",
-        )
-        scripts.append(script)
-        logger.info("UE script: %s (%d meshes -> %s)", script, len(group), level)
+    scripts = write_gallery_scripts(
+        manifest,
+        args.manifest.parent,
+        level=args.level,
+        species=args.species,
+        gap_cm=args.gap_m * 100.0,
+        block_gap_cm=args.block_gap_m * 100.0,
+        wind_bone_budget=args.wind_bone_budget,
+    )
+    for level, script in scripts:
+        logger.info("UE script: %s -> %s", script, level)
     if args.script_only:
         return 0
-    if not args.level:
-        remove_stale_levels(groups)
 
     reports = []
-    for script in scripts:
+    for _, script in scripts:
         report = run_gallery_script(script)
         if report is None:
             return 1
@@ -616,8 +636,11 @@ def estimate_bones(record: dict) -> float:
     path = record.get("growth_json")
     if not path or not Path(path).is_file():
         return 0.0
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return len(data["points"]["positions"]) * BONES_PER_POINT
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        return len(data["points"]["positions"]) * BONES_PER_POINT
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0.0
 
 
 def gallery_groups(
@@ -672,45 +695,60 @@ def gallery_groups(
     return groups
 
 
-CLEANUP_SCRIPT = """\
-import unreal
+def write_gallery_scripts(
+    manifest: dict,
+    output_dir: Path,
+    *,
+    level: str | None = None,
+    species: Sequence[str] | None = None,
+    gap_cm: float = 800.0,
+    block_gap_cm: float = 3000.0,
+    wind_bone_budget: float = WIND_BONE_BUDGET,
+) -> list[tuple[str, Path]]:
+    """Write one ``growpy_pve_gallery_<name>.py`` per planned level; (level, script).
 
-eal = unreal.EditorAssetLibrary
-world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
-current = world.get_path_name().split(".")[0] if world else ""
-removed = []
-# The asset registry, not list_assets: a stray level asset named like the folder
-# (/Game/Levels/TreeGallery.umap) made list_assets return it instead of the folder.
-registry = unreal.AssetRegistryHelpers.get_asset_registry()
-for data in registry.get_assets_by_path({folder!r}, recursive=False):
-    path = str(data.package_name)
-    name = path.rsplit("/", 1)[1]
-    if path in {keep!r} or path == current:
-        continue
-    if any(name == p or name.startswith(p + "_") for p in {prefixes!r}):
-        if eal.delete_asset(path):
-            removed.append(path)
-unreal.log("PVEGALLERY removed stale level(s): %s" % removed)
-"""
-
-
-def remove_stale_levels(groups: list[tuple[str, str, list[dict]]]) -> None:
-    """Delete a species' gallery levels this run will not rebuild.
-
-    A species that crosses the bone budget is split into row levels, and one
-    that falls back under it is merged again; the level it had before would
-    otherwise stay behind, out of date. Only levels named after a species in
-    this run, inside the gallery folder, are touched.
+    Called by the dataset planner with every plan, and by this command. The
+    scripts an earlier plan wrote for the same species are removed first, so a
+    species that is split or merged again does not leave a stale script behind
+    that would rebuild a level the new plan no longer has.
     """
-    from growpy.tools.pve_shots import _run_in_editor
+    from growpy.io.unreal.pve_asset_script import camel_species
 
-    keep = [level for level, _, _ in groups]
-    prefixes = sorted({level.rsplit("/", 1)[1].split("_r")[0] for level in keep})
-    for line in _run_in_editor(
-        CLEANUP_SCRIPT.format(folder=DEFAULT_FOLDER, keep=keep, prefixes=prefixes)
-    ):
-        if "PVEGALLERY" in line:
-            logger.info("  %s", line.split("LogPython:")[-1].strip())
+    records = gallery_records(manifest, list(species) if species else None)
+    if not records:
+        return []
+    groups = gallery_groups(records, level, wind_bone_budget)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if not level:
+        for sp in {r["species"] for r in records}:
+            for pattern in (
+                f"growpy_pve_gallery_{sp}.py",
+                f"growpy_pve_gallery_{sp}_r*.py",
+            ):
+                for old in output_dir.glob(pattern):
+                    old.unlink()
+    written = []
+    for path, name, group in groups:
+        keep, prefixes = [], []
+        if not level:
+            sp = group[0]["species"]
+            keep = [p for p, _, g in groups if g[0]["species"] == sp]
+            prefixes = [f"TreeGallery_{camel_species(sp)}"]
+        script = output_dir / f"growpy_pve_gallery_{name}.py"
+        script.write_text(
+            build_ue_script(
+                group,
+                level=path,
+                gap_cm=gap_cm,
+                block_gap_cm=block_gap_cm,
+                wind_bone_budget=wind_bone_budget,
+                keep_levels=keep,
+                stale_prefixes=prefixes,
+            ),
+            encoding="utf-8",
+        )
+        written.append((path, script))
+    return written
 
 
 def run_gallery_script(script: Path) -> dict | None:
@@ -745,6 +783,8 @@ def run_gallery_script(script: Path) -> dict | None:
     )
     for skipped in report["skipped"]:
         logger.warning("  not placed: %s (%d bones)", skipped["key"], skipped["bones"])
+    for path in report.get("removed", []):
+        logger.info("  removed stale level: %s", path)
     for key in report.get("static", []):
         logger.warning("  no wind (past the level's bone budget): %s", key)
     for path in report["missing"]:

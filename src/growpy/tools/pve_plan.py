@@ -115,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         plan.chain_count,
     )
     logger.info("manifest:      %s", plan.manifest)
+    for gallery in plan.gallery_scripts:
+        logger.info("gallery:       %s", gallery)
     for line in plan.skipped:
         logger.warning("skipped %s", line)
     return 0

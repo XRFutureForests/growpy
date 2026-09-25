@@ -108,7 +108,9 @@ class PVEGraphPlanResult:
     ``asset_script`` imports the twig palette and builds the bark material;
     ``script`` authors the graphs that name both by path. They must be run in
     that order, and the graph script's own preflight refuses to build anything
-    if they were not.
+    if they were not. ``gallery_scripts`` lay the exported meshes out in one
+    gallery level per species (split where the wind-bone budget needs it); they
+    are run after the Export, or by ``growpy-pve-gallery``.
     """
 
     graphs: tuple[PVEGraphSpec, ...] = ()
@@ -116,6 +118,7 @@ class PVEGraphPlanResult:
     script: Path | None = None
     manifest: Path | None = None
     retune_script: Path | None = None
+    gallery_scripts: tuple[Path, ...] = ()
     skipped: tuple[str, ...] = field(default=())
 
     @property
@@ -1056,11 +1059,28 @@ def plan_pve_graphs(
         output_dir, PVEAssetPlan(species=tuple(asset_specs))
     )
 
+    manifest = write_coverage_manifest(output_dir, graphs, details=details)
     return PVEGraphPlanResult(
         graphs=tuple(graphs),
         asset_script=asset_script,
         script=generate_pve_graph_builder_script(output_dir, graphs),
-        manifest=write_coverage_manifest(output_dir, graphs, details=details),
+        manifest=manifest,
         retune_script=generate_pve_retune_script(output_dir, graphs),
+        gallery_scripts=_write_gallery_scripts(manifest, output_dir),
         skipped=tuple(skipped),
     )
+
+
+def _write_gallery_scripts(manifest: Path, output_dir: Path) -> tuple[Path, ...]:
+    """The gallery scripts for this plan's meshes; none, with a warning, if the
+    manifest cannot be laid out (a gallery is a check, never a reason to fail)."""
+    from growpy.tools.pve_gallery import write_gallery_scripts
+
+    try:
+        written = write_gallery_scripts(
+            json.loads(manifest.read_text(encoding="utf-8")), output_dir
+        )
+    except ValueError as exc:
+        logger.warning("No PVE gallery scripts: %s", exc)
+        return ()
+    return tuple(script for _, script in written)

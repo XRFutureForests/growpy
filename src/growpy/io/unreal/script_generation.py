@@ -140,6 +140,9 @@ def generate_unreal_scripts(
                 len(plan.graphs),
                 plan.chain_count,
             )
+            logger.info("  3. growpy-pve-export, then growpy-pve-catalog")
+            for gallery in plan.gallery_scripts:
+                logger.info("  4. %s   (gallery level, after the export)", gallery)
             logger.info("PVE coverage manifest: %s", plan.manifest)
             logger.info(
                 "PVE retune script (densities only, never re-authors): %s",

@@ -871,6 +871,25 @@ def repoint_leaf_materials(spec):
     return problems
 
 
+def trees_in_open_level():
+    """Skinned-mesh components in the open level showing a tree of this content.
+
+    Re-parenting a leaf material refreshes every tree that shows it; with a
+    gallery level open that overflowed the GPU-scene scatter buffer and took
+    the editor down while the new material instance was saved (2026-09-25).
+    """
+    roots = sorted(set(s["content_folder"].rsplit("/Foliage/", 1)[0] + "/"
+                       for s in PLAN["species"]))
+    actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
+    found = 0
+    for actor in actors.get_all_level_actors():
+        for comp in actor.get_components_by_class(unreal.SkinnedMeshComponent):
+            asset = comp.get_skinned_asset()
+            if asset is not None and asset.get_path_name().startswith(tuple(roots)):
+                found += 1
+    return found
+
+
 print("=" * 64)
 print("GrowPy PVE asset import: %d species" % len(PLAN["species"]))
 print("=" * 64)
@@ -878,6 +897,12 @@ print("=" * 64)
 master = PLAN["master_material"]
 if eal.load_asset(master) is None:
     raise RuntimeError("master material not found: %s" % master)
+trees = trees_in_open_level()
+if trees:
+    raise RuntimeError(
+        "the open level shows %d tree(s) from this content: open an empty level "
+        "first, the material updates below refresh every one of them and have "
+        "crashed the editor that way" % trees)
 
 for spec in PLAN["species"]:
     print("")

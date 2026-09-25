@@ -275,13 +275,19 @@ growpy-pve-gallery data/output/forest/unreal_scripts/pve_export_manifest.json
 growpy-pve-gallery <manifest> --shots data/tmp/gallery_shots   # plus one PNG per row half
 ```
 
+The PVE plan (dataset step 4, or `growpy-pve-plan`) already writes one
+`growpy_pve_gallery_<level>.py` per gallery level beside the graph scripts, so a new
+production run brings its galleries with it; the full order is the asset script, the graph
+script, `growpy-pve-export`, `growpy-pve-catalog`, then the gallery scripts (via
+`growpy-ue-exec`, or `growpy-pve-gallery`, which rewrites and runs them). A re-plan
+replaces a species' old gallery scripts, and each script deletes that species' levels the
+plan no longer has (from an earlier split, or before a merge).
+
 The open level must have no unsaved changes (switching levels would open a save dialog and
 block the script). Meshes over the 32,767-bone cap are not placed; their cell carries a
 marker with the bone count. Trees are placed the way `PCG_Trees` spawns them (an instanced
 skinned mesh component with the PVE wind transform provider), so they move in the wind and
-take season and health from the global foliage actor. The generated
-`growpy_pve_gallery_<species>.py` scripts also run on their
-own via `growpy-ue-exec`.
+take season and health from the global foliage actor.
 
 One level per species because the whole catalog does not fit one editor session on a
 64 GB machine: loading all 216 meshes reached 43 GB, and the first spawn then overflowed
@@ -364,11 +370,12 @@ textures are non-virtual. Grep the log for `expects texture`.
 **Season and health do not change the leaves**
 The leaves are still on the USD importer's `UsdPreviewSurface`, which cannot see
 `MPC_GlobalFoliageActor`. Run `growpy-pack-pve-textures`, then `growpy-pve-assets` and the
-script it writes: it builds `MI_<species>_foliage` from the plugin's conifer or broadleaf
-foliage sample and re-parents every `*_leaf*` instance of the palette to it in place, so
-exported trees follow without a re-export. Run it with an empty level open: a material
-update refreshes every tree using it in the open level, and a gallery's worth of trees
-overflowed the GPUScene upload pool (2026-09-25).
+script it writes (the PVE plan writes the same script as `growpy_pve_assets.py`): it builds
+`MI_<species>_foliage` from the plugin's conifer or broadleaf foliage sample and re-parents
+every `*_leaf*` instance of the palette to it in place, so exported trees follow without a
+re-export. The script refuses to start while the open level shows trees of this content:
+a material update refreshes every tree using it in the open level, and a gallery's worth
+of trees overflowed the GPUScene upload pool (2026-09-25). Open an empty level first.
 
 **The editor dies when `PCG_Trees` regenerates the imported catalog**
 `Assertion failed: ScatterBufferSize >= ScatterBytes` (`UnifiedBuffer.cpp:845`): the GPUScene

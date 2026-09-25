@@ -126,6 +126,7 @@ class TestGenerateUnrealScripts:
             script = Path("graphs.py")
             manifest = Path("manifest.json")
             retune_script = Path("retune.py")
+            gallery_scripts = (Path("growpy_pve_gallery_beech.py"),)
 
         def _plan(output_dir, forest_root, **kwargs):
             planned.append(kwargs)
