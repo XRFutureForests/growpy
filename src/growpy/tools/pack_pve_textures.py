@@ -6,7 +6,7 @@ shipped by the ProceduralVegetationEditor plugin -- exposes exactly TWO texture
 parameters:
 
     Base Color   colour in RGB, opacity in A
-    Normal       normal in RGB, translucency in A
+    Normal       normal X/Y in R/G, translucency in B
 
 That is the whole texture contract, and it is why MegaPlants ships `_CA`
 (colour+alpha) and `_NT` (normal+translucency) pairs rather than separate maps.
@@ -14,13 +14,23 @@ growpy's twig assets carry the same information spread across up to four files
 -- diffuse, alpha, normal, translucent -- so nothing new has to be authored,
 only combined.
 
-What each species actually has (measured 2026-09-04 over the nine converted twig
-assets): all nine have diffuse and alpha, so Base Color packs everywhere. Only
-european_beech, european_oak, one_leaved_ash and small_leaved_linden ship a
-normal map, and only beech, ash and linden a translucency map, so Normal packs
-for four of the nine and carries translucency for three. The rest are left
-without a Normal texture rather than given a flat stand-in, so the gap stays
-visible instead of looking authored.
+The `_NT` layout is read off the plugin's own graph (2026-09-25):
+`MF_TwoSided_Leaves` rebuilds the normal from R/G alone (`MF_ReconstructZ`) and
+sends the Normal sample's B channel to `MF_generateTranslucency`, which
+multiplies the leaf colour by it into the Two Sided Foliage subsurface colour --
+the light that comes through a backlit leaf. The plugin's sample `_NT` maps are
+RGB. Until then this packer wrote a full normal to RGB and translucency to A, so
+the material read normal Z (~0.95 over the whole leaf) as translucency and the
+real translucency maps were never sampled.
+
+Translucency level and contrast follow the plugin's sample leaves, measured
+inside the leaf cutout (`TRANSLUCENCY_TARGETS`); only the pattern comes from the
+twig. Where it ships a translucency map (beech, ash and linden, measured
+2026-09-25) that map is the pattern -- as authored it sits at 0.14-0.21 of full
+scale, which would make those three the dimmest leaves in the set. Otherwise the
+leaf's own brightness is: inverted for broadleaves, whose sample transmits least
+through its pale veins (r = -0.93 against brightness), direct for conifers
+(r = +0.51).
 
 Alpha is taken from a dedicated alpha map where one exists, falling back to the
 diffuse's own alpha channel. Sizes are reconciled by resampling the secondary
@@ -44,6 +54,14 @@ logger = logging.getLogger("growpy.pack_pve_textures")
 
 BASECOLOR_SUFFIX = "_pve_basecolor.png"
 NORMAL_SUFFIX = "_pve_normal.png"
+
+# Translucency inside the leaf cutout of the plugin's sample `_NT` maps, 0-255:
+# mean, standard deviation, and the sign of its correlation with leaf brightness
+# (T_LeafTree_01_Foliage_NT / T_Conifer_Foliage_01_NT, 2026-09-25).
+TRANSLUCENCY_TARGETS = {
+    "broadleaf": (186.0, 42.0, -1.0),
+    "conifer": (155.0, 33.0, 1.0),
+}
 
 
 def _load(path: Path):
@@ -141,6 +159,72 @@ def _mean_colour(path: Path) -> list[float] | None:
         return None
 
 
+def twig_growth_habit(twig_name: str) -> str:
+    """The growth habit, conifer or broadleaf, of the species using a twig asset.
+
+    Read off the Twig and Competition Group columns of tree_asset_lookup.csv;
+    every twig there serves one habit. A twig no species names is broadleaf.
+    """
+    from growpy.config.paths import _get_lookup_table
+    from growpy.utils.naming import camel_to_snake
+
+    table = _get_lookup_table()
+    habits = set()
+    for twig, group in zip(table["Twig"], table["Competition Group"], strict=True):
+        if not isinstance(twig, str):
+            continue
+        std = camel_to_snake(twig.strip())
+        if twig_name in (std, f"{std}_twig"):
+            conifer = isinstance(group, str) and "conifer" in group.lower()
+            habits.add("conifer" if conifer else "broadleaf")
+    return "conifer" if habits == {"conifer"} else "broadleaf"
+
+
+def translucency_channel(diffuse, alpha, habit: str, source=None):
+    """The Normal map's B channel: how much light a backlit leaf lets through.
+
+    Inside the leaf cutout (`alpha` > 128) the result has the plugin sample's
+    mean and spread for `habit`, patterned by `source` (a translucency map) or,
+    without one, by the leaf's brightness in `diffuse` (see the module
+    docstring). Outside the cutout it holds the mean, so mip levels do not
+    darken the leaf edge. Returns an L image the size of `diffuse`.
+    """
+    import numpy as np
+    from PIL import Image
+
+    mean, spread, sign = TRANSLUCENCY_TARGETS[habit]
+    if source is not None:
+        source = source.convert("L")
+        if source.size != diffuse.size:
+            source = source.resize(diffuse.size)
+        pattern = np.asarray(source, dtype=np.float32)
+    else:
+        rgb = np.asarray(diffuse.convert("RGB"), dtype=np.float32)
+        brightness = rgb @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+        pattern = sign * brightness
+    inside = np.asarray(alpha.convert("L"), dtype=np.uint8) > 128
+    if inside.sum() < 64:
+        inside = np.ones_like(inside)
+    values = pattern[inside]
+    sd = float(values.std())
+    if sd > 1e-3:
+        z = (pattern - float(values.mean())) / sd
+    else:
+        z = np.zeros_like(pattern)
+    out = np.where(inside, mean + spread * z, mean)
+    return Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8))
+
+
+def pack_normal_map(normal, translucency):
+    """The `_NT` map: normal X/Y in R/G, `translucency` in B, no alpha."""
+    from PIL import Image
+
+    if translucency.size != normal.size:
+        translucency = translucency.resize(normal.size)
+    red, green, _ = normal.convert("RGB").split()
+    return Image.merge("RGB", (red, green, translucency.convert("L")))
+
+
 def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     """Write the Base Color and Normal maps for one twig asset directory."""
     # `twig_export` imports bmesh at module scope, and bmesh is not importable
@@ -205,21 +289,19 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
         # shading (a violet fir crown lit by spruce normals).
         normal = Image.new("RGB", base.size, (128, 128, 255))
         result["flat_normal"] = True
+    source = None
     if "translucent" in candidates:
-        trans = _load(candidates["translucent"]).convert("L")
-        if trans.size != normal.size:
-            trans = trans.resize(normal.size)
-    else:
-        # No translucency map: leave the channel black rather than white, so
-        # a species without the data reads as opaque instead of maximally
-        # translucent if the material samples it anyway.
-        trans = Image.new("L", normal.size, 0)
-    packed = Image.merge("RGBA", (*normal.split(), trans))
+        source = _load(candidates["translucent"])
+    habit = twig_growth_habit(name)
+    packed = pack_normal_map(
+        normal, translucency_channel(diffuse, alpha, habit, source)
+    )
     normal_path = textures / f"{stem}{NORMAL_SUFFIX}"
     if not dry_run:
         packed.save(normal_path)
     result["normal"] = normal_path.name
-    result["translucency"] = "translucent" in candidates
+    result["translucency"] = "map" if source is not None else "derived"
+    result["habit"] = habit
 
     # Parameters the master exposes but has no texture slot for. Written as a
     # sidecar so the material pass can wire them without re-opening the images.
@@ -301,7 +383,7 @@ def main(argv: list[str] | None = None) -> int:
             packed += 1
         if row["normal"]:
             with_normal += 1
-        if row.get("translucency"):
+        if row.get("translucency") == "map":
             with_translucency += 1
         logger.info(
             "%-30s %-34s %s",
@@ -311,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     logger.info(
         "\n%d/%d assets have a Base Color; %d have a Normal, %d of those "
-        "carrying translucency.%s",
+        "with a translucency map (the rest derive it from the leaf).%s",
         packed,
         len(dirs),
         with_normal,

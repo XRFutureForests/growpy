@@ -67,9 +67,10 @@ the foliage actor's colour never reached a leaf, on the old ``/Game/PVE``
 catalog as much as on the new one (found 2026-09-25). Each species now gets
 ``MI_<species>_foliage`` -- cloned from the plugin's own conifer or broadleaf
 foliage sample, fed the two maps ``growpy-pack-pve-textures`` packs (Base Color
-with opacity in alpha; Normal with translucency in alpha, imported as Masks, as
-the samples do) -- and every ``*_leaf*`` instance in its palette is re-parented
-to it in place, so the trees already exported follow without a re-export.
+with opacity in alpha; Normal with the normal's X/Y in R/G and translucency in B,
+imported as Masks, as the samples do) -- and every ``*_leaf*`` instance in its
+palette is re-parented to it in place, so the trees already exported follow
+without a re-export.
 """
 
 from __future__ import annotations
@@ -752,9 +753,9 @@ def audit_for_usd_stubs(folder):
 
 def import_foliage_texture(entry, is_normal):
     """Import one packed leaf map with the settings the plugin's own foliage
-    samples use: Base Color sRGB, Normal (normal + translucency in alpha) as
-    Masks with sRGB off -- normal-map compression would drop the translucency --
-    and both virtual-texture streamed.
+    samples use: Base Color sRGB, Normal (normal X/Y in R/G, translucency in B)
+    as Masks with sRGB off -- normal-map compression keeps only R/G and would
+    drop the translucency -- and both virtual-texture streamed.
 
     Always re-imported, so a re-pack on disk reaches the project.
     """

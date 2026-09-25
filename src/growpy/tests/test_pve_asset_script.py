@@ -325,8 +325,8 @@ class TestGeneratedScript:
         assert maps < material < leaves
 
     def test_the_leaf_normal_keeps_its_translucency(self, script):
-        # The packed Normal carries translucency in alpha, and the plugin's own
-        # samples import it as Masks; TC_NORMALMAP would drop the alpha.
+        # The packed Normal carries translucency in B, and the plugin's own
+        # samples import it as Masks; TC_NORMALMAP keeps only R/G.
         body = script.split("def import_foliage_texture", 1)[1].split("\ndef ", 1)[0]
         assert "TC_MASKS" in body
         assert "TC_NORMALMAP" not in body

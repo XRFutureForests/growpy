@@ -377,6 +377,17 @@ re-export. The script refuses to start while the open level shows trees of this 
 a material update refreshes every tree using it in the open level, and a gallery's worth
 of trees overflowed the GPUScene upload pool (2026-09-25). Open an empty level first.
 
+**The editor start hangs on frame 0 after a catalog move or re-save**
+The log shows `Building Skeletal Mesh …` / `NaniteBuild` / `Waiting for skinned assets to
+be ready` for one tree after another. Re-saved catalog meshes no longer match their cached
+render data, and the startup map (ECOSENSE, through `PCG_Trees`) loads them while the
+editor opens: minutes per large tree, hours for the catalog. It is not stuck, and every
+finished mesh stays cached. Start the editor on an empty level instead
+(`UnrealEditor.exe <project> /Game/Levels/ShotStage`), and fill the cache headless with no
+editor open on the project — the command is in
+`src/growpy/tools/ue_scripts/warm_catalog_cache.py`. Never run two editors on the project
+while this happens: both rebuild the same meshes.
+
 **The editor dies when `PCG_Trees` regenerates the imported catalog**
 `Assertion failed: ScatterBufferSize >= ScatterBytes` (`UnifiedBuffer.cpp:845`): the GPUScene
 upload pool is too small for ~1,460 PVE trees at once. Add to the project's
