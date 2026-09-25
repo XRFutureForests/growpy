@@ -47,6 +47,7 @@ from pxr import Gf, Sdf, Usd, UsdGeom
 
 from ...config.core import get_config as _get_config
 from ...config.paths import twig_ext as _twig_ext
+from ...config.ue_layout import TREES_ROOT
 from ...core.twig import extract_twig_placements_from_model
 
 
@@ -915,7 +916,7 @@ def create_assembly(
                 cfg = get_config()
                 if getattr(cfg, "export_external_refs", False):
                     project_path = getattr(
-                        cfg, "unreal_project_path", "/Game/Assets/Trees"
+                        cfg, "unreal_project_path", TREES_ROOT
                     )
                     asset_paths = {
                         proto: _external_ref_asset_path(asset, project_path)

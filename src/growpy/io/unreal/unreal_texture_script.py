@@ -33,6 +33,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from growpy.config.ue_layout import TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 
@@ -206,7 +208,7 @@ print("=" * 60)
 
 def generate_texture_import_script(
     output_dir: Path,
-    project_path: str = "/Game/Assets/Trees",
+    project_path: str = TREES_ROOT,
     textures_dir: Path | None = None,
     twigs_dir: Path | None = None,
 ) -> Path:

@@ -42,7 +42,7 @@ def _build_material_script(
     """
     if parent_material_path is None:
         # Fallback only. Callers should pass the configured [unreal] db_path
-        # (the reusable-template dir, e.g. /Game/Templates) -- see
+        # (the reusable-template dir, e.g. /Game/XRFF/Twin) -- see
         # generate_unreal_import_script. This default expects the master
         # material duplicated into the project because the plugin's own content
         # path is fragile across UE versions/mount state
@@ -253,7 +253,7 @@ def _create_mic(name, parent, sub_path="", role=None):
         # Only a factory-built instance needs its parent assigned. A clone
         # already points at the master its reference used -- the PVE plugin's
         # /ProceduralVegetationEditor/.../MA_Foliage_Trees. Re-pointing it at
-        # the project's same-named copy under /Game/Templates silently swaps
+        # the project's same-named copy in the schema folder silently swaps
         # the graph underneath: every parameter name still resolves, so the
         # instances compare identical, but the tree renders violet.
         try:

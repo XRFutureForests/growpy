@@ -117,6 +117,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from growpy.config.ue_layout import TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -634,7 +636,7 @@ class PVEGraphSpec:
     palette_meshes: tuple[str, ...]
     bark_material: str
     export_folder: str
-    graph_folder: str = "/Game/Assets/Trees/Graphs"
+    graph_folder: str = f"{TREES_ROOT}/Graphs"
     profile_asset: str = (
         "/ProceduralVegetationEditor/SampleAssets/StarterContent"
         "/Trunk_Profiles/Trunk_Profiles_01"

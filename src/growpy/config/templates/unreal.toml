@@ -9,10 +9,10 @@ import_to_unreal = true
 # Unreal content path for imported assets in Content Browser. DT_TreeCatalog
 # is created here too. Treat it as working content -- it is wiped and
 # re-imported between dataset runs.
-project_path = "/Game/Assets/Trees"
+project_path = "/Game/Generated/Trees"
 # Where ST_TreeCatalogEntry lives. Keep it out of project_path, which gets
 # deleted and recreated; the struct is schema and has to survive that.
-db_path = "/Game/Templates"
+db_path = "/Game/XRFF/Twin"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.

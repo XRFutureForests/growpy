@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from growpy.config.ue_layout import TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 
@@ -243,7 +245,7 @@ main()
 
 def generate_nanite_voxelize_script(
     output_dir: Path,
-    import_path: str = "/Game/Assets/Trees",
+    import_path: str = TREES_ROOT,
 ) -> Path:
     """Write a UE Python script that batch-sets Nanite Voxelize shape preservation.
 

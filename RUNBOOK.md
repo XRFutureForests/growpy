@@ -256,7 +256,7 @@ through Windows UI Automation) and saves the result. It needs no focus and works
 workstation locked:
 
 ```bash
-growpy-pve-export /Game/Assets/Trees/Graphs/PVG_SilverFir_1 /Game/Assets/Trees/Graphs/PVG_SilverFir_2
+growpy-pve-export /Game/Generated/Trees/Graphs/PVG_SilverFir_1 /Game/Generated/Trees/Graphs/PVG_SilverFir_2
 ```
 
 One `Mesh exported successfully` line per export node marks success; targets that already
@@ -265,7 +265,7 @@ driver reports `NODIALOG`, the toolbar button is not at the default window offse
 (`--toolbar X,Y`); the tool then retries with a UI Automation search.
 
 **Look at the catalog in gallery levels.** After the export and `growpy-pve-catalog`, lay
-the exported trees out in `/Game/Levels/TreeGallery/TreeGallery_<Species>`: one level per
+the exported trees out in `/Game/Developers/Max/TreeGallery/TreeGallery_<Species>`: one level per
 species, one row per stand radius, one column per stage, labelled, lit like ECOSENSE.
 Rerunning rebuilds them in place, so after a re-export the levels are current again. Walk
 them in the editor or in VR:
@@ -364,7 +364,7 @@ If you have added a loop over Grove geometry, hoist the property read out of it.
 Look for a dangling `bindJoint` token — a single one silently kills the whole assembly.
 
 **PVE materials render as shifting magenta/violet/neon**
-Either a clone got re-parented to the `/Game/Templates` copy of `MA_Foliage_Trees`, or the
+Either a clone got re-parented to the `/Game/XRFF/Twin` copy of `MA_Foliage_Trees`, or the
 textures are non-virtual. Grep the log for `expects texture`.
 
 **Season and health do not change the leaves**

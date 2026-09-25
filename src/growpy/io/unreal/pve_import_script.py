@@ -42,6 +42,7 @@ import os
 from collections.abc import Iterable
 from pathlib import Path
 
+from growpy.config.ue_layout import TREES_ROOT
 from growpy.utils.naming import camel_to_snake
 
 logger = logging.getLogger(__name__)
@@ -349,7 +350,7 @@ main()
 def generate_pve_preset_import_script(
     output_dir: Path,
     forest_root: Path,
-    import_base: str = "/Game/Assets/Trees",
+    import_base: str = TREES_ROOT,
     species_twig_map: dict | None = None,
 ) -> Path:
     """Write a UE Python script that creates ProceduralVegetationPreset assets.
@@ -402,7 +403,7 @@ def generate_pve_preset_import_script(
 def generate_pve_import_for_species(
     output_dir: Path,
     pve_json_paths: Iterable[Path],
-    import_base: str = "/Game/Assets/Trees",
+    import_base: str = TREES_ROOT,
     species_twig_map: dict | None = None,
 ) -> Path | None:
     """Convenience: derive forest_root from a list of per-tree JSON paths.

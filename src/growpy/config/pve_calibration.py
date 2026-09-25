@@ -280,7 +280,7 @@ class WindPresets:
             if value is not None and not value.startswith("/"):
                 raise ValueError(
                     f"wind.{tier} must be a package path such as "
-                    f"/Game/Assets/Trees/Wind/WS_x, got {value!r}"
+                    f"/Game/Generated/Trees/Wind/WS_x, got {value!r}"
                 )
 
 

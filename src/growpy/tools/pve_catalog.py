@@ -10,7 +10,8 @@ coverage manifest ``plan_pve_graphs`` wrote, in the running editor:
 1. every expected mesh is loaded; a missing one is reported, never invented,
    and the bounds height is read back beside the stage it was grown to;
 2. ``DT_TreeCatalog`` is (re)built under the PVE content root by duplicating
-   the schema template in ``/Game/Templates`` and filling it from CSV, one row
+   the schema template in ``SCHEMA_ROOT`` (``/Game/XRFF/Twin``) and filling it
+   from CSV, one row
    per exported mesh;
 3. ``PCG_Trees``' ``TreeCatalogDataTable`` graph parameter is pointed at it
    (the parameter is a property bag, written through ``import_text`` and read
@@ -30,7 +31,7 @@ collapsed r00 and r07 onto one key and called the open-grown tree competed.
 Usage::
 
     growpy-pve-catalog data/output/forest/unreal_scripts/pve_export_manifest.json
-    growpy-pve-catalog <manifest> --catalog /Game/Assets/Trees/DT_TreeCatalog --no-pcg
+    growpy-pve-catalog <manifest> --catalog /Game/Generated/Trees/DT_TreeCatalog --no-pcg
 """
 
 from __future__ import annotations
@@ -44,12 +45,14 @@ import re
 import sys
 from pathlib import Path
 
+from growpy.config.ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT, TREES_ROOT
+
 logger = logging.getLogger("growpy.pve_catalog")
 
-TEMPLATE_STRUCT = "/Game/Templates/ST_TreeCatalogEntry"
-TEMPLATE_TABLE = "/Game/Templates/DT_TreeCatalog"
-DEFAULT_CATALOG = "/Game/Assets/Trees/DT_TreeCatalog"
-DEFAULT_PCG_GRAPH = "/Game/PCG/PCG_Trees"
+TEMPLATE_STRUCT = f"{SCHEMA_ROOT}/ST_TreeCatalogEntry"
+TEMPLATE_TABLE = f"{SCHEMA_ROOT}/DT_TreeCatalogTemplate"
+DEFAULT_CATALOG = f"{TREES_ROOT}/DT_TreeCatalog"
+DEFAULT_PCG_GRAPH = PCG_TREES_GRAPH
 PCG_PARAMETER = "TreeCatalogDataTable"
 
 # Species column = the twin database's display name (data/lookups/species.csv

@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from growpy.config.ue_layout import TREES_ROOT
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
@@ -818,8 +819,8 @@ def plan_pve_graphs(
     output_dir: Path,
     forest_root: Path,
     *,
-    content_root: str = "/Game/Assets/Trees",
-    graph_folder: str = "/Game/Assets/Trees/Graphs",
+    content_root: str = TREES_ROOT,
+    graph_folder: str = f"{TREES_ROOT}/Graphs",
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",

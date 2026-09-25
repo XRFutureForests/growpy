@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
 from growpy.utils.color import hex_to_linear_rgba as _hex_to_linear_rgba
 from growpy.utils.color import load_species_colors as _load_species_colors
 from growpy.utils.color import srgb_to_linear as _srgb_to_linear
@@ -313,7 +314,7 @@ print("=" * 60)
 
 
 def _build_datatable_script(
-    project_path: str, scripts_dir: str, db_path: str = "/Game/Templates"
+    project_path: str, scripts_dir: str, db_path: str = SCHEMA_ROOT
 ) -> str:
     """Build Unreal Python code that creates a DataTable cataloguing all imported trees.
 
@@ -841,11 +842,11 @@ print("=" * 60)
 
 def generate_unreal_import_script(
     output_dir: Path,
-    project_path: str = "/Game/Assets/Trees",
+    project_path: str = TREES_ROOT,
     include_static: bool = False,
     voxelization: bool = True,
     nanite_cfg: dict[str, Any] | None = None,
-    db_path: str = "/Game/Templates",
+    db_path: str = SCHEMA_ROOT,
 ) -> Path:
     """Generate Unreal Python scripts for importing forest USD files.
 
@@ -1135,7 +1136,7 @@ def generate_unreal_import_script(
 
 def generate_unreal_cleanup_script(
     output_dir: Path,
-    project_path: str = "/Game/Assets/Trees",
+    project_path: str = TREES_ROOT,
     dry_run: bool = True,
 ) -> Path:
     """Generate a standalone Unreal Python script for cleaning GrowPy assets.
@@ -1257,7 +1258,7 @@ else:
 
 def generate_wind_reimport_script(
     output_dir: Path,
-    project_path: str = "/Game/Assets/Trees",
+    project_path: str = TREES_ROOT,
 ) -> Path:
     """Generate a UE Python script that re-imports wind data for all assemblies.
 

@@ -6,7 +6,7 @@ h05-h45 catalog; a level holding a species' trees side by side is judged in minu
 the editor or in VR, and stays current: rerun this after a re-export and it rebuilds in
 place (owner, 2026-09-25).
 
-One level per species by default (``/Game/Levels/TreeGallery/TreeGallery_<Species>``),
+One level per species by default (``/Game/Developers/Max/TreeGallery/TreeGallery_<Species>``),
 built one after another. The whole catalog in one level does not fit a 64 GB
 workstation: loading all 216 meshes took the editor to 43 GB before a single tree was
 placed, and the first spawn then overflowed the GPUScene upload pool even at
@@ -80,9 +80,11 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from growpy.config.ue_layout import GALLERY_FOLDER
+
 logger = logging.getLogger("growpy.pve_gallery")
 
-DEFAULT_FOLDER = "/Game/Levels/TreeGallery"
+DEFAULT_FOLDER = GALLERY_FOLDER
 LABEL_PREFIX = "GALLERY_"
 # Unreal indexes bones with a signed 16-bit type; one more and the editor dies on
 # spawn (see module docstring).

@@ -98,8 +98,8 @@ class TestRecords:
         )
         groups = gallery_groups(records, None)
         assert [(level, name) for level, name, _ in groups] == [
-            ("/Game/Levels/TreeGallery/TreeGallery_CommonAsh", "common_ash"),
-            ("/Game/Levels/TreeGallery/TreeGallery_SilverFir", "silver_fir"),
+            ("/Game/Developers/Max/TreeGallery/TreeGallery_CommonAsh", "common_ash"),
+            ("/Game/Developers/Max/TreeGallery/TreeGallery_SilverFir", "silver_fir"),
         ]
         assert all({r["species"] for r in group} == {name} for _, name, group in groups)
 
@@ -284,7 +284,7 @@ class TestWriteScripts:
         ast.parse(script)
         assert "STALE_PREFIXES = ['TreeGallery_CommonAsh']" in script
         assert (
-            "KEEP_LEVELS = ['/Game/Levels/TreeGallery/TreeGallery_CommonAsh']" in script
+            "KEEP_LEVELS = ['/Game/Developers/Max/TreeGallery/TreeGallery_CommonAsh']" in script
         )
 
     def test_a_split_species_keeps_all_its_levels(self, tmp_path):

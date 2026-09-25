@@ -9,14 +9,14 @@ import_to_unreal = true
 # Unreal content path for imported assets in Content Browser. DT_TreeCatalog
 # is created here too, next to the assemblies it indexes. Treat this as
 # working content: it is wiped and re-imported between dataset runs.
-project_path = "/Game/Assets/Trees"
+project_path = "/Game/Generated/Trees"
 # Where the ST_TreeCatalogEntry struct lives. UE's Python API cannot create a
 # UserDefinedStruct, so the struct has to exist as an asset before an import
 # run -- this is only where the script looks for it. Keep it OUT of
 # project_path: that folder gets deleted and recreated, and the schema has to
-# survive that. /Game/Templates is the stable home for schema-only assets and
-# is the default for exactly this reason.
-db_path = "/Game/Templates"
+# survive that. /Game/XRFF/Twin is the stable home for schema-only assets and
+# is the default for exactly this reason (layout: growpy/config/ue_layout.py).
+db_path = "/Game/XRFF/Twin"
 # Content Browser base the wind and PVE post-import scripts search for
 # assemblies. Leave unset (or empty) so it follows project_path -- assemblies
 # import to project_path, so wind data and PVE presets have to look for them
@@ -194,7 +194,7 @@ generate_wind_data = true
 #   so it gets a click of its own and a warning. At 120 M, four of the shipped
 #   fifteen are individually over it.
 generate_pve_graphs = true
-pve_content_root = "/Game/Assets/Trees"
+pve_content_root = "/Game/Generated/Trees"
 pve_triangle_cap = 120e6
 
 [unreal.growth_data_json]

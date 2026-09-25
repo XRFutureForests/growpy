@@ -186,7 +186,7 @@ def generate_foliage_data(
     Args:
         directory: Path containing PVE recipe JSON files.
         forest_root: Root of the forest output directory (for species inference).
-        import_base: UE Content Browser base path (e.g. ``/Game/Assets/Trees``).
+        import_base: UE Content Browser base path (e.g. ``/Game/Generated/Trees``).
         species_twig_map: Maps species name to combined twig instance folder name.
 
     Returns:

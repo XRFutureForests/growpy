@@ -77,7 +77,7 @@ The DataTable batch script (`import_batch_*_datatable.py`) requires a
 (UE Python API cannot create struct fields programmatically).
 
 1. Content Browser > right-click > Miscellaneous > Structure
-2. Save as `ST_TreeCatalogEntry` in the `db_path` from `config/unreal.toml` (default `/Game/Templates/`). Keep it out of `project_path` -- that folder is wiped and re-imported between runs.
+2. Save as `ST_TreeCatalogEntry` in the `db_path` from `config/unreal.toml` (default `/Game/XRFF/Twin/`). Keep it out of `project_path` -- that folder is wiped and re-imported between runs.
 3. Add 5 fields:
    - **SkeletalMesh** -- Soft Object Reference > Skeletal Mesh
    - **Species** -- String

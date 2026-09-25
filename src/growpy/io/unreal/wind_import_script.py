@@ -24,6 +24,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from growpy.config.ue_layout import TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 WIND_JSON_SUFFIX = "_stems_unreal_wind.json"
@@ -334,7 +336,7 @@ main()
 def generate_wind_import_script(
     output_dir: Path,
     forest_root: Path,
-    import_base: str = "/Game/Assets/Trees",
+    import_base: str = TREES_ROOT,
 ) -> Path:
     """Write a UE Python script that imports DynamicWind data into skeletal meshes.
 

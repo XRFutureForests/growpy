@@ -34,12 +34,14 @@ PVE_MASTER = (
     "/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/"
     "MA_Foliage_Trees"
 )
-# The plugin master is the parent MegaPlants itself uses. `/Game/Templates/
+# Runs inside the editor, where growpy is not importable: these two paths mirror
+# growpy.config.ue_layout (SCHEMA_ROOT, TREES_ROOT) by hand.
+# The plugin master is the parent MegaPlants itself uses. `/Game/XRFF/Twin/
 # MA_Foliage_Trees` is a local copy kept so the assets survive the plugin being
 # disabled; it is the fallback, not the default.
-FALLBACK_MASTER = "/Game/Templates/MA_Foliage_Trees"
+FALLBACK_MASTER = "/Game/XRFF/Twin/MA_Foliage_Trees"
 
-TARGET_ROOT = "/Game/Assets/Trees/Materials"
+TARGET_ROOT = "/Game/Generated/Trees/Materials"
 
 
 def _load_master():

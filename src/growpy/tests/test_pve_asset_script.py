@@ -107,13 +107,13 @@ class TestSpecResolution:
 
     def test_folder_name_can_be_overridden(self):
         spec = build_species_asset_spec("european_beech", folder_name="Beech")
-        assert spec.content_folder == "/Game/Assets/Trees/Foliage/Beech"
-        assert spec.materials_folder == "/Game/Assets/Trees/Materials/Beech"
+        assert spec.content_folder == "/Game/Generated/Trees/Foliage/Beech"
+        assert spec.materials_folder == "/Game/Generated/Trees/Materials/Beech"
 
     def test_the_palette_and_the_materials_are_sorted_by_type(self):
         spec = build_species_asset_spec("european_beech")
-        assert spec.foliage_folder == "/Game/Assets/Trees/Foliage/european_beech"
-        assert spec.bark_folder == "/Game/Assets/Trees/Materials/european_beech"
+        assert spec.foliage_folder == "/Game/Generated/Trees/Foliage/european_beech"
+        assert spec.bark_folder == "/Game/Generated/Trees/Materials/european_beech"
 
     def test_content_root_can_be_overridden(self):
         spec = build_species_asset_spec("silver_fir", content_root="/Game/PVE_Test")
@@ -150,7 +150,7 @@ class TestSpecResolution:
     def test_the_foliage_material_sits_with_the_bark(self):
         spec = build_species_asset_spec("european_beech")
         assert spec.foliage_material == (
-            "/Game/Assets/Trees/Materials/european_beech/MI_european_beech_foliage"
+            "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_foliage"
         )
 
 
@@ -213,11 +213,11 @@ class TestRefusals:
         with pytest.raises(ValueError, match="UE package path"):
             _spec(content_folder="PVE/Beech")
 
-    def test_the_game_templates_master_is_refused(self):
-        # Parenting to the /Game/Templates copy of MA_Foliage_Trees has
+    def test_the_schema_folder_master_is_refused(self):
+        # Parenting to the schema-folder copy of MA_Foliage_Trees has
         # produced broken materials before.
-        with pytest.raises(ValueError, match="/Game/Templates"):
-            _plan(master_material="/Game/Templates/MA_Foliage_Trees")
+        with pytest.raises(ValueError, match="/Game/XRFF/Twin"):
+            _plan(master_material="/Game/XRFF/Twin/MA_Foliage_Trees")
 
     def test_factory_creation_has_no_path_without_a_clone_source(self):
         with pytest.raises(ValueError, match="known-good instance"):

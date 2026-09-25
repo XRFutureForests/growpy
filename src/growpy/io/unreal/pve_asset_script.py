@@ -30,9 +30,9 @@ THREE TRAPS, ALL PAID FOR ALREADY
   that completes before any material is touched.
 
 * **Clone a known-good instance; never factory-create, and never parent to the**
-  ``/Game/Templates`` **copy of** ``MA_Foliage_Trees``. Both have produced
+  project's schema-folder **copy of** ``MA_Foliage_Trees``. Both have produced
   broken materials before. :class:`PVEAssetPlan` rejects a master under
-  ``/Game/Templates`` outright, and the generated script duplicates a working
+  ``SCHEMA_ROOT`` (``/Game/XRFF/Twin``) outright, and the generated script duplicates a working
   sample instance rather than running the factory.
 
 * **Verify by read-back.** The script re-loads every asset it wrote and asserts
@@ -79,6 +79,8 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
+from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -92,7 +94,7 @@ __all__ = [
     "FOLIAGE_SAMPLES",
 ]
 
-# Shipped by the Procedural Vegetation Editor plugin. The /Game/Templates copy
+# Shipped by the Procedural Vegetation Editor plugin. The SCHEMA_ROOT copy
 # of the same material is NOT interchangeable -- parenting to it has produced
 # broken materials -- so PVEAssetPlan refuses it.
 DEFAULT_MASTER_MATERIAL = (
@@ -120,7 +122,7 @@ DEFAULT_CLONE_SOURCES = (
     "/Materials/MI_PVE_ConiferTree_01_Bark",
 )
 
-_FORBIDDEN_MASTER_PREFIX = "/Game/Templates"
+_FORBIDDEN_MASTER_PREFIX = SCHEMA_ROOT
 
 # The plugin's own foliage instances, one per growth habit, cloned as the base of
 # a species' foliage material. Read off the live project on 2026-09-25: both are
@@ -336,7 +338,7 @@ def _compound_prototypes(species: str) -> tuple[PalettePrototype, ...]:
 
 def build_species_asset_spec(
     species: str,
-    content_root: str = "/Game/Assets/Trees",
+    content_root: str = TREES_ROOT,
     folder_name: str | None = None,
     palette: str = "twigs",
 ) -> SpeciesAssetSpec:
