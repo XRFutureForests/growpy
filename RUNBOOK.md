@@ -264,6 +264,30 @@ exist under `ReplacePolicy = Replace` are overwritten (the prompt is confirmed).
 driver reports `NODIALOG`, the toolbar button is not at the default window offset
 (`--toolbar X,Y`); the tool then retries with a UI Automation search.
 
+**Look at the catalog in gallery levels.** After the export and `growpy-pve-catalog`, lay
+the exported trees out in `/Game/Levels/TreeGallery/TreeGallery_<Species>`: one level per
+species, one row per stand radius, one column per stage, labelled, lit like ECOSENSE.
+Rerunning rebuilds them in place, so after a re-export the levels are current again. Walk
+them in the editor or in VR:
+
+```bash
+growpy-pve-gallery data/output/forest/unreal_scripts/pve_export_manifest.json
+growpy-pve-gallery <manifest> --shots data/tmp/gallery_shots   # plus one PNG per row half
+```
+
+The open level must have no unsaved changes (switching levels would open a save dialog and
+block the script). Meshes over the 32,767-bone cap are not placed; their cell carries a
+marker with the bone count. The trees are static: wind needs the instanced route
+`PCG_Trees` uses. The generated `growpy_pve_gallery_<species>.py` scripts also run on their
+own via `growpy-ue-exec`.
+
+One level per species because the whole catalog does not fit one editor session on a
+64 GB machine: loading all 216 meshes reached 43 GB, and the first spawn then overflowed
+the GPUScene upload pool (2026-09-25). `--level <path>` puts a few chosen species into
+one level for a side-by-side. Memory still builds up across levels in one session (51 GB
+after ten species), so on a 64 GB machine run the species in two halves (`--species`)
+with an editor restart in between.
+
 ---
 
 ## 6. Testing
@@ -310,7 +334,7 @@ growpy-generate-forest --skeleton-reduce 0.5 --skeleton-length 2.5
 The PVE route does not check the cap: PVE exports and saves a mesh with more bones, and the
 editor then crashes the moment it is spawned (`Array index out of bounds: -32748 into an
 array of size 51120`, `Array.h:1339`). PVE makes about 1.05–1.13 bones per growth-JSON
-point, so keep a tree's growth JSON under ~29,000 points. As of 2026-09-25 about 17
+point, so keep a tree's growth JSON under ~29,000 points. As of 2026-09-25, 18
 open-grown (`r00`) catalog meshes are over the cap and wait for a re-export.
 
 **Generation is far slower than expected**
