@@ -147,6 +147,16 @@ def copy_opaque_textures_for_skeletal(
     if not available_textures:
         return 0
 
+    # The first file for each standard name wins below, so the preferred season
+    # goes first (summer or unmarked, then fall/winter, then spring). The packed
+    # PVE maps (growpy-pack-pve-textures) share this folder and are outputs,
+    # never sources: copying a _pve_normal back as the foliage normal fed the
+    # packer its own previous result (2026-09-25).
+    from growpy.io.usd.texture_utils import season_rank
+
+    available_textures = [p for p in available_textures if "_pve_" not in p.name]
+    available_textures.sort(key=lambda p: season_rank(p.stem))
+
     # Create textures subdirectory
     textures_dir = output_dir / "textures"
     textures_dir.mkdir(exist_ok=True)

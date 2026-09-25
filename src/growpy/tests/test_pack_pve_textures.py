@@ -3,7 +3,9 @@
 MA_Foliage_Trees rebuilds the leaf normal from R/G and reads translucency from B
 (MF_TwoSided_Leaves, 2026-09-25). Translucency in alpha, as the packer wrote it
 until then, was never sampled: the material took normal Z (~0.95) instead, so
-every leaf glowed alike and the real translucency maps went unused.
+every leaf glowed alike and the real translucency maps went unused. A twig
+without a real normal map takes its relief from its colour, as The Grove bumps
+cherry and sycamore maple.
 """
 
 from __future__ import annotations
@@ -14,7 +16,9 @@ from PIL import Image
 
 from growpy.tools.pack_pve_textures import (
     TRANSLUCENCY_TARGETS,
+    is_flat_normal,
     pack_normal_map,
+    relief_from_colour,
     translucency_channel,
     twig_growth_habit,
 )
@@ -113,3 +117,29 @@ class TestHabit:
     )
     def test_the_habit_comes_from_the_species_using_the_twig(self, twig, habit):
         assert twig_growth_habit(twig) == habit
+
+
+class TestRelief:
+    def test_a_placeholder_normal_counts_as_no_relief(self):
+        assert is_flat_normal(Image.new("RGB", (32, 32), (128, 128, 255)))
+        bumpy = np.full((32, 32, 3), 128, dtype=np.uint8)
+        bumpy[:, ::4, 0] = 160
+        assert not is_flat_normal(Image.fromarray(bumpy))
+
+    def test_the_colour_raises_relief_along_the_vein(self):
+        diffuse, alpha = _leaf()
+        normal = np.asarray(relief_from_colour(diffuse, alpha), dtype=int)
+        # the pale vein (x 30..33) is a ridge: X tilts one way on its left
+        # flank and the other way on its right, and not at all mid-blade
+        left, right, blade = normal[30, 29, 0], normal[30, 34, 0], normal[30, 15, 0]
+        assert left > 128 > right or left < 128 < right
+        assert abs(blade - 128) <= 1
+        assert normal[30, 15, 2] > 250  # flat blade faces straight out
+
+    def test_the_leaf_edge_raises_no_cliff(self):
+        # Outside the cutout the height is the leaf's mean, so the transparent
+        # atlas border (black here) does not tilt every edge texel.
+        diffuse, alpha = _leaf(vein=80)
+        normal = np.asarray(relief_from_colour(diffuse, alpha), dtype=int)
+        assert abs(normal[30, 8, 0] - 128) <= 1
+        assert abs(normal[8, 30, 1] - 128) <= 1

@@ -32,6 +32,15 @@ leaf's own brightness is: inverted for broadleaves, whose sample transmits least
 through its pale veins (r = -0.93 against brightness), direct for conifers
 (r = +0.51).
 
+Relief: a twig without a real normal map (cherry, fir, birch, pine and maple ship
+none; the fir and pine `_foliage_normal` files the conversion leaves are flat)
+gets one from its own colour, the way The Grove renders cherry and sycamore
+maple -- a Bump node whose height is the colour texture (Strength 1, Distance
+0.5 mm, read off the twig .blend files 2026-09-25). Oak's dedicated bump map
+(Distance 1.5 mm) is converted in step 1 at strength 40, so the colour bump uses
+the same strength per millimetre. The Grove bumps neither fir, birch nor pine;
+they get the same colour bump here.
+
 Alpha is taken from a dedicated alpha map where one exists, falling back to the
 diffuse's own alpha channel. Sizes are reconciled by resampling the secondary
 map to the primary's -- growpy's atlases are consistent within an asset, but a
@@ -62,6 +71,13 @@ TRANSLUCENCY_TARGETS = {
     "broadleaf": (186.0, 42.0, -1.0),
     "conifer": (155.0, 33.0, 1.0),
 }
+
+# Normal-map strength for a relief derived from the leaf colour: oak's bump map
+# (Grove Distance 1.5 mm) converts at 40 in step 1; The Grove's colour bumps use
+# 0.5 mm (see the module docstring).
+COLOUR_BUMP_STRENGTH = 40.0 * 0.5 / 1.5
+# A normal map whose X/Y vary less than this (0-255) carries no relief.
+FLAT_NORMAL_SPREAD = 1.0
 
 
 def _load(path: Path):
@@ -106,13 +122,20 @@ def _foliage_maps(twig_dir: Path) -> dict[str, Path]:
     # sides of a leaf. The USD binds the _top one, so prefer it; plain
     # _diffuse next; _bottom only as a last resort.
     ranked: dict[str, tuple[int, Path]] = {}
+    # "fall" in the twig's own name (sycamore_maple_fall_twig) names the set,
+    # not an autumn variant of it: matched on the name that follows it, or the
+    # maple's top and bottom both counted as autumn and its leaves lost their
+    # underside tint (2026-09-25).
+    twig = twig_dir.name.lower().removesuffix("_twig").replace("_", "")
     for path in sorted(textures.iterdir()):
         if not path.is_file() or "_pve_" in path.name:
             continue
         stem = path.stem.lower()
+        flat = stem.replace("_", "")
+        variant = flat[len(twig) :] if flat.startswith(twig) else flat
         if "_foliage_normal" in stem:
             role, rank = "normal", 0
-        elif "fall" in stem and ("top" in stem or "_diffuse" in stem):
+        elif "fall" in variant and ("top" in stem or "_diffuse" in stem):
             # Autumn variant: no texture slot for it, but its average colour
             # drives the master's Season Color parameters.
             role, rank = "fall", 0
@@ -225,6 +248,35 @@ def pack_normal_map(normal, translucency):
     return Image.merge("RGB", (red, green, translucency.convert("L")))
 
 
+def is_flat_normal(normal) -> bool:
+    """True for a normal map without relief, like the placeholders the twig
+    conversion writes where The Grove ships no map."""
+    import numpy as np
+
+    xy = np.asarray(normal.convert("RGB"), dtype=np.float32)[..., :2]
+    return bool(xy.reshape(-1, 2).std(axis=0).max() < FLAT_NORMAL_SPREAD)
+
+
+def relief_from_colour(diffuse, alpha, strength: float = COLOUR_BUMP_STRENGTH):
+    """A tangent-space normal from the leaf's own colour, as The Grove bumps it.
+
+    Height is the colour's brightness inside the leaf cutout; outside it holds
+    the cutout's mean, so the transparent atlas does not raise a cliff along
+    every leaf edge.
+    """
+    import numpy as np
+    from PIL import Image
+
+    from growpy.io.usd.texture_utils import height_to_normal
+
+    rgb = np.asarray(diffuse.convert("RGB"), dtype=np.float32) / 255.0
+    height = rgb @ np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+    inside = np.asarray(alpha.convert("L"), dtype=np.uint8) > 128
+    if inside.any():
+        height = np.where(inside, height, float(height[inside].mean()))
+    return Image.fromarray(height_to_normal(height, strength))
+
+
 def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     """Write the Base Color and Normal maps for one twig asset directory."""
     # `twig_export` imports bmesh at module scope, and bmesh is not importable
@@ -278,17 +330,16 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     # process_twig_textures during asset preparation, so there is nothing extra
     # to do for the 9 assets that ship bump instead of normal.
     normal_src = foliage.get("normal", candidates.get("normal"))
-    if normal_src is not None:
-        normal = _load(normal_src).convert("RGB")
-        result["flat_normal"] = False
+    normal = _load(normal_src).convert("RGB") if normal_src is not None else None
+    if normal is not None and not is_flat_normal(normal):
+        result["relief"] = "map"
     else:
-        # No normal map in the source asset. Emit a flat tangent-space normal
-        # rather than no map at all: the PVE material instances are cloned from
-        # a MegaPlants reference, so a missing Normal leaves the reference
-        # species' packed map in the slot, which renders as visibly wrong
-        # shading (a violet fir crown lit by spruce normals).
-        normal = Image.new("RGB", base.size, (128, 128, 255))
-        result["flat_normal"] = True
+        # No normal map, or a flat placeholder. Never leave the slot empty:
+        # the PVE material instances are cloned from a MegaPlants reference, so
+        # a missing Normal leaves the reference species' map in the slot (a
+        # violet fir crown lit by spruce normals).
+        normal = relief_from_colour(diffuse, alpha)
+        result["relief"] = "colour"
     source = None
     if "translucent" in candidates:
         source = _load(candidates["translucent"])
@@ -376,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     logger.info("%-30s %-34s %s", "twig asset", "Base Color", "Normal")
-    packed = with_normal = with_translucency = 0
+    packed = with_normal = with_translucency = with_relief = 0
     for twig_dir in dirs:
         row = pack_asset(twig_dir, args.dry_run)
         if row["basecolor"]:
@@ -385,6 +436,8 @@ def main(argv: list[str] | None = None) -> int:
             with_normal += 1
         if row.get("translucency") == "map":
             with_translucency += 1
+        if row.get("relief") == "map":
+            with_relief += 1
         logger.info(
             "%-30s %-34s %s",
             row["asset"],
@@ -392,11 +445,13 @@ def main(argv: list[str] | None = None) -> int:
             row["normal"] or "(no normal map in the source asset)",
         )
     logger.info(
-        "\n%d/%d assets have a Base Color; %d have a Normal, %d of those "
-        "with a translucency map (the rest derive it from the leaf).%s",
+        "\n%d/%d assets have a Base Color; %d have a Normal, %d of those with "
+        "a relief map and %d with a translucency map (the rest derive them "
+        "from the leaf colour).%s",
         packed,
         len(dirs),
         with_normal,
+        with_relief,
         with_translucency,
         " Nothing written (--dry-run)." if args.dry_run else "",
     )
