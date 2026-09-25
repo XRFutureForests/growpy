@@ -277,8 +277,10 @@ growpy-pve-gallery <manifest> --shots data/tmp/gallery_shots   # plus one PNG pe
 
 The open level must have no unsaved changes (switching levels would open a save dialog and
 block the script). Meshes over the 32,767-bone cap are not placed; their cell carries a
-marker with the bone count. The trees are static: wind needs the instanced route
-`PCG_Trees` uses. The generated `growpy_pve_gallery_<species>.py` scripts also run on their
+marker with the bone count. Trees are placed the way `PCG_Trees` spawns them (an instanced
+skinned mesh component with the PVE wind transform provider), so they move in the wind and
+take season and health from the global foliage actor. The generated
+`growpy_pve_gallery_<species>.py` scripts also run on their
 own via `growpy-ue-exec`.
 
 One level per species because the whole catalog does not fit one editor session on a
@@ -287,6 +289,16 @@ the GPUScene upload pool (2026-09-25). `--level <path>` puts a few chosen specie
 one level for a side-by-side. Memory still builds up across levels in one session (51 GB
 after ten species), so on a 64 GB machine run the species in two halves (`--species`)
 with an editor restart in between.
+
+A level also carries at most 250,000 bones of wind trees (`--wind-bone-budget`): Nanite
+skinning packs every instanced skinned mesh's bone-transform offset into 22 bits, and a
+Douglas fir level of ~350k bones killed the editor on its first frame
+(`TransformBufferOffset <= (1 << 22) - 1`, `SkinningSceneExtension.h:171`) while the
+ECOSENSE `PCG_Trees` spawn of ~220k renders. A species over the budget is split by stand
+rows (`TreeGallery_DouglasFir_r00`, `..._r07_r10`), and stale levels from an earlier split
+are deleted. A level that was ever saved over the limit kills the editor on every load,
+even the load the editor does to delete it: remove its `.umap` on disk with the editor
+closed.
 
 ---
 
@@ -348,6 +360,15 @@ Look for a dangling `bindJoint` token — a single one silently kills the whole 
 **PVE materials render as shifting magenta/violet/neon**
 Either a clone got re-parented to the `/Game/Templates` copy of `MA_Foliage_Trees`, or the
 textures are non-virtual. Grep the log for `expects texture`.
+
+**Season and health do not change the leaves**
+The leaves are still on the USD importer's `UsdPreviewSurface`, which cannot see
+`MPC_GlobalFoliageActor`. Run `growpy-pack-pve-textures`, then `growpy-pve-assets` and the
+script it writes: it builds `MI_<species>_foliage` from the plugin's conifer or broadleaf
+foliage sample and re-parents every `*_leaf*` instance of the palette to it in place, so
+exported trees follow without a re-export. Run it with an empty level open: a material
+update refreshes every tree using it in the open level, and a gallery's worth of trees
+overflowed the GPUScene upload pool (2026-09-25).
 
 **The editor dies when `PCG_Trees` regenerates the imported catalog**
 `Assertion failed: ScatterBufferSize >= ScatterBytes` (`UnifiedBuffer.cpp:845`): the GPUScene

@@ -107,6 +107,47 @@ class TestRecords:
         ((level, name, group),) = gallery_groups(records, "/Game/Levels/Firs")
         assert (level, name, len(group)) == ("/Game/Levels/Firs", "firs", 2)
 
+    def test_a_species_over_the_bone_budget_is_split_by_stand_rows(self):
+        # A Douglas fir level of ~350k wind-tree bones overflowed the skinning
+        # transform buffer; ECOSENSE's ~220k renders.
+        records = gallery_records(
+            _manifest(
+                [
+                    ("douglas_fir", f"r{r:02d}_h{h:02d}m")
+                    for r in (0, 7, 10)
+                    for h in (5, 45)
+                ]
+            )
+        )
+        # two trees per row, each under the 32,767-bone cap
+        weights = {0: 30_000, 7: 10_000, 10: 15_000}
+        groups = gallery_groups(
+            records, None, budget=70_000, bones_of=lambda r: weights[r["radius"]]
+        )
+        assert [(level.rsplit("/", 1)[1], name) for level, name, _ in groups] == [
+            ("TreeGallery_DouglasFir_r00", "douglas_fir_r00"),
+            ("TreeGallery_DouglasFir_r07_r10", "douglas_fir_r07_r10"),
+        ]
+        assert sum(len(g) for _, _, g in groups) == len(records)
+
+    def test_a_species_under_the_budget_stays_in_one_level(self):
+        records = gallery_records(_manifest([("scots_pine", "r07_h10m")]))
+        ((level, _, _),) = gallery_groups(records, None, bones_of=lambda r: 5_000)
+        assert level.endswith("/TreeGallery_ScotsPine")
+
+    def test_meshes_over_the_bone_cap_do_not_count_towards_the_budget(self):
+        # They are never placed, so they must not force a split.
+        records = gallery_records(
+            _manifest([("silver_fir", "r00_h40m"), ("silver_fir", "r07_h10m")])
+        )
+        groups = gallery_groups(
+            records,
+            None,
+            budget=10_000,
+            bones_of=lambda r: 51_120 if r["radius"] == 0 else 8_000,
+        )
+        assert len(groups) == 1
+
 
 class TestLayout:
     WIDTHS = {
@@ -185,7 +226,19 @@ class TestScript:
         assert MAX_BONES == 32767
         # the only mesh spawn sits after the cap check in the placement loop
         loop = script.split("# 4. trees", 1)[1]
-        assert loop.index('rec["bones"] > MAX_BONES') < loop.index(
+        assert loop.index('rec["bones"] > MAX_BONES') < loop.index("wind_tree(meshes")
+
+    def test_trees_are_placed_the_way_pcg_trees_spawns_them(self):
+        # A SkeletalMeshActor renders the tree but never moves; PVE wind needs an
+        # instanced skinned mesh component with the wind transform provider.
+        script = self._script()
+        assert "unreal.InstancedSkinnedMeshComponent" in script
+        assert "set_transform_provider(wind)" in script
+        assert "Wind_TransformProvider" in script
+        assert "add_instance(" in script
+        # the static fallback only past the level's wind budget
+        loop = script.split("# 4. trees", 1)[1]
+        assert loop.index('rec["bones"] <= wind_left') < loop.index(
             "spawn_actor_from_object"
         )
 

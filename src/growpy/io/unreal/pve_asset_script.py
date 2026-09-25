@@ -5,7 +5,8 @@ A PVE graph cannot build a tree until three things exist in the project: the
 :func:`growpy.pipelines.forest_stages.export_growth_json_only`), the **twig
 prototypes as UE static meshes** for the foliage palette, and a **bark material
 instance** for the trunk. This module owns the second and third, which were
-done by hand until XRFF-440.
+done by hand until XRFF-440, and the **foliage material** the palette's leaves
+render with (2026-09-25).
 
 WHY THIS HAS AN OWNER NOW
 -------------------------
@@ -56,6 +57,19 @@ The script is idempotent: an existing correct material is left alone, an
 existing wrong one is repaired **in place** (exported meshes reference it by
 path, so a repair reaches every tree already exported without a re-export), and
 a missing one is cloned.
+
+THE LEAVES WERE NOBODY'S
+------------------------
+
+The twig prototypes import with the USD importer's ``UsdPreviewSurface``
+materials, and those cannot see ``MPC_GlobalFoliageActor``: season, health and
+the foliage actor's colour never reached a leaf, on the old ``/Game/PVE``
+catalog as much as on the new one (found 2026-09-25). Each species now gets
+``MI_<species>_foliage`` -- cloned from the plugin's own conifer or broadleaf
+foliage sample, fed the two maps ``growpy-pack-pve-textures`` packs (Base Color
+with opacity in alpha; Normal with translucency in alpha, imported as Masks, as
+the samples do) -- and every ``*_leaf*`` instance in its palette is re-parented
+to it in place, so the trees already exported follow without a re-export.
 """
 
 from __future__ import annotations
@@ -75,6 +89,7 @@ __all__ = [
     "SpeciesAssetSpec",
     "build_species_asset_spec",
     "generate_pve_asset_script",
+    "FOLIAGE_SAMPLES",
 ]
 
 # Shipped by the Procedural Vegetation Editor plugin. The /Game/Templates copy
@@ -106,6 +121,17 @@ DEFAULT_CLONE_SOURCES = (
 )
 
 _FORBIDDEN_MASTER_PREFIX = "/Game/Templates"
+
+# The plugin's own foliage instances, one per growth habit, cloned as the base of
+# a species' foliage material. Read off the live project on 2026-09-25: both are
+# parented to MA_Foliage_Trees with Seasons on; the conifer one also takes
+# health into roughness, the broadleaf one tints the leaf backside.
+FOLIAGE_SAMPLES = {
+    "conifer": "/ProceduralVegetationEditor/SampleAssets/StarterContent/"
+    "ConiferTree_01/Materials/MI_Conifer_Foliage_01",
+    "broadleaf": "/ProceduralVegetationEditor/SampleAssets/StarterContent/"
+    "DeciduousTree_01/Materials/MI_LeafTree_01_Foliage",
+}
 
 # Which prototype set a species' palette is built from. "twigs" = the per-object
 # twig prototypes growpy-convert-twigs writes under data/assets/twigs/ (a spray
@@ -153,6 +179,12 @@ class SpeciesAssetSpec:
     bark_color: Path
     bark_normal: Path
     materials_folder: str = ""
+    # The packed leaf maps (growpy-pack-pve-textures). None leaves the palette's
+    # leaves on their USD import materials, which the generated script reports.
+    foliage_color: Path | None = None
+    foliage_normal: Path | None = None
+    foliage_params: Path | None = None
+    habit: str = "broadleaf"
 
     def __post_init__(self) -> None:
         if not self.prototypes:
@@ -177,6 +209,15 @@ class SpeciesAssetSpec:
             object.__setattr__(
                 self, "materials_folder", f"{self.content_folder}/Bark"
             )
+        if self.habit not in FOLIAGE_SAMPLES:
+            raise ValueError(
+                f"habit must be one of {sorted(FOLIAGE_SAMPLES)}, got {self.habit!r}"
+            )
+        if (self.foliage_color is None) != (self.foliage_normal is None):
+            raise ValueError(
+                f"{self.species!r}: the foliage Base Color and Normal come as a "
+                f"pair -- one alone would leave the sample's own map in the other"
+            )
 
     @property
     def foliage_folder(self) -> str:
@@ -200,6 +241,11 @@ class SpeciesAssetSpec:
     @property
     def bark_material(self) -> str:
         return f"{self.bark_folder}/MI_{self.species}_bark"
+
+    @property
+    def foliage_material(self) -> str:
+        """The species' leaf material, the parent of every palette leaf instance."""
+        return f"{self.materials_folder}/MI_{self.species}_foliage"
 
     @property
     def palette_meshes(self) -> tuple[str, ...]:
@@ -303,13 +349,15 @@ def build_species_asset_spec(
     ``palette`` picks the prototype set (see :data:`PALETTE_SOURCES`).
 
     Raises:
-        FileNotFoundError: If the twig prototypes or either bark texture are
-            missing. Silence here would mean an empty palette or an untextured
-            trunk discovered only by looking at a tree.
+        FileNotFoundError: If the twig prototypes, either bark texture or the
+            packed foliage maps are missing. Silence here would mean an empty
+            palette, an untextured trunk or leaves no season reaches,
+            discovered only by looking at a tree.
     """
     from growpy.config.paths import (
         get_bark_normal_texture_path,
         get_bark_texture_path,
+        get_species_growth_habit,
         get_twig_files_by_type,
     )
 
@@ -344,6 +392,8 @@ def build_species_asset_spec(
             f"renders untextured"
         )
 
+    foliage_color, foliage_normal, foliage_params = _foliage_textures(species)
+
     return SpeciesAssetSpec(
         species=species,
         content_folder=f"{content_root}/Foliage/{folder_name or species}",
@@ -351,7 +401,43 @@ def build_species_asset_spec(
         bark_color=color,
         bark_normal=normal,
         materials_folder=f"{content_root}/Materials/{folder_name or species}",
+        foliage_color=foliage_color,
+        foliage_normal=foliage_normal,
+        foliage_params=foliage_params,
+        habit=get_species_growth_habit(species) or "broadleaf",
     )
+
+
+def _foliage_textures(species: str) -> tuple[Path, Path, Path | None]:
+    """The packed leaf maps of the species' twig, and its colour parameters.
+
+    ``growpy-pack-pve-textures`` writes them into the twig's own ``textures/``
+    folder as ``<twig>_pve_basecolor.png``, ``_pve_normal.png`` and, where the
+    twig has a leaf underside or an autumn map, ``_pve_params.json``.
+
+    Raises:
+        FileNotFoundError: If either map is missing. Without them the palette's
+            leaves keep the USD import's material, which season and health
+            cannot reach -- a failure nobody sees until the season changes.
+    """
+    from growpy.config.paths import get_twig_files_by_type
+
+    files = [p for paths in get_twig_files_by_type(species).values() for p in paths]
+    if not files:
+        raise FileNotFoundError(f"no twig directory resolves for {species!r}")
+    twig_dir = files[0].parent
+    textures = twig_dir / "textures"
+    color = textures / f"{twig_dir.name}_pve_basecolor.png"
+    normal = textures / f"{twig_dir.name}_pve_normal.png"
+    params = textures / f"{twig_dir.name}_pve_params.json"
+    missing = [p.name for p in (color, normal) if not p.is_file()]
+    if missing:
+        raise FileNotFoundError(
+            f"{species!r} has no packed foliage maps ({', '.join(missing)}) -- run "
+            f"growpy-pack-pve-textures; without them its leaves keep the USD "
+            f"import's material, which season and health cannot reach"
+        )
+    return color, normal, params if params.is_file() else None
 
 
 def _plan_payload(plan: PVEAssetPlan) -> dict:
@@ -384,17 +470,42 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                     "name": Path(s.bark_normal).stem,
                     "asset": f"{s.bark_folder}/{Path(s.bark_normal).stem}",
                 },
+                "foliage": _foliage_payload(s),
             }
             for s in plan.species
         ],
     }
 
 
+def _foliage_payload(s: SpeciesAssetSpec) -> dict | None:
+    """The leaf material, its sample, its two maps and its colour parameters."""
+    if s.foliage_color is None or s.foliage_normal is None:
+        return None
+    params = {}
+    if s.foliage_params is not None and Path(s.foliage_params).is_file():
+        params = json.loads(Path(s.foliage_params).read_text(encoding="utf-8"))
+
+    def texture(path: Path) -> dict:
+        return {
+            "source": str(Path(path).resolve()).replace("\\", "/"),
+            "name": Path(path).stem,
+            "asset": f"{s.materials_folder}/{Path(path).stem}",
+        }
+
+    return {
+        "material": s.foliage_material,
+        "sample": FOLIAGE_SAMPLES[s.habit],
+        "color": texture(s.foliage_color),
+        "normal": texture(s.foliage_normal),
+        "params": params,
+    }
+
+
 _SCRIPT_TEMPLATE = '''\
 """GrowPy PVE asset import -- auto-generated, do not edit.
 
-Imports the twig palette and builds the bark material for each species, then
-verifies every write by reading it back. Run with:
+Imports the twig palette and builds the bark and foliage materials for each
+species, then verifies every write by reading it back. Run with:
 
     growpy-ue-exec <this file> --restart-ram-limit 0
 """
@@ -637,6 +748,129 @@ def audit_for_usd_stubs(folder):
     return stubs
 
 
+def import_foliage_texture(entry, is_normal):
+    """Import one packed leaf map with the settings the plugin's own foliage
+    samples use: Base Color sRGB, Normal (normal + translucency in alpha) as
+    Masks with sRGB off -- normal-map compression would drop the translucency --
+    and both virtual-texture streamed.
+
+    Always re-imported, so a re-pack on disk reaches the project.
+    """
+    print("   importing texture %s" % entry["name"])
+    _import(entry["source"], entry["asset"].rsplit("/", 1)[0], entry["name"])
+    tex = eal.load_asset(entry["asset"])
+    if tex is None:
+        return "texture missing after import: %s" % entry["asset"]
+    tcs = unreal.TextureCompressionSettings
+    tex.set_editor_property(
+        "compression_settings", tcs.TC_MASKS if is_normal else tcs.TC_DEFAULT)
+    tex.set_editor_property("srgb", not is_normal)
+    tex.set_editor_property("virtual_texture_streaming", True)
+    eal.save_asset(entry["asset"], only_if_is_dirty=False)
+    if not eal.load_asset(entry["asset"]).get_editor_property(
+            "virtual_texture_streaming"):
+        return "virtual_texture_streaming did not stick: %s" % entry["asset"]
+    return None
+
+
+def build_foliage_material(spec, master):
+    """Create or repair the species' leaf material, cloned from the plugin's
+    foliage sample for its habit so the season and health switches come as
+    Epic set them."""
+    fol = spec["foliage"]
+    mi_path = fol["material"]
+    if not eal.does_asset_exist(mi_path):
+        sample = eal.load_asset(fol["sample"])
+        if sample is None or _path_of(sample.get_editor_property("parent")) != master:
+            return ["foliage sample %s is missing or not parented to %s"
+                    % (fol["sample"], master)]
+        print("   cloning %s -> %s" % (fol["sample"], mi_path))
+        if eal.duplicate_asset(fol["sample"], mi_path) is None:
+            return ["duplicate_asset failed: %s -> %s" % (fol["sample"], mi_path)]
+
+    mi = eal.load_asset(mi_path)
+    if _path_of(mi.get_editor_property("parent")) != master:
+        mi.set_editor_property("parent", eal.load_asset(master))
+    mel.set_material_instance_texture_parameter_value(
+        mi, "Base Color", eal.load_asset(fol["color"]["asset"]))
+    mel.set_material_instance_texture_parameter_value(
+        mi, "Normal", eal.load_asset(fol["normal"]["asset"]))
+    # Colours the master has no texture slot for (leaf underside, autumn),
+    # measured off the twig's own maps by growpy-pack-pve-textures.
+    for name, value in sorted(fol["params"].items()):
+        if isinstance(value, (list, tuple)) and len(value) >= 3:
+            rgba = (list(value) + [1.0])[:4]
+            mel.set_material_instance_vector_parameter_value(
+                mi, name, unreal.LinearColor(*rgba))
+        elif isinstance(value, (int, float)):
+            mel.set_material_instance_scalar_parameter_value(mi, name, float(value))
+    mel.update_material_instance(mi)
+    eal.save_asset(mi_path, only_if_is_dirty=False)
+
+    check = eal.load_asset(mi_path)
+    problems = []
+    parent = _path_of(check.get_editor_property("parent"))
+    if parent != master:
+        problems.append("%s parent is %s, expected %s" % (mi_path, parent, master))
+    for param, want in (("Base Color", fol["color"]["asset"]),
+                        ("Normal", fol["normal"]["asset"])):
+        got = _path_of(
+            mel.get_material_instance_texture_parameter_value(check, param))
+        if got != want:
+            problems.append("%s %s is %s, expected %s" % (mi_path, param, got, want))
+    if not mel.get_material_instance_static_switch_parameter_value(check, "Seasons"):
+        problems.append("%s has Seasons off: the foliage actor's season would "
+                        "not reach it" % mi_path)
+    return problems
+
+
+def repoint_leaf_materials(spec):
+    """Re-parent every *_leaf* instance in the species' palette to its leaf
+    material, IN PLACE.
+
+    The USD import gives each prototype its own leaf instances, parented to
+    UsdPreviewSurface, and the exported trees reference exactly those by path.
+    Re-parenting them (overrides cleared, so they inherit everything) reaches
+    every tree already exported without a re-export. A leaf is found by name:
+    growpy's twig converter names the leaf material "leaf" and the shoot's
+    "bark", and the shoot keeps its own atlas.
+    """
+    want = spec["foliage"]["material"]
+    parent = eal.load_asset(want)
+    problems = []
+    seen = moved = 0
+    for proto in spec["prototypes"]:
+        folder = "%s/%s/Materials" % (spec["foliage_folder"], proto["name"])
+        if not eal.does_directory_exist(folder):
+            problems.append("palette materials folder missing: %s" % folder)
+            continue
+        for listed in eal.list_assets(folder, recursive=False, include_folder=False):
+            path = str(listed).split(".")[0]
+            if "_leaf" not in path.rsplit("/", 1)[1]:
+                continue
+            mi = eal.load_asset(path)
+            if not isinstance(mi, unreal.MaterialInstanceConstant):
+                continue
+            seen += 1
+            if _path_of(mi.get_editor_property("parent")) == want:
+                continue
+            mel.clear_all_material_instance_parameters(mi)
+            mi.set_editor_property(
+                "base_property_overrides",
+                unreal.MaterialInstanceBasePropertyOverrides())
+            mi.set_editor_property("parent", parent)
+            mel.update_material_instance(mi)
+            eal.save_asset(path, only_if_is_dirty=False)
+            moved += 1
+            if _path_of(eal.load_asset(path).get_editor_property("parent")) != want:
+                problems.append("%s did not take its new parent %s" % (path, want))
+    if seen == 0:
+        problems.append("no *_leaf* material in the palette of %s" % spec["species"])
+    print("   leaves: %d leaf material(s), %d re-parented to %s"
+          % (seen, moved, want.rsplit("/", 1)[1]))
+    return problems
+
+
 print("=" * 64)
 print("GrowPy PVE asset import: %d species" % len(PLAN["species"]))
 print("=" * 64)
@@ -662,6 +896,22 @@ for spec in PLAN["species"]:
     failures.extend(build_bark_material(spec, master))
     failures.extend(audit_for_usd_stubs(spec["bark_folder"]))
 
+    # Leaves: the same order, maps before the material that samples them.
+    if spec["foliage"]:
+        for entry, is_normal in (
+                (spec["foliage"]["color"], False), (spec["foliage"]["normal"], True)):
+            problem = import_foliage_texture(entry, is_normal)
+            if problem:
+                failures.append(problem)
+        problems = build_foliage_material(spec, master)
+        failures.extend(problems)
+        if not problems:
+            failures.extend(repoint_leaf_materials(spec))
+    else:
+        failures.append("%s has no packed foliage maps in the plan: its leaves "
+                        "keep the USD import material, which season and health "
+                        "cannot reach" % spec["species"])
+
     print("   palette: %d prototype(s)" % len(spec["prototypes"]))
 
 print("")
@@ -670,7 +920,7 @@ if failures:
     for problem in failures:
         print("FAIL: %s" % problem)
     raise RuntimeError("%d PVE asset problem(s) -- see above" % len(failures))
-print("OK: palette and bark material verified for %d species"
+print("OK: palette, bark and foliage materials verified for %d species"
       % len(PLAN["species"]))
 '''
 

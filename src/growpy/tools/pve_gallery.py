@@ -13,6 +13,14 @@ placed, and the first spawn then overflowed the GPUScene upload pool even at
 ``r.GPUScene.MaxPooledUploadBufferSize=16000000`` (2026-09-25). ``--level`` puts the
 selected species into one named level instead, for a side-by-side of a few.
 
+A level also has a bone budget (``WIND_BONE_BUDGET``). Nanite skinning packs every
+wind tree's bone-transform offset into 22 bits, and a Douglas fir level of ~350k bones
+overflowed it on the first frame, while ECOSENSE's PCG spawn of ~220k renders. A
+species over the budget is split by stand rows into several levels
+(``TreeGallery_DouglasFir_r00``, ``TreeGallery_DouglasFir_r07_r10``), planned from the
+growth JSONs; a tree that would still cross it stands still instead, so no level can
+be saved in a state that kills the editor on open.
+
 Memory still builds up across levels in one editor session, garbage collection
 notwithstanding: 12 GB after the first species, 51 GB after ten (2026-09-25). On a
 64 GB machine run the species in two halves (``--species``) with an editor restart in
@@ -31,14 +39,17 @@ lay out and place in the editor by themselves, so they can also be rerun with
 ``growpy-ue-exec``. Everything they place carries the ``GALLERY_`` label prefix and is
 replaced on a rerun.
 
-Two things it will not do:
+Trees stand the way ``PCG_Trees`` spawns them, so they move in the wind: each is an
+actor holding an ``InstancedSkinnedMeshComponent`` with one instance and the PVE
+``Wind_TransformProvider``. A plain SkeletalMeshActor renders the same mesh but never
+moves (2026-09-25), and season and health reach the leaves through the global foliage
+actor either way.
 
-* place a mesh with more than 32,767 bones. Spawning one crashes the editor
-  (``Array index out of bounds: -32748 into an array of size 51120``, 2026-09-25), and
-  a level holding one would crash on every open. The count comes from the skeleton's
-  reference pose, which needs no component; the cell gets a text marker instead.
-* animate wind. The trees are SkeletalMeshActors; PVE wind needs an instanced skinned
-  mesh component with a transform provider, which is what ``PCG_Trees`` spawns.
+One thing it will not do: place a mesh with more than 32,767 bones. Spawning one
+crashes the editor (``Array index out of bounds: -32748 into an array of size
+51120``, 2026-09-25), and a level holding one would crash on every open. The count
+comes from the skeleton's reference pose, which needs no component; the cell gets a
+text marker instead.
 
 ``--shots DIR`` then photographs every stand row twice (h05-h25 and h30 up) with all
 other trees hidden, for review away from the editor: seen from the front, the rows of a
@@ -72,6 +83,18 @@ LABEL_PREFIX = "GALLERY_"
 # Unreal indexes bones with a signed 16-bit type; one more and the editor dies on
 # spawn (see module docstring).
 MAX_BONES = 32767
+# Nanite skinning packs each primitive's bone-transform offset into 22 bits
+# (SkinningSceneExtension.h:171); past it the editor dies on the next frame. The
+# ECOSENSE PCG_Trees spawn (24 unique meshes, ~220k bones) renders; a Douglas fir
+# gallery of ~350k did not (2026-09-25). Wind-tree bones allowed per gallery level:
+WIND_BONE_BUDGET = 250_000
+# PVE makes 1.02-1.61 bones per growth-JSON point, ~1.1 on grown trees and more on
+# saplings (98 gallery meshes, 2026-09-25). Planning counts 1.13 per point and keeps
+# 15 % of the budget in hand; a tree still over it stands still in the editor. Only
+# a mesh over the bone cap even at the lowest ratio is left out of the plan.
+BONES_PER_POINT = 1.13
+BONES_MIN_PER_POINT = 1.02
+PLAN_MARGIN = 0.85
 # ECOSENSE's lighting, as the ShotStage level mirrors it.
 SUN_ROTATION = {"roll": 180.0, "pitch": -11.1, "yaw": -35.3}
 SUN_INTENSITY = 10.0
@@ -81,6 +104,11 @@ FOLIAGE_CLASS = (
     "BP_GlobalFoliageActor_UE5.BP_GlobalFoliageActor_UE5_C"
 )
 PLANE_MESH = "/Engine/BasicShapes/Plane.Plane"
+# What PCG_Trees' spawner drives the PVE trees' DynamicWind with (ECOSENSE uses it).
+WIND_PROVIDER = (
+    "/ProceduralVegetationEditor/SampleAssets/Materials/GlobalFoliageActor/"
+    "Wind_TransformProvider"
+)
 RADIUS_NAMES = {0: "open-grown", 7: "dense", 10: "moderate"}
 
 _TREE_ID = re.compile(r"^r(\d+)_h(\d+)m$")
@@ -112,6 +140,7 @@ def gallery_records(manifest: dict, species: list[str] | None = None) -> list[di
                     "radius": int(match.group(1)),
                     "stage": int(match.group(2)),
                     "asset": mesh["asset"],
+                    "growth_json": mesh.get("growth_json"),
                 }
             )
     return sorted(records, key=lambda r: (r["species"], r["radius"], r["stage"]))
@@ -170,7 +199,7 @@ eal = unreal.EditorAssetLibrary
 els = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 lvl = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 ues = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem)
-report = {"level": LEVEL, "placed": [], "skipped": [], "missing": []}
+report = {"level": LEVEL, "placed": [], "skipped": [], "missing": [], "static": []}
 
 # 1. open (or create) the gallery level. Switching away from a level with unsaved
 #    changes opens a save dialog, which blocks a remote script indefinitely.
@@ -269,6 +298,32 @@ ground.set_actor_scale3d(unreal.Vector((extent_x + 2 * margin) / 100.0,
 spawn_class(unreal.PlayerStart, "PlayerStart",
             unreal.Vector(-1500.0, extent_y / 2.0, 100.0))
 
+wind = eal.load_asset(WIND_PROVIDER)
+subobjects = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+subobject = unreal.SubobjectDataBlueprintFunctionLibrary
+
+
+def wind_tree(mesh, where):
+    # One tree the way PCG_Trees spawns it: an instanced skinned mesh component
+    # with one instance and the wind transform provider.
+    actor = els.spawn_actor_from_class(unreal.Actor, where, zero)
+    root = subobjects.k2_gather_subobject_data_for_instance(actor)[0]
+    handle, reason = subobjects.add_new_subobject(unreal.AddNewSubobjectParams(
+        parent_handle=root, new_class=unreal.InstancedSkinnedMeshComponent,
+        blueprint_context=None))
+    comp = subobject.get_object(subobject.get_data(handle))
+    if comp is None:
+        raise RuntimeError("no instanced skinned mesh component: %s" % reason)
+    comp.set_skinned_asset_and_update(mesh)
+    if wind is not None:
+        comp.set_transform_provider(wind)
+    actor.set_actor_location(where, False, False)
+    comp.add_instance(unreal.Transform(), 0, False)
+    return actor
+
+
+wind_left = WIND_BONE_BUDGET
+
 # 4. trees, or a marker where a tree cannot be placed
 for rec in records:
     x, y = layout["positions"][rec["key"]]
@@ -279,7 +334,15 @@ for rec in records:
         report["skipped"].append({"key": rec["key"], "bones": rec["bones"]})
         continue
     where = unreal.Vector(x, y, 0.0)
-    actor = els.spawn_actor_from_object(meshes[rec["key"]], where, zero)
+    if rec["bones"] <= wind_left:
+        actor = wind_tree(meshes[rec["key"]], where)
+        wind_left -= rec["bones"]
+    else:
+        # Past the level's budget a wind tree would overflow the skinning
+        # transform buffer and kill the editor on the next frame (and on every
+        # later open of the level), so this one stands still.
+        actor = els.spawn_actor_from_object(meshes[rec["key"]], where, zero)
+        report["static"].append(rec["key"])
     actor.set_actor_label(PREFIX + rec["key"])
     actor.set_folder_path(folder)
     report["placed"].append({
@@ -305,8 +368,11 @@ report["saved"] = bool(unreal.EditorLoadingAndSavingUtils.save_current_level())
 report["extent_m"] = [round(extent_x / 100.0, 1), round(extent_y / 100.0, 1)]
 report["blocks"] = layout["blocks"]
 report["columns"] = {str(k): v for k, v in layout["columns"].items()}
-unreal.log("PVEGALLERY placed %d, skipped %d over %d bones, missing %d" % (
-    len(report["placed"]), len(report["skipped"]), MAX_BONES, len(report["missing"])))
+report["wind_bones"] = WIND_BONE_BUDGET - wind_left
+unreal.log("PVEGALLERY placed %d (%d static past the wind budget), skipped %d over "
+           "%d bones, missing %d" % (
+    len(report["placed"]), len(report["static"]), len(report["skipped"]), MAX_BONES,
+    len(report["missing"])))
 unreal.log("PVEGALLERY_REPORT " + json.dumps(report))
 """
 
@@ -317,6 +383,7 @@ def build_ue_script(
     level: str,
     gap_cm: float = 800.0,
     block_gap_cm: float = 3000.0,
+    wind_bone_budget: float = WIND_BONE_BUDGET,
 ) -> str:
     """The self-contained editor script: constants + gallery_layout + UE_BODY."""
     header = "\n".join(
@@ -328,6 +395,7 @@ def build_ue_script(
             f"LEVEL = {level!r}",
             f"PREFIX = {LABEL_PREFIX!r}",
             f"MAX_BONES = {MAX_BONES!r}",
+            f"WIND_BONE_BUDGET = {int(wind_bone_budget)!r}",
             f"GAP_CM = {float(gap_cm)!r}",
             f"BLOCK_GAP_CM = {float(block_gap_cm)!r}",
             f"SUN_ROTATION = {SUN_ROTATION!r}",
@@ -335,6 +403,7 @@ def build_ue_script(
             f"SKY_CLASS = {SKY_CLASS!r}",
             f"FOLIAGE_CLASS = {FOLIAGE_CLASS!r}",
             f"PLANE_MESH = {PLANE_MESH!r}",
+            f"WIND_PROVIDER = {WIND_PROVIDER!r}",
             f"RADIUS_NAMES = {RADIUS_NAMES!r}",
             f"RECORDS = {records!r}",
             "",
@@ -485,6 +554,13 @@ def main(argv: list[str] | None = None) -> int:
         "--settle", type=float, default=20.0, help="seconds after a camera move"
     )
     parser.add_argument("--size", default="1920x1080")
+    parser.add_argument(
+        "--wind-bone-budget",
+        type=float,
+        default=WIND_BONE_BUDGET,
+        help="wind-tree bones per level before a species is split / a tree stands "
+        "still (the skinning transform buffer caps it)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -496,7 +572,7 @@ def main(argv: list[str] | None = None) -> int:
     if not records:
         logger.error("nothing to place")
         return 1
-    groups = gallery_groups(records, args.level)
+    groups = gallery_groups(records, args.level, args.wind_bone_budget)
     scripts = []
     for level, name, group in groups:
         script = args.manifest.parent / f"growpy_pve_gallery_{name}.py"
@@ -506,6 +582,7 @@ def main(argv: list[str] | None = None) -> int:
                 level=level,
                 gap_cm=args.gap_m * 100.0,
                 block_gap_cm=args.block_gap_m * 100.0,
+                wind_bone_budget=args.wind_bone_budget,
             ),
             encoding="utf-8",
         )
@@ -513,6 +590,8 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("UE script: %s (%d meshes -> %s)", script, len(group), level)
     if args.script_only:
         return 0
+    if not args.level:
+        remove_stale_levels(groups)
 
     reports = []
     for script in scripts:
@@ -532,19 +611,106 @@ def main(argv: list[str] | None = None) -> int:
     return 1 if any(r["missing"] for r in reports) else 0
 
 
+def estimate_bones(record: dict) -> float:
+    """Bones PVE will give a tree, from its growth JSON (see BONES_PER_POINT)."""
+    path = record.get("growth_json")
+    if not path or not Path(path).is_file():
+        return 0.0
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    return len(data["points"]["positions"]) * BONES_PER_POINT
+
+
 def gallery_groups(
-    records: list[dict], level: str | None
+    records: list[dict],
+    level: str | None,
+    budget: float = WIND_BONE_BUDGET,
+    bones_of=estimate_bones,
 ) -> list[tuple[str, str, list[dict]]]:
-    """(level path, script name, records) per gallery level to build."""
+    """(level path, script name, records) per gallery level to build.
+
+    One level per species, unless its placeable trees carry more bones than
+    ``budget``: then its stand rows are packed, in radius order, into as many
+    levels as the budget needs (``TreeGallery_DouglasFir_r00``, ``..._r07_r10``).
+    """
     if level:
         return [(level, level.rsplit("/", 1)[1].lower(), records)]
     from growpy.io.unreal.pve_asset_script import camel_species
 
     groups = []
     for species in dict.fromkeys(r["species"] for r in records):
-        path = f"{DEFAULT_FOLDER}/TreeGallery_{camel_species(species)}"
-        groups.append((path, species, [r for r in records if r["species"] == species]))
+        members = [r for r in records if r["species"] == species]
+        base = f"{DEFAULT_FOLDER}/TreeGallery_{camel_species(species)}"
+        rows: dict[int, float] = {}
+        for r in members:
+            bones = bones_of(r)
+            surely_over = bones * BONES_MIN_PER_POINT / BONES_PER_POINT > MAX_BONES
+            placeable = 0.0 if surely_over else bones
+            rows[r["radius"]] = rows.get(r["radius"], 0.0) + placeable
+        planned = budget * PLAN_MARGIN
+        if sum(rows.values()) <= planned:
+            groups.append((base, species, members))
+            continue
+        packs: list[list[int]] = []
+        current: list[int] = []
+        load = 0.0
+        for radius in sorted(rows):
+            if current and load + rows[radius] > planned:
+                packs.append(current)
+                current, load = [], 0.0
+            current.append(radius)
+            load += rows[radius]
+        packs.append(current)
+        for pack in packs:
+            tag = "_".join(f"r{radius:02d}" for radius in pack)
+            groups.append(
+                (
+                    f"{base}_{tag}",
+                    f"{species}_{tag}",
+                    [r for r in members if r["radius"] in pack],
+                )
+            )
     return groups
+
+
+CLEANUP_SCRIPT = """\
+import unreal
+
+eal = unreal.EditorAssetLibrary
+world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+current = world.get_path_name().split(".")[0] if world else ""
+removed = []
+# The asset registry, not list_assets: a stray level asset named like the folder
+# (/Game/Levels/TreeGallery.umap) made list_assets return it instead of the folder.
+registry = unreal.AssetRegistryHelpers.get_asset_registry()
+for data in registry.get_assets_by_path({folder!r}, recursive=False):
+    path = str(data.package_name)
+    name = path.rsplit("/", 1)[1]
+    if path in {keep!r} or path == current:
+        continue
+    if any(name == p or name.startswith(p + "_") for p in {prefixes!r}):
+        if eal.delete_asset(path):
+            removed.append(path)
+unreal.log("PVEGALLERY removed stale level(s): %s" % removed)
+"""
+
+
+def remove_stale_levels(groups: list[tuple[str, str, list[dict]]]) -> None:
+    """Delete a species' gallery levels this run will not rebuild.
+
+    A species that crosses the bone budget is split into row levels, and one
+    that falls back under it is merged again; the level it had before would
+    otherwise stay behind, out of date. Only levels named after a species in
+    this run, inside the gallery folder, are touched.
+    """
+    from growpy.tools.pve_shots import _run_in_editor
+
+    keep = [level for level, _, _ in groups]
+    prefixes = sorted({level.rsplit("/", 1)[1].split("_r")[0] for level in keep})
+    for line in _run_in_editor(
+        CLEANUP_SCRIPT.format(folder=DEFAULT_FOLDER, keep=keep, prefixes=prefixes)
+    ):
+        if "PVEGALLERY" in line:
+            logger.info("  %s", line.split("LogPython:")[-1].strip())
 
 
 def run_gallery_script(script: Path) -> dict | None:
@@ -579,6 +745,8 @@ def run_gallery_script(script: Path) -> dict | None:
     )
     for skipped in report["skipped"]:
         logger.warning("  not placed: %s (%d bones)", skipped["key"], skipped["bones"])
+    for key in report.get("static", []):
+        logger.warning("  no wind (past the level's bone budget): %s", key)
     for path in report["missing"]:
         logger.warning("  missing: %s", path)
     return report

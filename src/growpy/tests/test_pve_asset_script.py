@@ -17,6 +17,7 @@ import pytest
 
 from growpy.io.unreal.pve_asset_script import (
     DEFAULT_MASTER_MATERIAL,
+    FOLIAGE_SAMPLES,
     PalettePrototype,
     PVEAssetPlan,
     SpeciesAssetSpec,
@@ -118,6 +119,40 @@ class TestSpecResolution:
         spec = build_species_asset_spec("silver_fir", content_root="/Game/PVE_Test")
         assert spec.content_folder.startswith("/Game/PVE_Test/")
 
+    def test_foliage_maps_resolve_to_the_packed_files(self):
+        # The leaves' material needs the two maps growpy-pack-pve-textures
+        # writes; without them season and health never reach a leaf.
+        spec = build_species_asset_spec("silver_fir")
+        assert spec.foliage_color.name == "pacific_silver_fir_twig_pve_basecolor.png"
+        assert spec.foliage_normal.name == "pacific_silver_fir_twig_pve_normal.png"
+        assert spec.foliage_color.is_file() and spec.foliage_normal.is_file()
+
+    @pytest.mark.parametrize(
+        "species,habit",
+        [
+            ("silver_fir", "conifer"),
+            ("scots_pine", "conifer"),
+            ("european_beech", "broadleaf"),
+            ("common_ash", "broadleaf"),
+        ],
+    )
+    def test_the_growth_habit_picks_the_foliage_sample(self, species, habit):
+        assert build_species_asset_spec(species).habit == habit
+
+    def test_missing_foliage_maps_are_named_not_silently_skipped(self, monkeypatch):
+        monkeypatch.setattr(
+            "pathlib.Path.is_file",
+            lambda p: not p.name.endswith("_pve_basecolor.png") and p.exists(),
+        )
+        with pytest.raises(FileNotFoundError, match="growpy-pack-pve-textures"):
+            build_species_asset_spec("european_beech")
+
+    def test_the_foliage_material_sits_with_the_bark(self):
+        spec = build_species_asset_spec("european_beech")
+        assert spec.foliage_material == (
+            "/Game/Assets/Trees/Materials/european_beech/MI_european_beech_foliage"
+        )
+
 
 class TestPaletteLayout:
     def test_mesh_path_matches_the_usd_importers_nesting(self):
@@ -201,6 +236,15 @@ class TestRefusals:
         with pytest.raises(ValueError, match="no species"):
             _plan(species=())
 
+    def test_half_a_foliage_pair_is_refused(self):
+        # One map alone would leave the cloned sample's own map in the other.
+        with pytest.raises(ValueError, match="pair"):
+            _spec(foliage_color=Path("a_pve_basecolor.png"))
+
+    def test_an_unknown_habit_is_refused(self):
+        with pytest.raises(ValueError, match="habit"):
+            _spec(habit="palm")
+
 
 class TestGeneratedScript:
     @pytest.fixture
@@ -263,6 +307,36 @@ class TestGeneratedScript:
 
     def test_it_names_the_plugins_master_not_a_game_copy(self, script):
         assert DEFAULT_MASTER_MATERIAL in script
+
+    def test_the_leaves_get_a_material_the_foliage_actor_reaches(self, script):
+        # Season and health reach a leaf only through MA_Foliage_Trees; the USD
+        # import's UsdPreviewSurface cannot see MPC_GlobalFoliageActor.
+        assert "MI_european_beech_foliage" in script
+        assert "MI_silver_fir_foliage" in script
+        assert FOLIAGE_SAMPLES["broadleaf"] in script
+        assert FOLIAGE_SAMPLES["conifer"] in script
+        assert "def repoint_leaf_materials" in script
+
+    def test_leaf_maps_come_before_the_leaf_material_and_the_leaves(self, script):
+        loop = script.split("for spec in PLAN[", 1)[1]
+        maps = loop.index("import_foliage_texture(entry, is_normal)")
+        material = loop.index("build_foliage_material(spec, master)")
+        leaves = loop.index("repoint_leaf_materials(spec)")
+        assert maps < material < leaves
+
+    def test_the_leaf_normal_keeps_its_translucency(self, script):
+        # The packed Normal carries translucency in alpha, and the plugin's own
+        # samples import it as Masks; TC_NORMALMAP would drop the alpha.
+        body = script.split("def import_foliage_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "TC_MASKS" in body
+        assert "TC_NORMALMAP" not in body
+
+    def test_a_leaf_is_repaired_in_place_not_replaced(self, script):
+        # Exported trees reference the palette's leaf instances by path.
+        body = script.split("def repoint_leaf_materials", 1)[1].split("\ndef ", 1)[0]
+        assert "clear_all_material_instance_parameters" in body
+        assert "duplicate_asset" not in body
+        assert "delete_asset" not in body
 
     def test_every_prototype_reaches_the_script(self, script):
         for species, count in (("european_beech", 5), ("pacific_silver_fir", 9)):
