@@ -307,6 +307,12 @@ Unreal caps at 32,767 bones. `--skeleton-reduce` is the effective lever:
 growpy-generate-forest --skeleton-reduce 0.5 --skeleton-length 2.5
 ```
 
+The PVE route does not check the cap: PVE exports and saves a mesh with more bones, and the
+editor then crashes the moment it is spawned (`Array index out of bounds: -32748 into an
+array of size 51120`, `Array.h:1339`). PVE makes about 1.05–1.13 bones per growth-JSON
+point, so keep a tree's growth JSON under ~29,000 points. As of 2026-09-25 about 17
+open-grown (`r00`) catalog meshes are over the cap and wait for a re-export.
+
 **Generation is far slower than expected**
 Grove's `.faces` and `.points` properties rebuild the entire list on every access. Hoisting
 two in-loop reads once took dataset production from 44 min / 17 assemblies to 10 min / 99.
@@ -318,6 +324,26 @@ Look for a dangling `bindJoint` token — a single one silently kills the whole 
 **PVE materials render as shifting magenta/violet/neon**
 Either a clone got re-parented to the `/Game/Templates` copy of `MA_Foliage_Trees`, or the
 textures are non-virtual. Grep the log for `expects texture`.
+
+**The editor dies when `PCG_Trees` regenerates the imported catalog**
+`Assertion failed: ScatterBufferSize >= ScatterBytes` (`UnifiedBuffer.cpp:845`): the GPUScene
+upload pool is too small for ~1,460 PVE trees at once. Add to the project's
+`Config/DefaultEngine.ini` and restart the editor:
+
+```ini
+[SystemSettings]
+r.GPUScene.MaxPooledUploadBufferSize=16000000
+```
+
+The startup log then shows `LogConfig: Set CVar [[r.GPUScene.MaxPooledUploadBufferSize:16000000]]`.
+Why, and which projects need it: knowledge hub, `05-PRESENTATION-TIER/tree-spawning-pipeline`.
+
+**`Ensure condition failed: EditableBoneVisibilityStates.Num() >= OutRequiredBones.Num()`**
+Names one PVE-exported `SK_*` mesh whose LOD requires 1–50 more bones than it has. It comes
+from PVE's skinned-mesh build, not from the growth JSON (checked 2026-09-25: skeleton and
+mesh bone counts agree, no zero-length segments to blame), and the tree renders. An ensure
+fires once per call site per session, so the mesh it names is the first one hit, not the
+only one; it cannot be used to count affected meshes.
 
 **Crown looks too sparse or too dense**
 That correction no longer lives here — it moved to the PVE side of the pipeline
