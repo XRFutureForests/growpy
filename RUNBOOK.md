@@ -412,3 +412,32 @@ only one; it cannot be used to count affected meshes.
 That correction no longer lives here — it moved to the PVE side of the pipeline
 (2026-09-10). Fix the asset; LAI is the acceptance metric, and `crown_ratio` alone cannot see
 a hollow crown.
+
+**The editor crashes during the PVE palette import**
+`Assertion failed: ComponentsThatNeedEndOfFrameUpdate_OnGameThread[ArrayIndex] == Component`
+(`LevelTick.cpp:958`), about 60 s into a whole-plan import, after a long run of re-frames.
+`growpy-pve-assets` writes one script for every species; run it one species per remote
+call instead, with a garbage collection (`unreal.SystemLibrary.collect_garbage()`) between
+calls. The whole plan crashed twice; per species, all 11 went through (2026-09-15).
+
+**A grow stopped through a pipe leaves a half-written species**
+Killing `python … | grep` kills the `grep`, and the grow's next write raises
+`BrokenPipeError`. A second grow of the same species into the same output root then wipes
+`rNN/` mid-run, because stage generation clears the radius folder before writing. Never
+filter a long run through a pipe you may kill, and never run two grows of one species into
+one output root.
+
+**A check says no run is left, but one is**
+Git Bash `ps -W` truncates command lines. Match on `Get-CimInstance Win32_Process` and its
+`CommandLine`, and leave out the checking shell itself, which matches its own pattern.
+
+**Shots show some trees as voxel cubes**
+In distant framings Nanite sometimes never streams the full mesh, even for meshes that were
+not touched, so it is editor state, not the export; close framings are fine. Judge in the
+viewport. The editor also renders nothing while it is not the foreground window (the GPU
+drops to P8), so keep it in front for shots; RDP is fine. `r.Nanite.Streaming.StreamingPoolSize`
+must stay below 2048, or the editor asserts.
+
+**A watchdog kills a working Voxelize export**
+A Voxelize export can log nothing for more than five minutes (ash h20). Only treat an editor
+as hung after 20 minutes of log silence.
