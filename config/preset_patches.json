@@ -386,9 +386,30 @@
     "killed ash before h15. (The birch/linden/cherry decay+weak values below are",
     "older, stall fixes and stay.)"
   ],
+  "_why_conifer_turn_up_2026_10_05": [
+    "OWNER DECISION 2026-10-05 (XRFF-523): douglas_fir, norway_spruce and silver_fir",
+    "get turn_up_in_shade 0.0 and turn_to_horizon 0.1 on top of the drop_shaded /",
+    "drop_obsolete recipe above. This REVERSES the 2026-09-15 rule that the conifers",
+    "run Grove's authored presets unmodified (_why_conifer_patches_removed_2026_09_15).",
+    "Why: under 6 real neighbours most of a conifer's crown is shaded, and the vendor",
+    "presets ship turn_up_in_shade 0.33 (douglas_fir, silver_fir = the spruce preset),",
+    "so shaded branch tips curl up to vertical -- 'candles on a Christmas tree'. The",
+    "2026-10-05 catalog baseline (candle_metric.py, h15+): douglas_fir 32 % of branches",
+    "upturned (max 42 %), norway_spruce / silver_fir 16.8 % (max 24.7 %), scots_pine",
+    "1.5 % -- the pine preset ships turn_up_in_shade 0 and is the control, unpatched.",
+    "Trials 2026-09-28/29 (data/tmp/conifer_turnup_2026-09-28/, --preset-override, h25):",
+    "arm C (this) gave 0 % upturned on douglas_fir and 0-4.6 % on norway_spruce, a",
+    "conical crown with level top branches and a slight droop below, stem DBH within",
+    "1-4 cm of the catalog; arm B (turn_to_horizon 0.2) went ruler-straight with long",
+    "straggly lower branches. Arm C confirmed in UE 2026-09-29 (candles gone).",
+    "NOT changed by this: the bare leader above the top whorl (XRFF-524).",
+    "Takes effect through growpy-prepare-assets (the patch is baked into the seed)."
+  ],
   "norway_spruce": {
     "drop_shaded": 0.15,
-    "drop_obsolete": 0.15
+    "drop_obsolete": 0.15,
+    "turn_up_in_shade": 0.0,
+    "turn_to_horizon": 0.1
   },
   "scots_pine": {
     "drop_shaded": 0.15,
@@ -396,7 +417,9 @@
   },
   "silver_fir": {
     "drop_shaded": 0.15,
-    "drop_obsolete": 0.15
+    "drop_obsolete": 0.15,
+    "turn_up_in_shade": 0.0,
+    "turn_to_horizon": 0.1
   },
   "european_oak": {
     "drop_shaded": 0.15,
@@ -408,6 +431,8 @@
   },
   "douglas_fir": {
     "drop_shaded": 0.15,
-    "drop_obsolete": 0.15
+    "drop_obsolete": 0.15,
+    "turn_up_in_shade": 0.0,
+    "turn_to_horizon": 0.1
   }
 }
