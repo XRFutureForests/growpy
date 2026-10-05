@@ -545,6 +545,35 @@ def _tip_cap_layer(
     )
 
 
+def _leader_layer(
+    distributor: DistributorSpec,
+    ladder: LadderSpec,
+    names: Sequence[str],
+    palette_meshes: Sequence[str],
+    span,
+) -> FoliageLayer | None:
+    """Sprays along the leader, between its topmost branch and the tip (XRFF-524).
+
+    The apex layer puts one part at the tip and the main layer starts above the
+    trunk, so without this the leader above the top whorl is a bare pole with a
+    lonely spray. ``leader_tier`` (the ``tip_tier`` when unset) is placed on
+    generation 1 at about ``leader_spacing_m``; None when the leader is shorter
+    than one spacing.
+    """
+    from growpy.io.unreal.pve_offline_solve import (
+        leader_layer_distributor,
+        leader_tier_index,
+    )
+
+    spec = leader_layer_distributor(distributor, ladder, span)
+    tier = leader_tier_index(names, ladder)
+    if spec is None or tier is None:
+        return None
+    return FoliageLayer(
+        distributor=spec, palette=(PaletteEntry(mesh=palette_meshes[tier]),)
+    )
+
+
 @dataclass(frozen=True)
 class PlannedTree:
     """One chain plus what it was built from, for the manifest."""
@@ -567,6 +596,8 @@ def _offline_chain(
     from growpy.io.unreal.pve_offline_solve import (
         compound_layout,
         forrester_target,
+        leader_span,
+        leader_tier_index,
         solve_flat,
         solve_graded,
         tree_stats,
@@ -647,6 +678,14 @@ def _offline_chain(
                 names,
             )
             ladder = dataclasses.replace(ladder, tip_tier=None)
+        if ladder.leader_spacing_m > 0.0 and leader_tier_index(names, ladder) is None:
+            logger.warning(
+                "%s: leader_tier %s matches none of %s -- no leader layer",
+                entry.species,
+                list(ladder.leader_tier),
+                names,
+            )
+            ladder = dataclasses.replace(ladder, leader_spacing_m=0.0)
         solved = solve_graded(
             entry.path,
             base,
@@ -678,6 +717,14 @@ def _offline_chain(
             layers += (_tip_cap_layer(distributor, ladder, names, meshes),)
             detail["tip_cap_instances"] = solved.tip_cap_instances
             detail["tip_tier"] = ladder.tip_tier
+        if ladder.apex and ladder.leader_spacing_m > 0.0:
+            leader = _leader_layer(
+                distributor, ladder, names, meshes, leader_span(entry.path)
+            )
+            if leader is not None:
+                layers += (leader,)
+                detail["leader_instances"] = solved.leader_instances
+                detail["leader_spacing_m"] = ladder.leader_spacing_m
         detail["layout"] = "graded"
         detail["scale_targets"] = [round(t, 6) for t in solved.scale_targets]
     else:

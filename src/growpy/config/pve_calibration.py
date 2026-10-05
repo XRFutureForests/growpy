@@ -317,6 +317,16 @@ class LadderSpec:
     at density 1 places at ``along = 1.0`` on every branch, both included.
     The solve counts its area, so the main density lands the total on target.
     None keeps the ladder as it was.
+
+    ``leader_spacing_m`` (2026-10-05, XRFF-524) foliates the leader. The main
+    layer starts above the trunk and the apex layer puts ONE part at its tip, so
+    the metre or two of trunk above the topmost first-order branch read as a
+    bare pole with a lonely spray. A leader layer places one ``leader_tier`` part
+    at about this spacing between that branch and the tip, on generation 1 only.
+    ``leader_tier`` is an ordered list of prototype-name suffixes and the first
+    one the species' palette has is used (the fir family has ``_h``, the pine
+    ``lateral_c``). 0.0 keeps the ladder as it was; a leader shorter than one
+    spacing gets none.
     """
 
     scale_weight: float = 1.0
@@ -325,8 +335,14 @@ class LadderSpec:
     apex: bool = True
     main_generation_start: int = 2
     tip_tier: str | None = None
+    leader_spacing_m: float = 0.0
+    leader_tier: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.leader_spacing_m < 0.0:
+            raise ValueError(
+                f"leader_spacing_m must be >= 0, got {self.leader_spacing_m}"
+            )
         if not 0.0 < self.scale_weight <= 1.0:
             raise ValueError(f"scale_weight must be in (0, 1], got {self.scale_weight}")
         if not 1 <= self.minimum_candidates <= 10:
@@ -782,7 +798,18 @@ def _ladder(data: dict[str, Any] | None) -> LadderSpec | None:
         tip_tier=(
             None if data.get("tip_tier") in ("", None) else str(data["tip_tier"])
         ),
+        leader_spacing_m=float(data.get("leader_spacing_m", 0.0)),
+        leader_tier=_suffixes(data.get("leader_tier")),
     )
+
+
+def _suffixes(value: Any) -> tuple[str, ...]:
+    """A name suffix or a list of them, as an ordered tuple; ``""``/None -> ()."""
+    if value in ("", None):
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(v) for v in value if v not in ("", None))
 
 
 def _compound(data: dict[str, Any] | None) -> CompoundSpec | None:

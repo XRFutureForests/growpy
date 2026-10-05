@@ -370,9 +370,38 @@ class TestShippedCalibration:
             main_generation_start=2,
             # the three-fingered spray on every branch end (2026-09-16)
             tip_tier="_h",
+            # sprays along the leader (2026-10-05, XRFF-524)
+            leader_spacing_m=0.3,
+            leader_tier=("_h", "lateral_c"),
         )
         assert shipped.for_species("european_beech").ladder is None
         assert _species().ladder is None
+
+    def test_the_conifers_foliate_the_leader_and_a_broadleaf_does_not(self, shipped):
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        pine = shipped.for_species("scots_pine", habit="conifer")
+        oak = shipped.for_species("european_oak", habit="broadleaf")
+        # the fir family has `_h`, the pine its lateral spray: first match wins
+        for conifer in (spruce, pine):
+            assert conifer.ladder.leader_spacing_m == 0.3
+            assert conifer.ladder.leader_tier == ("_h", "lateral_c")
+        assert oak.ladder.leader_spacing_m == 0.0
+        assert oak.ladder.leader_tier == ()
+
+    def test_leader_tier_takes_one_suffix_or_a_list(self):
+        from growpy.config.pve_calibration import _ladder
+
+        assert _ladder({"leader_tier": "_h"}).leader_tier == ("_h",)
+        assert _ladder({"leader_tier": ["_h", "lateral_c"]}).leader_tier == (
+            "_h",
+            "lateral_c",
+        )
+        assert _ladder({"leader_tier": ""}).leader_tier == ()
+        assert _ladder({}).leader_tier == ()
+
+    def test_a_negative_leader_spacing_is_refused(self):
+        with pytest.raises(ValueError, match="leader_spacing_m"):
+            LadderSpec(leader_spacing_m=-0.1)
 
     def test_conifer_defaults_carry_the_tip_tier_and_broadleaf_do_not(self, shipped):
         # Spruce and douglas share the fir twig, so they inherit the cap via

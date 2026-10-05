@@ -261,6 +261,8 @@ class TestLadder:
             apex=True,
             main_generation_start=2,
             tip_tier="_h",
+            leader_spacing_m=0.3,
+            leader_tier=("_h", "lateral_c"),
         )
         assert load_pve_calibration().for_species("european_beech").ladder is None
 

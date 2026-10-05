@@ -129,6 +129,18 @@ randomize_axil_angle = [-12.0, 12.0]
 # main layer's generations; the solve counts it, so the main density lands
 # the total on target. A species whose palette has no such tier (the pine)
 # gets a warning and no cap.
+#
+# leader_spacing_m (2026-10-05, XRFF-524): the apex layer puts ONE part at the
+# tip and the main layer starts above the trunk, so the metre or two of leader
+# above the top whorl was a bare pole with a lonely spray (2026-10-05 audit,
+# growpy-twig-audit: 0.5-2 sprays per metre on every conifer cell, 6-74 on beech).
+# A leader layer puts one `leader_tier` part about every 0.3 m between the
+# topmost branch and the tip, generation 1 only. leader_tier is a list of name
+# suffixes and the first one the species' palette has wins: the fir family
+# (spruce, douglas, silver fir) has the three-fingered `_h`, the pine has its
+# lateral spray `lateral_c` (0.023 m2, the same size as `_h`; its large
+# `apical_c` stays the apex). The solve counts the layer's area. A species with
+# no match gets a warning and no leader layer; leader_spacing_m = 0.0 turns it off.
 [pve_calibration.defaults.conifer.ladder]
 scale_weight = 1.0
 minimum_candidates = 1
@@ -136,6 +148,8 @@ cutoff_threshold = 0.1
 apex = true
 main_generation_start = 2
 tip_tier = "_h"
+leader_spacing_m = 0.3
+leader_tier = ["_h", "lateral_c"]
 
 [pve_calibration.defaults.broadleaf]
 # OWNER DECISION 2026-09-16 (evening, full run): round-2 R4 for every graded
@@ -648,6 +662,9 @@ apex = true
 main_generation_start = 2
 # Three-fingered spray on every branch end (see the conifer defaults).
 tip_tier = "_h"
+# Sprays along the leader (see the conifer defaults).
+leader_spacing_m = 0.3
+leader_tier = ["_h", "lateral_c"]
 
 [pve_calibration.species.silver_fir.trees.r05_h05m]
 growth_json = "fir_r05_h05m_f060.json"

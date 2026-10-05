@@ -14,9 +14,14 @@ from pathlib import Path
 import pytest
 
 from growpy.config.pve_calibration import CompoundSpec, LadderSpec
+from growpy.io.unreal.pve_distributor_model import simulate_placements
 from growpy.io.unreal.pve_graph_builder import DistributorSpec, PaletteEntry
+from growpy.io.unreal.pve_graph_plan import _leader_layer
 from growpy.io.unreal.pve_offline_solve import (
     compound_layout,
+    leader_layer_distributor,
+    leader_span,
+    leader_tier_index,
     mean_triangles_per_prototype,
     quantile_targets,
     solve_flat,
@@ -192,6 +197,103 @@ class TestSolveGraded:
                 LadderSpec(tip_tier="_h"),
                 1.0,
             )
+
+
+class TestLeaderLayer:
+    """Sprays along the conifer leader (XRFF-524, 2026-10-05).
+
+    The apex layer puts ONE part at the tip and the main layer starts above the
+    trunk, so the leader above the top whorl was a bare pole with a lonely spray.
+    ``_tree``'s trunk is 12 m and its topmost first-order branch attaches at
+    11 m, so the leader is 1 m.
+    """
+
+    def test_the_leader_is_the_trunk_above_its_topmost_first_order_branch(
+        self, tmp_path
+    ):
+        span = leader_span(_tree(tmp_path))
+        assert span.trunk_m == pytest.approx(12.0)
+        assert span.length_m == pytest.approx(1.0)
+        assert span.start_along == pytest.approx(11.0 / 12.0)
+
+    def test_a_trunk_with_no_branches_has_no_leader(self, tmp_path):
+        assert leader_span(_tree(tmp_path, branches=0)) is None
+
+    def test_n_sprays_each_in_the_middle_of_its_own_stretch(self, tmp_path):
+        path = _tree(tmp_path)
+        ladder = LadderSpec(leader_spacing_m=0.3, leader_tier=("_h",))
+        spec = leader_layer_distributor(_base(), ladder, leader_span(path))
+        assert spec.branch_density == 3  # 1.0 m / 0.3 m = 3.3 -> 3
+        assert spec.generation_band == (1, 1)
+        assert spec.conditions is None
+        # not the apex part's random seed: same (branch, loop) index, same draws
+        assert spec.random_seed != _base().random_seed
+        placed = simulate_placements(path, spec)
+        assert len(placed) == 3
+        assert all(p.generation == 1 for p in placed)
+        # a sixth of a metre in, then every third of a metre; never the tip
+        along = [p.along_branch for p in placed]
+        assert along == pytest.approx([(11 + 1 / 6) / 12, 11.5 / 12, (11 + 5 / 6) / 12])
+        assert max(along) < 1.0
+
+    def test_no_layer_when_off_too_short_or_without_a_span(self, tmp_path):
+        span = leader_span(_tree(tmp_path))
+        assert leader_layer_distributor(_base(), LadderSpec(), span) is None
+        short = LadderSpec(leader_spacing_m=2.0)  # the leader is 1 m
+        assert leader_layer_distributor(_base(), short, span) is None
+        assert leader_layer_distributor(_base(), LadderSpec(leader_spacing_m=0.3), None) is None
+
+    def test_at_least_two_samples(self, tmp_path):
+        # 1 m at 0.9 m spacing rounds to ONE sample, and at density 1 the
+        # distributor places at the tip, underneath the apex part.
+        spec = leader_layer_distributor(
+            _base(), LadderSpec(leader_spacing_m=0.9), leader_span(_tree(tmp_path))
+        )
+        assert spec.branch_density == 2
+
+    def test_the_tier_is_the_first_suffix_the_palette_has(self):
+        names = ("pine_foliage_a", "pine_foliage_lateral_c", "pine_foliage")
+        both = LadderSpec(leader_tier=("_h", "lateral_c"))
+        assert leader_tier_index(names, both) == 1
+        assert leader_tier_index(names, LadderSpec(leader_tier=("_h",))) is None
+        assert leader_tier_index(names, LadderSpec()) is None
+
+    def test_the_solve_counts_the_leader_as_fixed_instances_and_area(self, tmp_path):
+        path = _tree(tmp_path)
+        names = ("fir_foliage_f", "fir_foliage_a", "fir_foliage_h", "fir_foliage")
+        meshes = tuple(f"/G/SM_{n}" for n in names)
+        areas = (0.005, 0.009, 0.0225, 0.09)
+        plain = LadderSpec(tip_tier="_h")
+        led = LadderSpec(tip_tier="_h", leader_spacing_m=0.3, leader_tier=("_h",))
+        before = solve_graded(path, _base(), meshes, areas, plain, 1.0, names=names)
+        after = solve_graded(path, _base(), meshes, areas, led, 1.0, names=names)
+        assert before.leader_instances == 0
+        assert after.leader_instances == 3
+        assert after.instances - after.leader_instances >= 2  # main + apex + cap
+        # the leader's area comes off the main layer's budget
+        assert after.density <= before.density
+        assert abs(after.area_m2 - 1.0) < 0.5
+
+    def test_a_leader_needs_the_names_and_a_tier_the_palette_has(self, tmp_path):
+        path = _tree(tmp_path)
+        ladder = LadderSpec(leader_spacing_m=0.3, leader_tier=("_zz",))
+        args = (path, _base(), ("/G/a", "/G/b"), (0.1, 0.2), ladder, 1.0)
+        with pytest.raises(ValueError, match="leader_tier"):
+            solve_graded(*args, names=("a", "b"))
+        with pytest.raises(ValueError, match="leader_tier"):
+            solve_graded(*args)
+
+    def test_the_plan_layer_places_the_tier_part_on_generation_one(self, tmp_path):
+        path = _tree(tmp_path)
+        names = ("fir_foliage_f", "fir_foliage_h")
+        meshes = ("/G/SM_f", "/G/SM_h")
+        ladder = LadderSpec(leader_spacing_m=0.3, leader_tier=("_h",))
+        layer = _leader_layer(_base(), ladder, names, meshes, leader_span(path))
+        assert layer.distributor.generation_band == (1, 1)
+        assert [e.mesh for e in layer.palette] == ["/G/SM_h"]
+        # no layer when the palette lacks the tier
+        other = LadderSpec(leader_spacing_m=0.3, leader_tier=("_zz",))
+        assert _leader_layer(_base(), other, names, meshes, leader_span(path)) is None
 
 
 class TestOfflineFlatMask:
