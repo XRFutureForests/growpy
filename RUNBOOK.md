@@ -264,6 +264,17 @@ exist under `ReplacePolicy = Replace` are overwritten (the prompt is confirmed).
 driver reports `NODIALOG`, the toolbar button is not at the default window offset
 (`--toolbar X,Y`); the tool then retries with a UI Automation search.
 
+**Judge foliage placement without the editor.** `growpy-twig-audit <plan dir>` reads the plan's
+`growpy_pve_graphs.py` (the chain specs the graph builder will build), simulates every layer with
+the offline distributor model, and checks each cell against `config/twig_audit.toml` per growth
+habit: conifer shoots that left their branch sideways and ended up pointing up (`upturned`), sprays
+per metre on the leader (`leader_sprays_per_m`), and the top tenth's foliage density against the
+mid-crown. It exits 1 when a cell fails and writes `twig_audit.json` beside the plan. It cannot
+see spray *orientation*; that still needs a look in the editor. The leader layer it checks is
+`[ladder] leader_spacing_m` / `leader_tier` in `config/pve_calibration.toml` (conifers only):
+the plan puts one part at the tip (apex) and starts the main layer above the trunk, so without
+the leader layer the leader above the top whorl is a bare pole with one spray.
+
 **Look at the catalog in gallery levels.** After the export and `growpy-pve-catalog`, lay
 the exported trees out in `/Game/Developers/Max/TreeGallery/TreeGallery_<Species>`: one level per
 species, one row per stand radius, one column per stage, labelled, lit like ECOSENSE.

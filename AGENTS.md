@@ -52,6 +52,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-pve-leaf-area` | Report scale-corrected leaf area for the calibrated PVE trees |
 | `growpy-pve-export` | Trigger the Export of PVE graphs in the running editor (posted Ctrl+E + UI Automation; works with the workstation locked) |
 | `growpy-pve-gallery` | Lay the exported PVE trees out in gallery levels (one per species: stand radius x stage) to judge the catalog by eye; skips meshes over the 32,767-bone cap; `--shots` photographs each stand row |
+| `growpy-twig-audit` | Offline audit of where the PVE plan places foliage, per catalog cell, against `config/twig_audit.toml` (upturned shoots, leader foliage, top-band density); needs no editor |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |

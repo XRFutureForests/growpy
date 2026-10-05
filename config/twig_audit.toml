@@ -1,0 +1,36 @@
+# Pass/fail thresholds for growpy-twig-audit (XRFF-525), per growth habit.
+#
+# The audit reads the PVE plan (data/output/forest/unreal_scripts/growpy_pve_graphs.py)
+# and judges every catalog cell offline. A cell that misses a threshold is listed
+# and the command exits 1. Habits differ: "upturned" and the leader only mean
+# something for a monopodial conifer; a broadleaf crown grows upward by design
+# (silver birch scores 54 % tips-up while looking right), so the broadleaf table
+# carries only the placement checks.
+#
+# Seeded 2026-10-05 from the catalog baseline (candle_metric.py on the 144 r07/r10
+# cells, h15+: Douglas fir 32 %, spruce / silver fir 16.8 %, Scots pine 1.5 %
+# upturned) and the conifer turn-up trials (arm C, turn_up_in_shade 0: 0-4.6 %).
+
+[habits]
+conifer = ["douglas_fir", "norway_spruce", "scots_pine", "silver_fir"]
+
+[conifer]
+# Share of side branches that left their parent more than 50 deg off vertical
+# and end within 30 deg of it -- the "candles on a Christmas tree".
+upturned_max = 0.05
+# Sprays per metre on the leader (the trunk above the topmost first-order
+# branch). The plan's apex layer puts ONE part at the tip, so every conifer
+# cell scored 0.5-2.0 per metre at the 2026-10-05 baseline -- the lonely twig
+# of XRFF-524. European beech, whose flat layout also covers the trunk, scores
+# 6-74 per metre; 3 is the floor for a leader that reads as foliated. A leader
+# shorter than leader_min_m (a sapling's) is not judged.
+leader_min_m = 0.5
+leader_sprays_per_m_min = 3.0
+# Foliage per metre of side-branch wood in the top tenth of the height, over the
+# same figure for the 40-70 % bands. 1.0 is an even crown. Baseline: conifers
+# 0.86-1.10 (one silver fir at 0.78), broadleaves 1.06 and up. A regression
+# guard, set just under the worst cell judged good.
+top_band_ratio_min = 0.8
+
+[broadleaf]
+top_band_ratio_min = 0.8
