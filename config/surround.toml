@@ -14,7 +14,14 @@
 # grove, so this only affects single-tree contexts.
 
 [surround]
-radii = [0.0, 7.0, 10.0]  # 0 = open-grown; >0 = neighbour distance (m), see neighbours
+# OWNER DECISION 2026-10-05 (XRFF-522): r00 (open-grown) is dropped for now. It was
+# where the catalog's defects concentrated: 18 r00 meshes over the 32,767-bone cap,
+# beech r00 h30 never grown, two 11-byte r00 h40 conifer stubs, and only r07 was ever
+# instanced on the ecosense stand. 0.0 stays a valid value (it means "no surround");
+# put it back here to regrow the open-grown tree. A wider replacement radius is a
+# separate, open decision. NOTE the PVE plan scans data/output/forest on disk, so an
+# r00/ directory left there still enters the catalog -- park or delete it.
+radii = [7.0, 10.0]  # >0 = neighbour distance (m), see neighbours; 0 = open-grown (dropped)
 # Real neighbours instead of the shell. >0 plants this many trees of the same
 # species on a ring at each radius around the dataset tree; they grow together
 # in one grove under Grove's own light competition (Grove switches Surround off

@@ -29,10 +29,18 @@ profile = false
 # change; everything else keeps random_seed. A sub-table captures every key
 # after it, so this MUST stay the last entry of the file.
 [general.random_seed_per_species]
-# THE SHIPPED common_ash IS A PER-RADIUS PICK AND NO SINGLE SEED REPRODUCES IT.
+# 2026-10-05 (XRFF-522): r00 is dropped from [surround] radii, so the per-radius
+# pick below is moot. The shipped ash stand pair (r07, r10) is seed 512 -- the
+# global random_seed -- and a plain re-grow now reproduces it, which is why the
+# common_ash = 7 entry at the bottom is gone. The analysis stays because it is
+# the reason seed 7 must NOT come back for ash: its r10 never reached h30. If r00
+# is ever restored, ash r00 needs seed 7 again and this table needs the entry back.
+#
+# (Until 2026-10-05:) THE SHIPPED common_ash WAS A PER-RADIUS PICK AND NO SINGLE
+# SEED REPRODUCED IT.
 # Owner decision, 2026-09-23: r00 from seed 7, r07 AND r10 from seed 512.
-# Seeds are per species, not per radius, so the pick cannot be expressed here;
-# this value only records which seed a plain re-grow would use.
+# Seeds are per species, not per radius, so the pick could not be expressed here;
+# this value only recorded which seed a plain re-grow would use.
 #
 # Three seeds were grown to 30 m, each wrong in its own way:
 #
@@ -55,4 +63,4 @@ profile = false
 # Archives: data/tmp/ladder35_2026-09-22/prev_common_ash (512),
 # prev_common_ash_seed999 (999), prev_common_ash_seed7 (7).
 # Gate of the shipped tree: data/tmp/ladder35_2026-09-22/gate_ash_shipped.json.
-common_ash = 7
+# common_ash = 7   # the r00 pick; removed 2026-10-05 with r00 (see the top of this table)

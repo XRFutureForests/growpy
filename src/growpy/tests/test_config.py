@@ -279,6 +279,7 @@ radii = [15.0, 0.0, 7.0]
         Wanting a baseline in the dataset is still right -- it just belongs to
         whoever writes the config (config/surround.toml lists 0.0 explicitly),
         not to the parser, which should not disagree with the file it read.
+        (config/surround.toml listed 0.0 until r00 was dropped, 2026-10-05.)
         """
         toml_content = b"""
 [surround]

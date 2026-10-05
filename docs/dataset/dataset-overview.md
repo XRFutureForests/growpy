@@ -26,6 +26,15 @@ dataset; raising `Max Height` regrows the species from cycle 0.
 | On disk | 80 GB under `data/output/forest/` |
 | Reproducible from | growpy `dev` @ `69906ac`, config unchanged over the whole run |
 
+**Current set (2026-10-05, XRFF-522): r00 is dropped.** `[surround] radii` is now
+`[7.0, 10.0]`, so a fresh run plans 2 stands per species (22 groves) and the
+shipped set is **144 valid of 148 assemblies** (74 stages x r07/r10; the 4 missing
+cells are European beech h35/h40 at both radii, XRFF-526). The 69 valid r00
+assemblies (56.9 GB) are parked under `data/tmp/r00_parked_2026-10-05/`, outside
+the tree the PVE plan scans. The run table above and the per-species tables below
+are the 2026-09-22/23 record and keep their r00 columns as history until the docs
+rewrite (XRFF-481) replaces them.
+
 `Max Height` per species was set on 2026-09-22 from the digital-twin database
 (`trees.trees`, measured `variant_type_id = 1` plus SILVA projections `= 4`,
 p99 of the height distribution): beech/spruce/fir 40 m, Douglas fir 45 m, oak
@@ -131,6 +140,11 @@ its own — the rebuild recipe is in that config comment, and all three archives
 are kept under `data/tmp/ladder35_2026-09-22/`. The r07/r10 pair comes from one
 simulation, so their comparison is internally consistent; r00 comes from a
 different RNG stream, which is the cost of the pick.
+
+**Since 2026-10-05 (r00 dropped, XRFF-522) the pick is moot:** the r07/r10 pair is
+seed 512, the global default, so a plain re-grow reproduces it and the
+`common_ash = 7` entry has been removed from the config. Seed 7 must not return
+for ash — its r10 never reached h30. Restoring r00 would also restore that entry.
 
 Assemblies = stages × 3 stands. "Cycles" is the cycle at which the last
 exported tree captured its top milestone, after which the run stops; only the

@@ -334,6 +334,13 @@ $env:PYTHONPATH=".\src;.\src\the_grove_23\modules"       # PowerShell
 **`bpy` not found**
 `pip install bpy`, inside the activated environment.
 
+**A radius dropped from `[surround] radii` still shows up in the catalog**
+The PVE plan (`growpy-pve-plan`) builds its manifest by scanning `data/output/forest` for
+`*_growth_data.json`, not from the config, and `growpy-pve-catalog` turns that manifest into
+`DT_TreeCatalog` rows. A radius directory left on disk (`<species>/r00/`) therefore keeps
+entering the catalog. Move it out of the tree (r00 was parked in
+`data/tmp/r00_parked_2026-10-05/`) before regenerating the plan.
+
 **`growpy-…` is not on PATH**
 `pip install -e .` was not run in the active environment, or you are in the wrong one. The
 `python src/growpy/cli/<step>.py` form works either way.
