@@ -148,6 +148,7 @@ TEMPLATE_STRUCT = {template_struct!r}
 PCG_GRAPH = {pcg_graph!r}
 PCG_PARAMETER = {pcg_parameter!r}
 SET_PCG = {set_pcg!r}
+LOAD_MESHES = {load_meshes!r}
 
 eal = unreal.EditorAssetLibrary
 report = {{"meshes": [], "missing": [], "catalog": CATALOG, "rows": 0, "pcg": None}}
@@ -159,6 +160,14 @@ for row in ROWS:
     if not eal.does_asset_exist(path):
         report["missing"].append(path)
         entry["exists"] = False
+        report["meshes"].append(entry)
+        continue
+    if not LOAD_MESHES:
+        # Existence only. Loading a mesh whose Nanite cache is cold BUILDS it
+        # (~5 min each, one at a time on the game thread: 144 meshes blocked the
+        # editor for hours, 2026-10-05), and the bounds read below is a report
+        # field, not something the catalog rows need.
+        entry["exists"] = True
         report["meshes"].append(entry)
         continue
     mesh = eal.load_asset(path)
@@ -262,6 +271,7 @@ def write_ue_script(
     catalog: str,
     set_pcg: bool,
     pcg_graph: str = DEFAULT_PCG_GRAPH,
+    load_meshes: bool = True,
 ) -> Path:
     script = manifest_path.parent / "growpy_pve_catalog.py"
     script.write_text(
@@ -274,6 +284,7 @@ def write_ue_script(
             pcg_graph=pcg_graph,
             pcg_parameter=PCG_PARAMETER,
             set_pcg=set_pcg,
+            load_meshes=load_meshes,
         ),
         encoding="utf-8",
     )
@@ -302,6 +313,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-pcg", action="store_true", help="do not repoint PCG_Trees at the catalog"
     )
     parser.add_argument(
+        "--no-load",
+        action="store_true",
+        help="check that each mesh exists but do not load it to read its bounds: "
+        "a mesh with a cold Nanite cache builds on load (~5 min each)",
+    )
+    parser.add_argument(
         "--script-only", action="store_true", help="write the UE script, do not run it"
     )
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -323,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
         catalog=args.catalog,
         set_pcg=not args.no_pcg,
         pcg_graph=args.pcg_graph,
+        load_meshes=not args.no_load,
     )
     logger.info("UE script: %s", script)
     if args.script_only:
