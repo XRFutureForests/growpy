@@ -1175,6 +1175,8 @@ class GrowPyConfig:
             # dataclass owns. Listed so a legitimate section is not reported as
             # a typo. See config/README.md.
             "pve_calibration",
+            # Likewise read as a named file by growpy.tools.twig_audit.
+            "twig_audit",
         }
         for _section in data:
             if _section not in _known_sections:

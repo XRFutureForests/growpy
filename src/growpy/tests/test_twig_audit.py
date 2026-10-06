@@ -224,7 +224,7 @@ class TestCommandLine:
     def _thresholds(self, tmp_path) -> Path:
         toml = tmp_path / "twig_audit.toml"
         toml.write_text(
-            '[habits]\nconifer = ["norway_spruce"]\n[conifer]\nupturned_max = 0.5\n'
+            '[twig_audit.habits]\nconifer = ["norway_spruce"]\n[twig_audit.conifer]\nupturned_max = 0.5\n'
             "leader_min_m = 0.5\nleader_sprays_per_m_min = 3.0\n",
             encoding="utf-8",
         )

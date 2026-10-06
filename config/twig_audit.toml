@@ -1,5 +1,9 @@
 # Pass/fail thresholds for growpy-twig-audit (XRFF-525), per growth habit.
 #
+# Read by growpy.tools.twig_audit as a named file, not through the config merge, so
+# the sections live under [twig_audit] and the name is listed as known in
+# config/core.py (same arrangement as pve_calibration.toml).
+#
 # The audit reads the PVE plan (data/output/forest/unreal_scripts/growpy_pve_graphs.py)
 # and judges every catalog cell offline. A cell that misses a threshold is listed
 # and the command exits 1. Habits differ: "upturned" and the leader only mean
@@ -11,10 +15,10 @@
 # cells, h15+: Douglas fir 32 %, spruce / silver fir 16.8 %, Scots pine 1.5 %
 # upturned) and the conifer turn-up trials (arm C, turn_up_in_shade 0: 0-4.6 %).
 
-[habits]
+[twig_audit.habits]
 conifer = ["douglas_fir", "norway_spruce", "scots_pine", "silver_fir"]
 
-[conifer]
+[twig_audit.conifer]
 # Share of side branches that left their parent more than 50 deg off vertical
 # and end within 30 deg of it -- the "candles on a Christmas tree".
 upturned_max = 0.05
@@ -32,5 +36,5 @@ leader_sprays_per_m_min = 3.0
 # guard, set just under the worst cell judged good.
 top_band_ratio_min = 0.8
 
-[broadleaf]
+[twig_audit.broadleaf]
 top_band_ratio_min = 0.8

@@ -279,6 +279,7 @@ def load_thresholds(path: Path | None = None) -> Thresholds:
     for candidate in candidates:
         if candidate and Path(candidate).exists():
             raw = tomllib.loads(Path(candidate).read_text(encoding="utf-8"))
+            raw = raw.get("twig_audit", raw)  # sections sit under [twig_audit]
             return Thresholds(
                 conifers=frozenset(raw.get("habits", {}).get("conifer", ())),
                 conifer=dict(raw.get("conifer", {})),
