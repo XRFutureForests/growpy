@@ -53,6 +53,8 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-pve-export` | Trigger the Export of PVE graphs in the running editor (posted Ctrl+E + UI Automation; works with the workstation locked) |
 | `growpy-pve-gallery` | Lay the exported PVE trees out in gallery levels (one per species: stand radius x stage) to judge the catalog by eye; skips meshes over the 32,767-bone cap; `--shots` photographs each stand row |
 | `growpy-twig-audit` | Offline audit of where the PVE plan places foliage, per catalog cell, against `config/twig_audit.toml` (upturned shoots, leader foliage, top-band density); needs no editor |
+| `growpy-structure-descriptors` | Branching-structure descriptors of growth JSONs in the hub's schema frames (whorls per node, tier spacing, chord angle to half length, straightness, crown profile, regularity indices); `--compare A B` for side-by-side cells |
+| `growpy-qsm-to-growth` | Convert a TreeQSM point graph (GraphML, e.g. BioDiv-3DTrees) to the growth-JSON layout so a real tree goes through the same descriptor code as a generated one |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |
