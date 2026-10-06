@@ -91,7 +91,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 No entries were written during this period; this block summarises it by theme. Commit
 subjects on `dev` carry the detail; the measurements are in the XR Future Forests Lab
-knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
+knowledge hub (`90-DEEP-DIVES/04-LOGIC-TIER/growpy-surround-density-calibration`,
 `growpy-crown-density-ratchet`) and on Linear XRFF-320 / XRFF-356 / XRFF-390.
 
 #### Changed — the dataset matrix

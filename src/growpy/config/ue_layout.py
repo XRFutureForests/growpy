@@ -1,7 +1,7 @@
 """Where growpy's output lives inside an Unreal project.
 
 The project-wide content layout agreed on 2026-09-24 (knowledge hub,
-``02-SYSTEM-ARCHITECTURE/unreal-collaboration-boundaries`` §9.3). Everything
+``90-DEEP-DIVES/02-SYSTEM-ARCHITECTURE/unreal-collaboration-boundaries`` §9.3). Everything
 growpy imports is regenerable and lands under ``TREES_ROOT``, which a dataset
 run may wipe and re-import. The schema those imports depend on lives outside
 it, under ``SCHEMA_ROOT``: UE's Python API cannot create a UserDefinedStruct,

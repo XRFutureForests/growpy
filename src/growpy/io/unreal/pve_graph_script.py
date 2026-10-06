@@ -14,7 +14,7 @@ module wires into every generated graph is deprecated in UE 5.8 and
 the old ``hasattr`` guard does not catch it. The generated script now
 aborts with a clear error on UE >= 5.8 instead of silently building
 non-functional graphs. See XRFF-250 and
-docs/05-PRESENTATION-TIER/pve-node-reference.md for the retargeting
+docs/90-DEEP-DIVES/05-PRESENTATION-TIER/pve-node-reference.md for the retargeting
 options (Growth Data JSON Importer / Grower Presets).
 
 Creates one ProceduralVegetation graph per species+scene directory. Each
