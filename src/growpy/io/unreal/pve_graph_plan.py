@@ -321,6 +321,73 @@ def bark_aspect_y_scale(texture: Path | str) -> float | None:
     return width / height
 
 
+def bark_wraps_by_generation(
+    growth_json: Path | str, texture_repeat: int = 3
+) -> tuple[int, ...]:
+    """Bark repeats around the girth per branch generation, trunk first.
+
+    Grove wraps the bark ``texture_repeat`` times around the trunk and fewer
+    times around a thinner branch, in proportion to the circumference of its
+    first node (measured on a Grove h20 beech and spruce: the trunk ring spans
+    exactly 3.000 U). PVE wraps it once around the LOCAL circumference, so on
+    a trunk every texel is ``texture_repeat`` times larger than Grove drew it
+    -- bark that looks zoomed and blurry. PVE's X Range (0, k) restores k
+    wraps, but it is set per generation, not per branch, so each generation
+    gets Grove's count for its median branch-base radius:
+    ``max(1, round(texture_repeat * r_generation / r_trunk_base))``.
+
+    Generations are read the way PVE reads them (``_branch_generations``) and
+    the list is trimmed after the first 1: PVE gives every later generation
+    the last setup. A skeleton that cannot be read gets ``(texture_repeat, 1)``,
+    what every tree of the 2026-10 catalog measured.
+    """
+    import statistics
+
+    from growpy.io.unreal.pve_distributor_model import (
+        _branch_generations,
+        _load,
+        _walk_order,
+    )
+
+    fallback = (texture_repeat, 1) if texture_repeat > 1 else (1,)
+    try:
+        _, branch_points, parent, number, radii, gen_of_point = _load(growth_json)
+    except (OSError, KeyError, ValueError) as exc:
+        logger.warning(
+            "%s: no skeleton for bark wraps (%s), using %s", growth_json, exc, fallback
+        )
+        return fallback
+    if not radii or not branch_points or not branch_points[0]:
+        return fallback
+    order, roots = _walk_order(parent, number)
+    generations = _branch_generations(
+        branch_points, parent, number, order, gen_of_point
+    )
+    trunk = roots[0] if roots else 0
+    trunk_radius = radii[branch_points[trunk][0]]
+    if trunk_radius <= 0.0:
+        return fallback
+    # A side branch's first point is its attach point on the parent and carries
+    # the PARENT's radius (spruce h25: 10.8 cm there, 1.4 cm one node in), so
+    # the branch's own first node is its second point.
+    base_radii: dict[int, list[float]] = {}
+    for b, pts in enumerate(branch_points):
+        if len(pts) > 1 and b != trunk:
+            base_radii.setdefault(generations[b], []).append(radii[pts[1]])
+    wraps = [texture_repeat] * max(1, generations[trunk])
+    for g in range(generations[trunk] + 1, max(generations, default=1) + 1):
+        if wraps[-1] == 1:
+            break
+        if g in base_radii:
+            ratio = statistics.median(base_radii[g]) / trunk_radius
+            k = max(1, round(texture_repeat * ratio))
+        else:
+            k = wraps[-1]
+        # A child is never wrapped more often than its parent generation.
+        wraps.append(min(k, wraps[-1]))
+    return tuple(wraps)
+
+
 def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
     """Leaf area (m2) of every palette prototype, in ``palette_meshes`` order.
 
@@ -1037,6 +1104,14 @@ def plan_pve_graphs(
             except (KeyError, ValueError, FileNotFoundError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue
+            # The chain's own skeleton: a crown-floored tree reads a copy.
+            wraps = bark_wraps_by_generation(
+                planned.chain.growth_json, species_cal.bark_texture_repeat
+            )
+            planned = dataclasses.replace(
+                planned, chain=dataclasses.replace(planned.chain, bark_wraps=wraps)
+            )
+            planned.detail["bark_wraps"] = list(wraps)
             chains.append(planned.chain)
             instances[planned.chain.mesh_name] = planned.instances
             details[planned.chain.mesh_name] = planned.detail

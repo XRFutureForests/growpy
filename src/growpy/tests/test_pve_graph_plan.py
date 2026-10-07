@@ -549,6 +549,13 @@ class TestPlanEndToEnd:
         assert bark_aspect_y_scale(tall) == pytest.approx(0.25)
         assert bark_aspect_y_scale(tmp_path / "absent.png") is None
 
+    def test_every_chain_carries_grove_bark_wraps(self, tmp_path, forest_root):
+        # 2026-10-07: the fixture's stub skeletons cannot be read, so each
+        # chain takes the fallback every real catalog tree measured.
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        wraps = {c.bark_wraps for g in plan.graphs for c in g.chains}
+        assert wraps == {(3, 1)}
+
     def test_the_measured_twig_pose_travels_with_the_densities(
         self, tmp_path, forest_root
     ):
@@ -743,3 +750,81 @@ class TestPipelineWiring:
         ).read_text(encoding="utf-8")
         assert "plan_pve_graphs" in source
         assert "unreal_generate_pve_graphs" in source
+
+
+
+def _skeleton(tmp_path, limb_radius: float, twig_radius: float = 0.005) -> Path:
+    """Trunk (r 0.20 at the base) + two gen-2 limbs + one gen-3 twig each.
+
+    Every side branch starts on its parent's point, which carries the parent's
+    radius -- the trap that made spruce limbs look half as thick as the trunk.
+    """
+    positions, radii, gens, branches = [], [], [], []
+
+    def point(x, y, r, g):
+        positions.append([x, y, 0.0])
+        radii.append([r, 0.0])
+        gens.append([g])
+        return len(positions) - 1
+
+    trunk = [point(0.0, float(i), 0.20 - 0.015 * i, 1) for i in range(10)]
+    branches.append((trunk, 0, 1))
+    for n, at in enumerate((3, 5)):
+        limb = [trunk[at]] + [
+            point(0.5 * j, at + 0.2 * j, limb_radius, 2) for j in range(1, 4)
+        ]
+        branches.append((limb, 1, 2 + n))
+        twig = [limb[2]] + [
+            point(1.0, at + 0.4 + 0.1 * j, twig_radius, 3) for j in (1, 2)
+        ]
+        branches.append((twig, 2 + n, 4 + n))
+    path = tmp_path / "Test_r08_h10m_d40cm_growth_data.json"
+    path.write_text(
+        json.dumps(
+            {
+                "points": {
+                    "positions": positions,
+                    "attributes": {
+                        "budLateralMeristem": {"values": radii},
+                        "budDevelopment": {"values": gens},
+                    },
+                },
+                "primitives": {
+                    "points": [b[0] for b in branches],
+                    "attributes": {
+                        "branchParentNumber": {"values": [b[1] for b in branches]},
+                        "branchNumber": {"values": [b[2] for b in branches]},
+                    },
+                },
+            }
+        )
+    )
+    return path
+
+
+class TestBarkWraps:
+    """Grove's ``texture_repeat`` rule ported onto PVE's per-generation X Range."""
+
+    def test_thin_branches_wrap_once_whatever_their_attach_point_says(
+        self, tmp_path
+    ):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_by_generation
+
+        # Limbs at 0.02 of a 0.20 trunk: 3 x 0.1 rounds to 0 -> 1. Read off
+        # the attach point (0.155 / 0.125) they would have come out 2.
+        assert bark_wraps_by_generation(_skeleton(tmp_path, 0.02)) == (3, 1)
+
+    def test_a_limb_near_the_trunk_size_keeps_more_wraps(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_by_generation
+
+        # 3 x 0.12 / 0.20 = 1.8 -> 2 for the limbs, the twigs fall to 1.
+        assert bark_wraps_by_generation(_skeleton(tmp_path, 0.12)) == (3, 2, 1)
+        assert bark_wraps_by_generation(_skeleton(tmp_path, 0.12), 5) == (5, 3, 1)
+
+    def test_an_unreadable_skeleton_falls_back(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_by_generation
+
+        stub = tmp_path / "stub.json"
+        stub.write_text("{}")
+        assert bark_wraps_by_generation(stub) == (3, 1)
+        assert bark_wraps_by_generation(stub, 1) == (1,)

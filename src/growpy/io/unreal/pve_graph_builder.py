@@ -609,10 +609,19 @@ class TreeChainSpec:
     wind_settings: str = DEFAULT_TREE_WIND_SETTINGS
     palette: tuple[PaletteEntry, ...] | None = None
     layers: tuple[FoliageLayer, ...] = ()
+    # Bark wraps around the girth per branch generation, trunk first (one
+    # TrunkGenerationMaterialSetup each, X Range (0, k)); generations past the
+    # end take the last entry. Empty keeps PVE's native single wrap.
+    bark_wraps: tuple[int, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
             raise ValueError("mesh_name must not be empty")
+        if any(not isinstance(k, int) or k < 1 for k in self.bark_wraps):
+            raise ValueError(
+                f"chain {self.mesh_name!r} bark_wraps must be whole numbers >= 1 "
+                f"(a fractional wrap leaves a seam), got {self.bark_wraps}"
+            )
         if not self.wind_settings:
             raise ValueError(
                 f"chain {self.mesh_name!r} names no wind_settings asset; a null "
@@ -800,6 +809,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
                 "mesh_name": c.mesh_name,
                 "wind_settings": c.wind_settings,
+                "bark_wraps": list(c.bark_wraps),
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1101,18 +1111,45 @@ def build(spec):
             unreal.PVMeshBuilderMaterialDetailSettings
         )
         material_node.set_node_position(0, row + 320)
-        setup = unreal.TrunkGenerationMaterialSetup()
-        setp(
-            setup,
-            ("derive_from_trunk_texture_setup", "b_derive_from_trunk_texture_setup"),
-            False,
-        )
-        setup.set_editor_property("material", bark)
-        if spec["bark_y_scale"] is not None:
-            setp(setup, "y_scale", float(spec["bark_y_scale"]))
+        # One setup per branch generation (Generation mode, Repeat: generation
+        # g reads setup g-1, later ones the last). All share the bark material,
+        # which the mesher merges into one section; only X Range differs. PVE
+        # multiplies V by the same range, so YScale = W/H still holds.
+        setups = []
+        for wraps in chain["bark_wraps"] or [None]:
+            setup = unreal.TrunkGenerationMaterialSetup()
+            setp(
+                setup,
+                (
+                    "derive_from_trunk_texture_setup",
+                    "b_derive_from_trunk_texture_setup",
+                ),
+                False,
+            )
+            setup.set_editor_property("material", bark)
+            if spec["bark_y_scale"] is not None:
+                setp(setup, "y_scale", float(spec["bark_y_scale"]))
+            if wraps is not None:
+                setup.import_text(
+                    "(URange=(LowerBound=(Type=Inclusive,Value=0.000000),"
+                    "UpperBound=(Type=Exclusive,Value=%f)))" % float(wraps)
+                )
+            setups.append(setup)
         material_params = material_settings.get_editor_property("params")
-        material_params.set_editor_property("material_setups", [setup])
+        material_params.set_editor_property("material_setups", setups)
         material_settings.set_editor_property("params", material_params)
+        written = material_settings.get_editor_property("params").get_editor_property(
+            "material_setups")
+        got = [
+            round(s.get_editor_property("u_range").get_editor_property(
+                "upper_bound").get_editor_property("value"), 3)
+            for s in written
+        ]
+        if got != [float(w) for w in (chain["bark_wraps"] or [1])]:
+            raise RuntimeError(
+                "%s: bark X Range read back %s, wanted %s"
+                % (chain["mesh_name"], got, chain["bark_wraps"])
+            )
 
         dist_node, dist_settings = graph.add_node_of_type(
             unreal.PVFoliageDistributorSettings

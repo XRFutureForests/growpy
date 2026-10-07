@@ -483,8 +483,19 @@ class SpeciesCalibration:
     # shed. Flat palettes only -- the gate is a Height-conditioned mask entry
     # and a graded ladder already owns the picker's conditions.
     crown_floor: dict[str, float] = field(default_factory=dict)
+    # Bark repeats around the trunk's girth: Grove's ``texture_repeat`` (its
+    # build default, 3, is what every growpy tree is built at). PVE wraps the
+    # bark ONCE around the local circumference, which on an h20 trunk showed
+    # it ~3x magnified and blurry (2026-10-07); the plan ports Grove's rule
+    # onto PVE's per-generation X Range. See ``bark_wraps_by_generation``.
+    bark_texture_repeat: int = 3
 
     def __post_init__(self) -> None:
+        if self.bark_texture_repeat < 1:
+            raise ValueError(
+                f"species {self.species!r} bark_texture_repeat must be >= 1, "
+                f"got {self.bark_texture_repeat}"
+            )
         if not 0.0 <= self.relative_start < 1.0:
             raise ValueError(
                 f"species {self.species!r} relative_start must be in [0, 1), "
@@ -859,6 +870,7 @@ def _species(
         trees=trees,
         phyllotaxy_formation=str(data.get("phyllotaxy_formation", "OCTASTICHOUS")),
         bark_y_scale=_opt_float(data.get("bark_y_scale")),
+        bark_texture_repeat=int(data.get("bark_texture_repeat", 3)),
         prototype_area_per_triangle_m2=_opt_float(
             data.get("prototype_area_per_triangle_m2")
         ),

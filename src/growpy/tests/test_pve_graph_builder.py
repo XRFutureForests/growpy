@@ -221,6 +221,40 @@ class TestTreeChainSpec:
                 wind_settings="",
             )
 
+    @pytest.mark.parametrize("wraps", [(0,), (3, 1.5)])
+    def test_bark_wraps_are_whole_numbers_of_one_or_more(self, wraps):
+        # A fractional X Range leaves a seam down the trunk.
+        with pytest.raises(ValueError, match="bark_wraps"):
+            TreeChainSpec(
+                growth_json=Path("t.json"),
+                mesh_name="SK_X",
+                distributor=DistributorSpec(branch_density=3),
+                bark_wraps=wraps,
+            )
+
+    def test_bark_wraps_become_one_material_setup_per_generation(self, tmp_path):
+        # 2026-10-07: PVE wrapped the bark once around the girth, Grove three
+        # times -- the trunk read ~3x magnified. Each wrap count is a setup
+        # with X Range (0, k), read back before the graph is saved.
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Bark",
+            distributor=DistributorSpec(branch_density=3),
+            bark_wraps=(3, 1),
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'bark_wraps': [3, 1]" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert 'for wraps in chain["bark_wraps"] or [None]:' in build
+        assert "UpperBound=(Type=Exclusive,Value=%f)" in build
+        assert "bark X Range read back" in build
+
+    def test_no_bark_wraps_keeps_the_native_single_setup(self, tmp_path):
+        path = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        assert "'bark_wraps': []" in path.read_text(encoding="utf-8")
+
 
 class TestPalette:
     def test_a_mask_needs_no_mesh_but_a_real_entry_does(self):
