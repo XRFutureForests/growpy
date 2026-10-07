@@ -19,7 +19,7 @@ def test_tree_events_use_the_descriptor_labels():
     # 4 m: 2 m against 6 m beyond -> long; 6 m: 2 / 4 -> long; 8 m: carries as much as
     # the leader above it -> fork (descriptors' _event)
     assert trunk["events"] == [0, 0, 0, 0, 2, 0, 2, 0, 3, 0]
-    assert trunk["comps"][8] == (3,)
+    assert trunk["comps"][8] == ((3, 0.0),)  # (event, position within the decile)
     # the 4 m branch carries the twig at mid-length: its own sequence has a lateral there
     limb = [s for s in ev["seqs"] if s["order"] == 1 and any(s["events"])]
     assert len(limb) == 1 and limb[0]["events"][5] > 0
@@ -27,11 +27,13 @@ def test_tree_events_use_the_descriptor_labels():
     assert len(twig) == 1 and twig[0]["len_rel"] == pytest.approx(0.25)
     assert abs(twig[0]["dphi"]) == pytest.approx(90.0, abs=1.0)
     assert ev["trunk_elev"] == pytest.approx(np.full(20, 90.0))
+    assert ev["trunk_azim"] == pytest.approx(np.zeros(20))
     first = sorted(
         (r for r in ev["laterals"] if r["order"] == 1), key=lambda r: r["zone"]
     )
     assert [r["zone"] for r in first] == [2, 3, 4]
     assert first[0]["elev"] == pytest.approx(np.zeros(20), abs=1e-6)  # horizontal
+    assert first[0]["azim"] == pytest.approx(np.zeros(20), abs=1e-6)  # straight
 
 
 def test_fit_chain_is_a_smoothed_probability_table():
@@ -44,7 +46,7 @@ def test_fit_chain_is_a_smoothed_probability_table():
     # unseen transitions keep a small, non-zero probability (the prior)
     assert 0 < m.chain[0, 4, 0, 3] < 0.1
     m.seed(1)
-    assert m.composition(0, 8, 3) == (3,)
+    assert m.composition(0, 8, 3) == ((3, 0.0),)
     assert m.lateral(1, 4, 3)["len_rel"] == pytest.approx(0.2)
 
 
@@ -94,7 +96,8 @@ def test_lpy_generation_and_turtle_agree():
     m = bm.fit(trees, trees, "test", "h10m")
     ls, s = bm.generate(m, height_m=10.0, seed=3)
     c = bm.lstring_cylinders(s)
-    assert (c["order"] == 0).sum() == bm.DECILES * bm.SUBSTEPS
+    # the trunk is grown in pieces between lateral positions: at least two per decile
+    assert (c["order"] == 0).sum() >= bm.DECILES * bm.SUBSTEPS
     assert (c["order"] >= 1).any()
     # our turtle and L-Py's interpretation put the tree in the same place
     bb = pgl.BoundingBox(ls.sceneInterpretation(s))
@@ -143,3 +146,15 @@ def test_coarsen_chains_are_intact_on_a_shuffled_axis_order():
             assert r["parent"] == -1
         else:
             assert seg.at[int(r["parent"]), "axis_id"] != r["axis_id"]
+
+
+def test_headings_follow_a_turning_branch():
+    # 1 m east, then a quarter circle turning north, rising 45 degrees at the end
+    t = np.linspace(0, np.pi / 2, 50)
+    arc = np.column_stack([1 + np.sin(t), 1 - np.cos(t), np.zeros_like(t)])
+    pts = np.vstack([[0, 0, 0], arc, arc[-1] + [0, 0.5, 0.5]])
+    elev, azim = bm.headings(pts)
+    assert elev[0] == pytest.approx(0.0, abs=1e-6)
+    assert elev[-1] == pytest.approx(45.0, abs=1.0)
+    assert azim[0] == pytest.approx(0.0) and azim[-1] == pytest.approx(90.0, abs=1.0)
+    assert np.all(np.diff(azim) >= -1e-6)  # turns one way only

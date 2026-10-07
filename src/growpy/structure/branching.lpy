@@ -1,17 +1,20 @@
 # Stochastic branching rules fitted to real trees (growpy.structure.branching_model).
 #
-# Apex(o, k, prev, L, phi, theta, elev, phase) is the growing end of an axis of order o
+# Apex(o, k, prev, L, phi, elev, azim, phase) is the growing end of an axis of order o
 # (0 trunk, 1 limb, 2 twig) that has reached decile k (0..9) of its length L. prev is the
-# event of the decile below (0 none, 1 short, 2 long, 3 fork), phi the axis azimuth, theta
-# its current elevation, elev its 20 target segment elevations (a real stem's or branch's
-# profile, drawn from the model), phase the running azimuth of the laterals around a trunk.
+# event of the decile below (0 none, 1 short, 2 long, 3 fork); phi the axis's starting
+# azimuth; elev and azim its 20-segment 3D path (a real stem's or branch's elevations and
+# azimuth changes, drawn from the model); phase the running azimuth of the laterals
+# around a trunk.
 #
 # Per derivation step every apex grows one decile:
 #   1. draw the decile's event from the fitted Markov chain, given order, decile, prev
-#   2. draw the laterals that came with such an event in a real decile (how many, what kinds)
-#   3. grow two internodes, each pitched to the next target elevation
-#   4. hang each lateral on one of them: a real lateral of that kind and zone gives its
-#      length (over the parent's), divergence and elevation profile; it starts as a new apex
+#   2. draw the laterals that came with such an event in a real decile: how many, of what
+#      kinds and where in the decile (real node clustering)
+#   3. grow the decile in pieces between those positions, each internode pointed along
+#      the axis's path (absolute SetHead per piece, so the axis bends and wanders in 3D)
+#   4. at each position hang a real lateral of that kind and zone: length (over the
+#      parent's), divergence and its own path; it starts as a new apex
 # A model object, the target height and a few constants are passed in as extern values.
 
 extern(model=None, HEIGHT=20.0, DERIVATION=32, SUBSTEPS=2, ZONES=5, MIN_LEN=0.3)
@@ -19,7 +22,30 @@ extern(head_up=None, rng=None)
 
 import math
 
-module Apex(o, k, prev, L, phi, theta, elev, phase)
+
+def child(o, k, u, c, L, here, phase):
+    """A lateral of kind c at decile k + u of an order-o axis whose local azimuth is
+    `here`: ((length, azimuth, elevations, azimuths, SetHead args), phase) or (None, phase)."""
+    zone = min(ZONES - 1, int((k + u) / 10.0 * ZONES))
+    rec = model.lateral(o + 1, zone, c)
+    if rec is None:
+        return None, phase
+    lc = float(rec["len_rel"]) * L
+    if lc < MIN_LEN:
+        return None, phase
+    d = float(rec["dphi"])
+    if not math.isfinite(d):
+        d = 137.5 if o == 0 else float(rng.choice([-60.0, 60.0]))
+    if o == 0:
+        phase = (phase + d) % 360.0
+        pc = phase
+    else:
+        pc = (here + d) % 360.0
+    ce, ca = rec["elev"], rec["azim"]
+    return (lc, pc, ce, ca, head_up(float(ce[0]), pc)), phase
+
+
+module Apex(o, k, prev, L, phi, elev, azim, phase)
 
 Axiom: Seed
 
@@ -28,50 +54,43 @@ derivation length: DERIVATION
 production:
 
 Seed:
-  elev = model.trunk()
-  e0 = float(elev[0])
+  elev, azim = model.trunk()
   phi = float(rng.uniform(0.0, 360.0))
   rise = max(0.5, float(sum(math.sin(math.radians(x)) for x in elev)) / len(elev))
   length = HEIGHT / rise
-  hx, hy, hz, ux, uy, uz = head_up(e0, phi)
   phase = float(rng.uniform(0.0, 360.0))
-  produce @R(hx, hy, hz, ux, uy, uz) Apex(0, 0, 0, length, phi, e0, elev, phase)
+  produce Apex(0, 0, 0, length, phi, elev, azim, phase)
 
-Apex(o, k, prev, L, phi, theta, elev, phase):
+Apex(o, k, prev, L, phi, elev, azim, phase):
   if k >= 10:
     produce
   e = model.step(o, k, prev)
   comp = model.composition(o, k, e)
-  ds = L / (10.0 * SUBSTEPS)
-  slots = [[] for _ in range(SUBSTEPS)]
-  for c in comp:
-    slots[int(rng.integers(SUBSTEPS))].append(c)
-  for j in range(SUBSTEPS):
-    t = float(elev[k * SUBSTEPS + j])
-    dt = t - theta
-    nproduce ^(dt) F(ds)
-    theta = t
-    where = (k + (j + 1.0) / SUBSTEPS) / 10.0
-    zone = min(ZONES - 1, int(where * ZONES))
-    for c in slots[j]:
-      rec = model.lateral(o + 1, zone, c)
-      if rec is None:
-        continue
-      lc = float(rec["len_rel"]) * L
-      if lc < MIN_LEN:
-        continue
-      d = float(rec["dphi"])
-      if not math.isfinite(d):
-        d = 137.5 if o == 0 else float(rng.choice([-60.0, 60.0]))
-      if o == 0:
-        phase = (phase + d) % 360.0
-        pc = phase
-      else:
-        pc = (phi + d) % 360.0
-      ce = rec["elev"]
-      c0 = float(ce[0])
-      hx, hy, hz, ux, uy, uz = head_up(c0, pc)
-      nproduce [ @R(hx, hy, hz, ux, uy, uz) Apex(o + 1, 0, 0, lc, pc, c0, ce, 0.0) ]
-  produce Apex(o, k + 1, e, L, phi, theta, elev, phase)
+  cuts = sorted(set([0.5] + [u for _, u in comp if 0.0 < u < 1.0]))
+  bounds = [0.0] + cuts + [1.0]
+  here = (phi + float(azim[k * SUBSTEPS])) % 360.0
+  for c, u in comp:
+    if u <= 0.0:
+      ch, phase = child(o, k, u, c, L, here, phase)
+      if ch is not None:
+        lc, pc, ce, ca, hd = ch
+        hx, hy, hz, ux, uy, uz = hd
+        nproduce [ @R(hx, hy, hz, ux, uy, uz) Apex(o + 1, 0, 0, lc, pc, ce, ca, 0.0) ]
+  for i in range(len(bounds) - 1):
+    a = bounds[i]
+    b = bounds[i + 1]
+    j = k * SUBSTEPS + min(SUBSTEPS - 1, int((a + b) / 2.0 * SUBSTEPS))
+    here = (phi + float(azim[j])) % 360.0
+    hx, hy, hz, ux, uy, uz = head_up(float(elev[j]), here)
+    piece = (b - a) * L / 10.0
+    nproduce @R(hx, hy, hz, ux, uy, uz) F(piece)
+    for c, u in comp:
+      if u == b:
+        ch, phase = child(o, k, u, c, L, here, phase)
+        if ch is not None:
+          lc, pc, ce, ca, hd = ch
+          hx, hy, hz, ux, uy, uz = hd
+          nproduce [ @R(hx, hy, hz, ux, uy, uz) Apex(o + 1, 0, 0, lc, pc, ce, ca, 0.0) ]
+  produce Apex(o, k + 1, e, L, phi, elev, azim, phase)
 
 endlsystem

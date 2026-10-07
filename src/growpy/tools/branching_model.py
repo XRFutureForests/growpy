@@ -13,6 +13,8 @@ height class with at least ``--min-trees`` trees this writes, under ``--out-dir`
   tiles/<Species>_<hNNm>_model<NN>_front.png   samples in the catalog icon style
   generated_descriptors.csv        descriptors of every generated sample
   validation.csv                   per descriptor: real median, model and Grove robust z
+                                   (real = the held-out half unless --in-sample)
+  split.csv                        which trees fitted, which validated
   <Species>_model_sheet.png        catalog | real medoid | prototype | model samples
 Runs in the ``growpy-openalea`` env (openalea.mtg, openalea.lpy). Radii of generated trees
 are pipe-model radii from the yield-table DBH, so radius descriptors are not validated.
@@ -40,6 +42,7 @@ NOT_VALIDATED = (
     "L4.radius_ratio_middle",
     "L4.radius_ratio_bottom",
     "G.pipe_exponent_p50",
+    "G.area_ratio_p50",  # area ratio at forks: ~1 by construction under pipe radii
     "T.axis_radius_ratio_2_1",
 )
 
@@ -114,16 +117,36 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--prototypes-dir", type=Path)
     ap.add_argument("--catalog", type=Path, default=Path("data/output/forest"))
     ap.add_argument("--catalog-radius", default="r07")
+    ap.add_argument(
+        "--in-sample",
+        action="store_true",
+        help="fit and validate on all trees (default: fit on a random half of each "
+        "height class, validate against the other half)",
+    )
+    ap.add_argument("--split-seed", type=int, default=0)
     args = ap.parse_args(argv)
     out = args.out_dir
     out.mkdir(parents=True, exist_ok=True)
     title = pt.species_title(args.species)
 
     index = pd.read_csv(args.mtg_dir / "index.csv")
-    index = index[index["species_key"] == args.species].drop_duplicates("tree_uid")
+    index = (
+        index[index["species_key"] == args.species]
+        .drop_duplicates("tree_uid")
+        .reset_index(drop=True)
+    )
     print(f"{len(index)} {args.species} trees", flush=True)
-    events = _events(args.mtg_dir, index, out / f"events_{args.species}.pkl")
-    species = [events[u] for u in index["tree_uid"]]
+    events = _events(args.mtg_dir, index, out / f"events_{args.species}_v2.pkl")
+    # held out by default: half of every height class fits, the other half validates
+    rng = np.random.default_rng(args.split_seed)
+    index["set"] = "train"
+    if not args.in_sample:
+        for _, cell in index.groupby("height_class"):
+            test = rng.permutation(cell.index.to_numpy())[: len(cell) // 2]
+            index.loc[test, "set"] = "test"
+    index[["tree_uid", "height_class", "set"]].to_csv(out / "split.csv", index=False)
+    train = index[index["set"] == "train"]
+    species = [events[u] for u in train["tree_uid"]]
 
     desc = pd.read_csv(args.descriptors, low_memory=False)
     desc = desc[desc["species_key"] == args.species].copy()
@@ -134,7 +157,9 @@ def main(argv: list[str] | None = None) -> int:
     for hc, cell in index.groupby("height_class"):
         if len(cell) < args.min_trees:
             continue
-        model = bm.fit([events[u] for u in cell["tree_uid"]], species, args.species, hc)
+        fit_on = cell[cell["set"] == "train"]["tree_uid"]
+        check = cell[cell["set"] == ("train" if args.in_sample else "test")]["tree_uid"]
+        model = bm.fit([events[u] for u in fit_on], species, args.species, hc)
         model.save(out / "models" / f"{title}_{hc}.pkl")
         model.chain_table().to_csv(
             out / "models" / f"{title}_{hc}_chain.csv", index=False
@@ -160,9 +185,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
         sheet[hc] = (tiles, len(cell), height)
         gen = pd.DataFrame([r for r in gen_rows if r["height_class"] == hc])
-        real = desc[
-            (desc["source_kind"] == "scan") & desc["tree_uid"].isin(cell["tree_uid"])
-        ]
+        real = desc[(desc["source_kind"] == "scan") & desc["tree_uid"].isin(check)]
         grove = desc[(desc["source_kind"] == "generated") & (desc["snap"] == hc)]
         for k in keys:
             val_rows.append(

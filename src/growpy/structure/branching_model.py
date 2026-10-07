@@ -18,12 +18,12 @@ empirical, nonparametric distribution, which keeps the correlations between a la
 length, direction and shape):
 
 ``compositions``  the laterals a decile actually carried, keyed by (order, decile, event):
-                  how many and of which kinds came with its strongest event
+                  how many, of which kinds and where in the decile, with its strongest event
 ``laterals``      real laterals keyed by (order, zone along the parent, event): length over
                   the parent's length, horizontal divergence (from the previous sibling
-                  on the trunk, from the parent's heading on a limb) and the elevation
-                  profile along the branch (20 angles)
-``trunks``        real stems' elevation profiles (their lean and bend)
+                  on the trunk, from the parent's heading on a limb) and the 3D path
+                  along the branch (20 elevations and azimuths)
+``trunks``        real stems' 3D paths (their lean, bend and wander)
 
 Pools fall back from the height class to the species, then to all zones / deciles, when a
 key has fewer than ``MIN_POOL`` examples.
@@ -79,6 +79,16 @@ def elevations(points: np.ndarray) -> np.ndarray:
     return np.degrees(np.arctan2(d[:, 2], np.hypot(d[:, 0], d[:, 1])))
 
 
+def headings(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Elevation (degrees above horizontal) and azimuth (degrees, unwrapped, relative to
+    the first segment) of the ``N_POINTS - 1`` equal-arc segments of a polyline: the
+    branch's full 3D path, which the rule set replays segment by segment."""
+    d = np.diff(_resample(points), axis=0)
+    elev = np.degrees(np.arctan2(d[:, 2], np.hypot(d[:, 0], d[:, 1])))
+    az = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+    return elev, np.degrees(az - az[0])
+
+
 def _heading(points: np.ndarray, at: float = 0.0, span: float = 0.3) -> np.ndarray:
     """Direction over ``span`` (share of the arc) starting at arc share ``at``."""
     arc = _arc(points)
@@ -97,8 +107,9 @@ def _signed_deg(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def tree_events(work: pd.DataFrame) -> dict:
-    """Sequences, lateral records and the stem's elevation profile of one tree (a pruned
-    working frame, e.g. ``mtg_io.from_mtg``)."""
+    """Sequences, lateral records and the stem's heading profile of one tree (a pruned
+    working frame, e.g. ``mtg_io.from_mtg``). A decile's composition lists its laterals as
+    (event, position within the decile) pairs, so real node clustering survives."""
     tree = _model(work)
     laterals = [b for b in _laterals(tree) if b.length >= MIN_LATERAL_M]
     kids: dict[int, list] = defaultdict(list)
@@ -112,14 +123,14 @@ def tree_events(work: pd.DataFrame) -> dict:
             continue
         parent_pts = _polyline(tree, rows)
         events = [0] * DECILES
-        comps: list[list[int]] = [[] for _ in range(DECILES)]
+        comps: list[list[tuple]] = [[] for _ in range(DECILES)]
         previous_azimuth = None
         for b in sorted(kids[a], key=lambda b: b.attach_arc):
             r = min(max(b.attach_arc / b.parent_len, 0.0), 0.999)
             d = int(r * DECILES)
             e = _event(tree, b)
             events[d] = max(events[d], e)
-            comps[d].append(e)
+            comps[d].append((e, round(r * DECILES - d, 3)))
             head = _heading(b.points)
             if order == 0:  # around the trunk: divergence from the previous sibling
                 az = (
@@ -136,6 +147,7 @@ def tree_events(work: pd.DataFrame) -> dict:
                     previous_azimuth = az
             else:  # on a limb: relative to the limb's heading where it leaves
                 dphi = _signed_deg(_heading(parent_pts, max(0.0, r - 0.05), 0.1), head)
+            elev, azim = headings(b.points)
             records.append(
                 {
                     "order": order + 1,
@@ -143,21 +155,24 @@ def tree_events(work: pd.DataFrame) -> dict:
                     "event": e,
                     "len_rel": b.length / b.parent_len,
                     "dphi": dphi,
-                    "elev": elevations(b.points),
+                    "elev": elev,
+                    "azim": azim,
                 }
             )
         seqs.append(
             {
                 "order": order,
                 "events": events,
-                "comps": [tuple(sorted(c, reverse=True)) for c in comps],
+                "comps": [tuple(sorted(c, key=lambda x: x[1])) for c in comps],
             }
         )
+    trunk_elev, trunk_azim = headings(_polyline(tree, tree.axes[0]))
     return {
         "height_m": float(tree.end[:, 2].max()),
         "seqs": seqs,
         "laterals": records,
-        "trunk_elev": elevations(_polyline(tree, tree.axes[0])),
+        "trunk_elev": trunk_elev,
+        "trunk_azim": trunk_azim,
     }
 
 
@@ -186,7 +201,8 @@ def _pools(trees: list[dict]) -> tuple[dict, dict, list]:
                     comps[(s["order"], k, e)].append(comp)
         for r in t["laterals"]:
             lats[(r["order"], r["zone"], r["event"])].append(r)
-    return dict(comps), dict(lats), [t["trunk_elev"] for t in trees]
+    trunks = [(t["trunk_elev"], t["trunk_azim"]) for t in trees]
+    return dict(comps), dict(lats), trunks
 
 
 @dataclass
@@ -234,7 +250,7 @@ class BranchingModel:
                 near,
             ]
         )
-        return comp if comp is not None else (e,)
+        return comp if comp is not None else ((e, 0.5),)
 
     def lateral(self, order: int, zone: int, e: int) -> dict | None:
         near = [
@@ -248,7 +264,8 @@ class BranchingModel:
             ]
         )
 
-    def trunk(self) -> np.ndarray:
+    def trunk(self) -> tuple[np.ndarray, np.ndarray]:
+        """A real stem's (elevations, azimuths) profile."""
         return self.trunks[self.rng.integers(len(self.trunks))]
 
     def save(self, path: Path) -> Path:
