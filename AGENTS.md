@@ -30,6 +30,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/config/` | TOML config, species overrides |
 | `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
 | `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area + export click, preflight, twig ladder, texture packing, diagnostics |
+| `src/growpy/structure/` | Real-tree QSM standardisation: canonical cylinder/tree schema, single axis rule, per-format readers, per-dataset adapters, store (no Grove or bpy import) |
 | `src/growpy/blender/` | grove_extract, twig_converter |
 
 ## CLI Scripts
@@ -55,6 +56,9 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-twig-audit` | Offline audit of where the PVE plan places foliage, per catalog cell, against `config/twig_audit.toml` (upturned shoots, leader foliage, top-band density); needs no editor |
 | `growpy-structure-descriptors` | Branching-structure descriptors of growth JSONs in the hub's schema frames (whorls per node, tier spacing, chord angle to half length, straightness, crown profile, regularity indices); `--compare A B` for side-by-side cells |
 | `growpy-qsm-to-growth` | Convert a TreeQSM point graph (GraphML, e.g. BioDiv-3DTrees) to the growth-JSON layout so a real tree goes through the same descriptor code as a generated one |
+| `growpy-qsm-standardize` | Convert a published QSM dataset (Kew, Belgium, Ghent, TreeML, BioDiv graphs) to the canonical cylinder + tree tables of `growpy.structure`: one frame, one axis rule, DBH/height/volume measured the same way, source metadata and quality numbers side by side |
+| `growpy-qsm-export-growth` | Write growth JSONs from a standardised QSM dataset so real trees go through the same tools as Grove trees (descriptors, PVE exporter) |
+| `growpy-qsm-descriptors` | Structure descriptors on standardised trees after a common-resolution prune: geometry (L), size-free growth-rule fingerprint (G) and topology (T), with definitions (unit, frame, scan robustness) and a summary by source kind × species × height class |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |

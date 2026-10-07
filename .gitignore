@@ -18,6 +18,11 @@
 /data/input/custom_twigs/*
 !/data/input/custom_twigs/.gitkeep
 
+# Real-tree QSM reference datasets (multi-GB downloads from Zenodo, figshare,
+# GRO.data). Only the README with sources and licences is tracked.
+/data/input/reference_qsm/*
+!/data/input/reference_qsm/README.md
+
 # Grove commercial software (requires separate license from thegrove3d.com)
 /src/the_grove_*/
 
