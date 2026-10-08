@@ -109,8 +109,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.tier and meta.get("tier") != args.tier:
                 continue
             try:
+                # the reported DBH when there is one: the field DBH of a scanned
+                # tree, the exported (yield-table) DBH of a Grove tree, whose raw
+                # radius runs ~1.2x it
+                reported = meta.get("dbh_m_reported")
                 values = describe(
-                    tree.cyl, args.min_radius, args.max_order, args.min_length
+                    tree.cyl,
+                    args.min_radius,
+                    args.max_order,
+                    args.min_length,
+                    dbh_m=float(reported)
+                    if reported is not None and pd.notna(reported)
+                    else None,
                 )
             except Exception as exc:  # noqa: BLE001 - one odd tree must not end the run
                 print(f"skip {meta['tree_uid']}: {exc}", file=sys.stderr)

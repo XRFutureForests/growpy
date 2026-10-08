@@ -16,6 +16,11 @@ descriptor-schema``):
 ``S*``  branching sequence along axes: each axis cut into ten parts, each part labelled by
         its strongest lateral (none, short, long, fork); the label shares, a first-order
         Markov chain along them, and the unbranched base and tip zones
+``F*``  branch and crown form, the traits the eye reads and the angle descriptors miss
+        (Grove preset tuning, 2026-10-07/08): dangling lower branches, branches that sag and
+        curl up ("wave"), how irregular branch lengths and whorls are (azimuth gaps, counts,
+        missing branches), holes in the crown, crown asymmetry, the branch-angle gradient
+        down the crown, the leader above the top whorl, crown diameter per DBH
 
 Before anything is measured both kinds of tree are cut to a common resolution
 (``prune``): a QSM loses small branches and Grove keeps every twig, so without it the
@@ -47,7 +52,17 @@ LEVELS = {
     "G": "growth-rule fingerprint",
     "T": "topology",
     "S": "branching sequence along axes",
+    "F": "branch and crown form",
 }
+LOWER_CROWN = (
+    0.4  # "lower crown" = the lowest 40 % of the span from lowest branch to top
+)
+HANG_DEG = 120.0  # pointing more than 30 deg below horizontal, measured from vertical
+WAVE_MIN_M = 1.0  # first-order branches shorter than this get no wave measure
+BREAST_HEIGHT_M = (
+    1.3  # same rule as standardize.measure: mean trunk diameter at 1.3 +- 0.2 m
+)
+DBH_WINDOW_M = 0.2
 SHORT_RATIO = (
     0.2  # a lateral shorter than this share of the parent beyond it is "short"
 )
@@ -402,7 +417,107 @@ DEFINITIONS: dict[str, tuple[str, str, str, str]] = {
         "no",
         "second-order axis count",
     ),
+    "F.crown_m_per_dbh_cm": (
+        "m/cm",
+        "crown diameter (L1 crown width) / DBH in cm; DBH as passed to describe(), else the "
+        "trunk at 1.3 +- 0.2 m (a Grove skeleton's raw radius runs ~1.2x the exported DBH: "
+        "pass dbh_m_reported for generated trees)",
+        "yes",
+        "crown diameter per DBH",
+    ),
+    "F.lower_hang_len_frac": (
+        "-",
+        "first-order branches >= 0.5 m attached in the lowest 40 % of the crown span: share "
+        "of their length pointing more than 30 deg below horizontal",
+        "weak",
+        "dangling lower branches",
+    ),
+    "F.lower_tips_hanging": (
+        "-",
+        "same branches: share whose last 0.3 m points more than 30 deg below horizontal",
+        "no",
+        "hanging lower tips",
+    ),
+    "F.wave_sag_rel_p50": (
+        "-",
+        "first-order branches >= 1 m: deepest point below the base-to-tip chord / branch "
+        "length (0 = no belly)",
+        "weak",
+        "branch belly, the sag of a branch that curls up again",
+    ),
+    "F.wave_rise_rel_p50": (
+        "-",
+        "same branches: highest point above the base-to-tip chord / branch length",
+        "weak",
+        "branch arching",
+    ),
+    "F.wave_tip_turn_deg_p50": (
+        "deg",
+        "same branches: angle between the first and the last 0.3 m",
+        "no",
+        "tip curl",
+    ),
+    "F.length_cv_p50": (
+        "-",
+        "coefficient of variation of first-order branch length within each tenth of the "
+        "crown height that holds >= 3 branches, median over tenths",
+        "weak",
+        "irregularity of branch lengths",
+    ),
+    "F.whorl_gap_cv_p50": (
+        "-",
+        "trunk nodes with >= 3 first-order branches: coefficient of variation of the azimuth "
+        "gaps between neighbouring branches, median over nodes (0 = evenly spaced)",
+        "weak",
+        "irregularity of branch azimuths in a whorl",
+    ),
+    "F.crown_offset_rel": (
+        "-",
+        "horizontal distance of the mean first-order tip position from the trunk / mean "
+        "tip distance from the trunk (0 = symmetric crown)",
+        "yes",
+        "crown asymmetry",
+    ),
+    "F.angle_gradient_deg": (
+        "deg",
+        "chord angle from vertical of the 5 longest first-order branches, bottom third "
+        "minus top third (> 0: steeper at the top, flatter below)",
+        "yes",
+        "branch angle gradient down the crown",
+    ),
+    "F.branches_per_node_cv": (
+        "-",
+        "coefficient of variation of the first-order branch count per trunk node "
+        "(0 = every whorl the same)",
+        "weak",
+        "irregularity of whorl counts",
+    ),
+    "F.whorl_gap_max_deg_p50": (
+        "deg",
+        "trunk nodes with >= 2 first-order branches: largest azimuth gap between "
+        "neighbouring branches, median over nodes (an even whorl of n: 360 / n)",
+        "weak",
+        "missing branches in a whorl",
+    ),
+    "F.crown_holes_share": (
+        "-",
+        "the crown span (lowest first-order branch to top) cut into 10 heights x 8 "
+        "azimuth sectors around the trunk: share of cells no first-order branch reaches",
+        "weak",
+        "holes in the crown",
+    ),
+    "F.leader_m": (
+        "m",
+        "trunk arc length above the topmost first-order attachment (the twig audit's "
+        "leader)",
+        "weak",
+        "leader length",
+    ),
+    "F.leader_rel": ("-", "F.leader_m / tree height", "weak", "relative leader length"),
 }
+CROWN_BANDS, CROWN_SECTORS = 10, 8  # F.crown_holes_share grid
+HOLE_STEP_M = 0.25  # branch polylines are sampled this finely for the hole grid
+HOLE_MIN_REACH_M = 0.1  # samples this close to the trunk have no meaningful azimuth
 
 
 def definitions_table() -> pd.DataFrame:
@@ -993,22 +1108,221 @@ def _topology(tree: _Tree) -> dict:
     return out
 
 
+def _trunk_dbh(tree: _Tree) -> float:
+    """Mean trunk diameter at 1.3 +- 0.2 m, length-weighted (standardize.measure)."""
+    rows = tree.axes[0]
+    z0 = np.minimum(tree.start[rows, 2], tree.end[rows, 2])
+    z1 = np.maximum(tree.start[rows, 2], tree.end[rows, 2])
+    lo, hi = BREAST_HEIGHT_M - DBH_WINDOW_M, BREAST_HEIGHT_M + DBH_WINDOW_M
+    overlap = (np.minimum(z1, hi) - np.maximum(z0, lo)).clip(min=0)
+    if overlap.sum() <= 0:
+        return float("nan")
+    return 2 * float(np.average(tree.radius[rows], weights=overlap))
+
+
+def _branch_wave(points: np.ndarray, length: float) -> tuple[float, float, float]:
+    """(sag, rise, tip turn) of one branch against its base-to-tip chord, own frame:
+    the vertical offset of every point from the chord at the same projection onto it."""
+    p = points - points[0]
+    chord = p[-1]
+    c2 = float(chord @ chord)
+    if c2 < 1e-12 or length <= 0:
+        return float("nan"), float("nan"), float("nan")
+    t = np.clip(p @ chord / c2, 0.0, 1.0)
+    dz = p[:, 2] - t * chord[2]
+    arc = _arc(points)
+    head = _at(points, arc, min(HEAD_M, arc[-1])) - points[0]
+    tail = points[-1] - _at(points, arc, max(0.0, arc[-1] - HEAD_M))
+    return (
+        max(0.0, -float(dz.min())) / length,
+        max(0.0, float(dz.max())) / length,
+        _between(head, tail),
+    )
+
+
+def _form(
+    tree: _Tree, laterals: list[_Lateral], geometry: dict, dbh_m: float | None
+) -> dict:
+    out: dict = {}
+    height = geometry["L1.height_m"]
+    dbh = (
+        dbh_m
+        if dbh_m is not None and np.isfinite(dbh_m) and dbh_m > 0
+        else _trunk_dbh(tree)
+    )
+    width = geometry["L1.crown_width_over_height"] * height
+    out["F.crown_m_per_dbh_cm"] = (
+        width / (100 * dbh) if np.isfinite(dbh) and dbh > 0 else float("nan")
+    )
+
+    firsts = [b for b in laterals if b.order == 1 and b.length >= MIN_BRANCH_M]
+    nan_keys = (
+        "F.lower_hang_len_frac",
+        "F.lower_tips_hanging",
+        "F.wave_sag_rel_p50",
+        "F.wave_rise_rel_p50",
+        "F.wave_tip_turn_deg_p50",
+        "F.length_cv_p50",
+        "F.whorl_gap_cv_p50",
+        "F.crown_offset_rel",
+        "F.branches_per_node_cv",
+        "F.whorl_gap_max_deg_p50",
+        "F.crown_holes_share",
+    )
+
+    # leader: trunk arc above the topmost first-order attachment, any length after prune
+    trunk_len = float(tree.length[tree.axes[0]].sum())
+    on_trunk_all = [
+        b.attach_arc for b in laterals if b.order == 1 and b.parent_axis == 0
+    ]
+    leader = trunk_len - max(on_trunk_all) if on_trunk_all else float("nan")
+    out["F.leader_m"] = leader
+    out["F.leader_rel"] = leader / height if height > 0 else float("nan")
+
+    if not firsts:
+        out.update(dict.fromkeys(nan_keys, float("nan")))
+    else:
+        # lower crown: dangling length and hanging tips
+        top = max(float(b.points[:, 2].max()) for b in firsts)
+        base = min(float(b.points[0, 2]) for b in firsts)
+        cut = base + LOWER_CROWN * (top - base)
+        hang, hanging_tips = [], []
+        for b in firsts:
+            if b.points[0, 2] > cut:
+                continue
+            seg = np.diff(b.points, axis=0)
+            seg_len = np.linalg.norm(seg, axis=1)
+            angle = np.degrees(
+                np.arccos(np.clip(seg[:, 2] / np.maximum(seg_len, 1e-12), -1, 1))
+            )
+            hang.append(
+                float(seg_len[angle > HANG_DEG].sum() / max(seg_len.sum(), 1e-12))
+            )
+            arc = _arc(b.points)
+            tail = b.points[-1] - _at(b.points, arc, max(0.0, arc[-1] - HEAD_M))
+            hanging_tips.append(1.0 if _from_vertical(tail) > HANG_DEG else 0.0)
+        out["F.lower_hang_len_frac"] = float(np.mean(hang)) if hang else float("nan")
+        out["F.lower_tips_hanging"] = (
+            float(np.mean(hanging_tips)) if hanging_tips else float("nan")
+        )
+
+        # wave: belly under the chord, arching above it, tip curl
+        waves = [
+            _branch_wave(b.points, b.length) for b in firsts if b.length >= WAVE_MIN_M
+        ]
+        out["F.wave_sag_rel_p50"] = _median([w[0] for w in waves])
+        out["F.wave_rise_rel_p50"] = _median([w[1] for w in waves])
+        out["F.wave_tip_turn_deg_p50"] = _median([w[2] for w in waves])
+
+        # irregularity: branch lengths within each tenth of the crown height
+        span = max(top - base, 1e-9)
+        tenths: dict[int, list[float]] = {}
+        for b in firsts:
+            k = min(9, int((b.points[0, 2] - base) / span * 10))
+            tenths.setdefault(k, []).append(b.length)
+        cvs = [
+            float(np.std(v) / np.mean(v))
+            for v in tenths.values()
+            if len(v) >= 3 and np.mean(v) > 0
+        ]
+        out["F.length_cv_p50"] = _median(cvs)
+
+        # irregularity: azimuth gaps inside whorls on the trunk (nodes as in L3)
+        on_trunk = sorted(
+            (b for b in firsts if b.parent_axis == 0), key=lambda b: b.attach_arc
+        )
+        nodes: list[list[_Lateral]] = []
+        for b in on_trunk:
+            if nodes and b.attach_arc - nodes[-1][-1].attach_arc <= NODE_TOL_M:
+                nodes[-1].append(b)
+            else:
+                nodes.append([b])
+        gap_cvs, gap_max = [], []
+        for node in nodes:
+            if len(node) < 2:
+                continue
+            az = []
+            for b in node:
+                arc = _arc(b.points)
+                head = _at(b.points, arc, min(HEAD_M, arc[-1])) - b.points[0]
+                az.append(math.atan2(head[1], head[0]))
+            az = np.sort(np.mod(az, 2 * math.pi))
+            gaps = np.diff(np.append(az, az[0] + 2 * math.pi))
+            gap_max.append(math.degrees(float(gaps.max())))
+            if len(node) >= 3:
+                gap_cvs.append(float(np.std(gaps) / np.mean(gaps)))
+        out["F.whorl_gap_cv_p50"] = _median(gap_cvs)
+        out["F.whorl_gap_max_deg_p50"] = _median(gap_max)
+        counts = [len(n) for n in nodes]
+        out["F.branches_per_node_cv"] = (
+            float(np.std(counts) / np.mean(counts)) if counts else float("nan")
+        )
+
+        # asymmetry: mean tip position against the trunk line at the tips' heights
+        trunk = _polyline(tree, tree.axes[0])
+        up = trunk[np.argsort(trunk[:, 2], kind="stable")]
+        tips = np.array([b.points[-1] for b in firsts])
+        rel = np.column_stack(
+            [
+                tips[:, 0] - np.interp(tips[:, 2], up[:, 2], up[:, 0]),
+                tips[:, 1] - np.interp(tips[:, 2], up[:, 2], up[:, 1]),
+            ]
+        )
+        reach = float(np.mean(np.hypot(rel[:, 0], rel[:, 1])))
+        out["F.crown_offset_rel"] = (
+            float(np.hypot(*rel.mean(axis=0))) / reach if reach > 0 else float("nan")
+        )
+
+        # holes: which (height band x azimuth sector) cells of the crown branches reach
+        occupied = np.zeros((CROWN_BANDS, CROWN_SECTORS), dtype=bool)
+        for b in firsts:
+            arc = _arc(b.points)
+            steps = np.arange(0.0, arc[-1] + 1e-9, HOLE_STEP_M)
+            pts = np.array([_at(b.points, arc, s) for s in steps])
+            dx = pts[:, 0] - np.interp(pts[:, 2], up[:, 2], up[:, 0])
+            dy = pts[:, 1] - np.interp(pts[:, 2], up[:, 2], up[:, 1])
+            far = np.hypot(dx, dy) >= HOLE_MIN_REACH_M
+            band = np.clip(
+                ((pts[:, 2] - base) / span * CROWN_BANDS).astype(int),
+                0,
+                CROWN_BANDS - 1,
+            )
+            sector = (
+                np.mod(np.arctan2(dy, dx), 2 * math.pi) / (2 * math.pi) * CROWN_SECTORS
+            ).astype(int)
+            occupied[band[far], np.clip(sector[far], 0, CROWN_SECTORS - 1)] = True
+        out["F.crown_holes_share"] = 1.0 - float(occupied.mean())
+
+    top_angle = geometry.get(f"L4.top{TOP_N}_chord_angle_deg_top", float("nan"))
+    bottom_angle = geometry.get(f"L4.top{TOP_N}_chord_angle_deg_bottom", float("nan"))
+    out["F.angle_gradient_deg"] = bottom_angle - top_angle
+    return out
+
+
 def describe(
     cyl: pd.DataFrame,
     min_radius_m: float = 0.0,
     max_order: int | None = None,
     min_length_m: float = 0.0,
+    dbh_m: float | None = None,
 ) -> dict:
     """All descriptors of one tree (exchange table in, ``DEFINITIONS`` keys out), after
-    ``prune`` cut it to the common resolution."""
+    ``prune`` cut it to the common resolution.
+
+    ``dbh_m`` is the DBH the crown is set against (``F.crown_m_per_dbh_cm``);
+    without it the trunk is measured at 1.3 m. Pass the exported (yield-table) DBH
+    for Grove trees: their raw skeleton radius runs about 1.2x it, which reads the
+    crown about 1.2x too narrow."""
     work = prune(cyl, min_radius_m, max_order, min_length_m)
     tree = _model(work)
     laterals = _laterals(tree)
+    geometry = _geometry(tree, laterals)
     out = {
-        **_geometry(tree, laterals),
+        **geometry,
         **_growth_rules(tree, laterals),
         **_topology(tree),
         **_sequences(tree, laterals),
+        **_form(tree, laterals, geometry, dbh_m),
     }
     out["n_cyl_pruned"] = float(len(work))
     return out

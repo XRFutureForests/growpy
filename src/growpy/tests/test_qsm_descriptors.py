@@ -145,6 +145,104 @@ def test_rank_matched_branches_and_crown_outline():
     assert max(outline) == pytest.approx(d["L1.crown_width_over_height"])
 
 
+def _custom(laterals):
+    """A vertical 10 m trunk (ten 1 m cylinders) plus laterals, each a list of
+    (direction, length) cylinders starting at the end of trunk cylinder ``attach``."""
+    rows = [(i - 1, (0, 0, i), (0, 0, 1), 1.0, 0.2 - 0.01 * i) for i in range(10)]
+    for attach, segments in laterals:
+        pos = np.array([0.0, 0.0, attach + 1.0])
+        parent = attach
+        for direction, length in segments:
+            d = np.asarray(direction, dtype=float)
+            d /= np.linalg.norm(d)
+            rows.append((parent, tuple(pos), tuple(d), length, 0.05))
+            parent = len(rows) - 1
+            pos = pos + d * length
+    df = pd.DataFrame(
+        {
+            "parent": [r[0] for r in rows],
+            **{
+                f"start_{c}": [float(r[1][i]) for r in rows]
+                for i, c in enumerate("xyz")
+            },
+            **{
+                f"axis_{c}": [float(r[2][i]) for r in rows] for i, c in enumerate("xyz")
+            },
+            "length": [r[3] for r in rows],
+            "radius": [r[4] for r in rows],
+        }
+    )
+    return standardize(RawQsm(df, {}), {"tree_uid": "t:custom"}).cyl
+
+
+def test_form_of_straight_horizontal_branches():
+    d = describe(_tree())
+    assert d["F.lower_hang_len_frac"] == pytest.approx(
+        0.0
+    )  # only the 4 m branch is "lower"
+    assert d["F.lower_tips_hanging"] == pytest.approx(0.0)
+    assert d["F.wave_sag_rel_p50"] == pytest.approx(0.0)
+    assert d["F.wave_rise_rel_p50"] == pytest.approx(0.0)
+    assert d["F.wave_tip_turn_deg_p50"] == pytest.approx(0.0, abs=1e-6)
+    # tips at (1, 0), (0, 1), (-1, 0) around a vertical trunk: mean (0, 1/3), reach 1
+    assert d["F.crown_offset_rel"] == pytest.approx(1 / 3)
+    assert math.isnan(d["F.length_cv_p50"])  # no crown tenth holds three branches
+    assert math.isnan(d["F.whorl_gap_cv_p50"])  # one branch per node
+    assert math.isnan(d["F.whorl_gap_max_deg_p50"])
+    assert d["F.branches_per_node_cv"] == pytest.approx(0.0)  # 1, 1, 1
+    # the topmost branch leaves the 10 m trunk at 8 m: 2 m of leader
+    assert d["F.leader_m"] == pytest.approx(2.0)
+    assert d["F.leader_rel"] == pytest.approx(0.2)
+    # crown span 4..8 m: three branches fill three of the 10 x 8 cells
+    assert d["F.crown_holes_share"] == pytest.approx(77 / 80)
+
+
+def test_crown_per_dbh_uses_the_dbh_it_is_given():
+    d = describe(_tree(), dbh_m=0.5)
+    width = d["L1.crown_width_over_height"] * d["L1.height_m"]
+    assert d["F.crown_m_per_dbh_cm"] == pytest.approx(width / 50)
+    # without one the trunk is read at 1.3 +- 0.2 m: cylinder 1 (z 1-2 m), radius 0.19
+    assert describe(_tree())["F.crown_m_per_dbh_cm"] == pytest.approx(width / 38)
+
+
+def test_a_branch_that_sags_and_curls_up():
+    # out and down 45 deg, flat, up 45 deg: 0.5 m each, a symmetric U under its chord
+    s = 0.5 / math.sqrt(2)
+    d = describe(
+        _custom([(3, [((1, 0, -1), 0.5), ((1, 0, 0), 0.5), ((1, 0, 1), 0.5)])])
+    )
+    assert d["F.wave_sag_rel_p50"] == pytest.approx(s / 1.5)
+    assert d["F.wave_rise_rel_p50"] == pytest.approx(0.0, abs=1e-9)
+    assert d["F.wave_tip_turn_deg_p50"] == pytest.approx(90.0)
+    # the first 0.5 m points 45 deg below horizontal: a third of the length hangs,
+    # the tip does not
+    assert d["F.lower_hang_len_frac"] == pytest.approx(1 / 3)
+    assert d["F.lower_tips_hanging"] == pytest.approx(0.0)
+
+
+def test_irregular_whorl_and_branch_lengths():
+    # one node at 6 m with three branches of 1-2 m at 0, 90 and 180 deg:
+    # azimuth gaps 90, 90, 180
+    d = describe(
+        _custom(
+            [(5, [((1, 0, 0), 1.0)]), (5, [((0, 1, 0), 1.5)]), (5, [((-1, 0, 0), 2.0)])]
+        )
+    )
+    gaps = np.array([90.0, 90.0, 180.0])
+    assert d["F.whorl_gap_cv_p50"] == pytest.approx(gaps.std() / gaps.mean())
+    lengths = np.array([1.0, 1.5, 2.0])
+    assert d["F.length_cv_p50"] == pytest.approx(lengths.std() / lengths.mean())
+    assert d["F.whorl_gap_max_deg_p50"] == pytest.approx(180.0)  # the missing branch
+
+
+def test_whorl_count_irregularity():
+    # a single branch at 4 m, a whorl of three at 6 m: counts 1 and 3
+    one = [(3, [((1, 0, 0), 1.0)])]
+    three = [(5, [((1, 0, 0), 1.0)]), (5, [((0, 1, 0), 1.0)]), (5, [((-1, 0, 0), 1.0)])]
+    d = describe(_custom(one + three))
+    assert d["F.branches_per_node_cv"] == pytest.approx(0.5)  # std 1 / mean 2
+
+
 def test_pipe_exponent_of_an_area_preserving_fork_is_two():
     assert _pipe_exponent(np.array([0.8, 0.6])) == pytest.approx(2.0, abs=1e-6)
     assert math.isnan(
