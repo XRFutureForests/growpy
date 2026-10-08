@@ -405,11 +405,54 @@
     "NOT changed by this: the bare leader above the top whorl (XRFF-524).",
     "Takes effect through growpy-prepare-assets (the patch is baked into the seed)."
   ],
+  "_why_spruce_qsm_tuning_2026_10_07": [
+    "OWNER DECISION 2026-10-07: norway_spruce gets add_angle 0.8, add_only_on_end 0.8 and",
+    "bend_mass 0.35 (candidate C14 of the QSM-based tuning) on top of the entries above.",
+    "Why: with the 2026-10-05 turn-up patch the preset still turned 86 % of first-order",
+    "tips upward at 20 m ('candles') and had no branches between the whorls. Real spruce",
+    "has whorl plus interwhorl laterals and lower branches near horizontal (hub",
+    "conifer-branching section 6; Kew spruce QSMs for crown outline and longest branches).",
+    "One-factor sweep (24 arms) + 14 candidates, 3 seeds each, r07, measured with",
+    "growpy.structure on undecimated growth JSONs (data/tmp/spruce_sweep_2026-10-07/):",
+    "  add_only_on_end 0.8  -> interwhorl laterals, laterals 11.9 -> 15/m of trunk",
+    "  add_angle 0.8        -> upturned tips 86 % -> 26 %, trunk stays straight; but",
+    "                          lower branches bend hard outwards-to-down (owner, UE)",
+    "  bend_mass 0.35       -> takes the dangling back half way: lower-crown branch length",
+    "                          >30 deg below horizontal 14 % -> 7 % (preset 1 %),",
+    "                          upturned tips 41 %",
+    "Result at 20 m: trunk lean 0.5 deg, crown diameter 0.172 m per cm DBH (literature",
+    "0.14-0.20), lower top-5 branches 82 deg from vertical. Rejected on the way:",
+    "bend_reaction < 0.3 and turn_to_horizon > 0.1 cut the candles too but bend the",
+    "LEADER (trunk lean 3-23 deg); add_angle 0.7 / grow_length 0.25 give narrow drooping",
+    "crowns; favor_bright 1.0 stalls growth at cycle 21. Judged by the owner in UE",
+    "(/Game/Developers/Max/TreeGallery/TreeGallery_SpruceTune: preset, C8, C11, C14):",
+    "C14 best, barely distinguishable from C11 (bend_mass 0.25). The hanging lower",
+    "branches should carry dead twigs or none -- a twig-placement question, not this one.",
+    "silver_fir shares this Grove preset but is NOT changed here (separate decision)."
+  ],
+  "_why_silver_fir_qsm_tuning_2026_10_08": [
+    "OWNER DECISION 2026-10-08: silver_fir gets add_angle 0.9 and add_only_on_end 0.6",
+    "(candidate F1 of the overnight tuning) on top of the entries above; the spruce recipe",
+    "(T = C14) is the alternative. Owner 2026-10-07: spruce and fir start from the same Grove",
+    "preset but now that reference data exists they are tuned separately.",
+    "Why F1: silver fir has no branch-level source; the hub describes it as carrying smaller,",
+    "spirally scattered branches between the whorls and stiff, flat branches that do not droop",
+    "(spruce lower branches hang). Measured at 20 m, r07, 3 seeds, undecimated growth JSONs",
+    "(data/tmp/overnight_2026-10-07/sweep/silver_fir/report.md):",
+    "  preset  upturned tips 86 %, lower-crown hanging 1 %, laterals 11.9/m, crown 0.209 m/cm DBH",
+    "  T       41 %, 7 %, 15.5/m, 0.189",
+    "  F1      50 %, 3 %, 17.4/m, 0.207 (most interwhorl branches, stiffest)",
+    "Judged in UE (TreeGallery_SilverFirTune: preset, T, F1, F2): 'F1 or T as alternative.",
+    "All rather similar though.'"
+  ],
   "norway_spruce": {
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15,
     "turn_up_in_shade": 0.0,
-    "turn_to_horizon": 0.1
+    "turn_to_horizon": 0.1,
+    "add_angle": 0.8,
+    "add_only_on_end": 0.8,
+    "bend_mass": 0.35
   },
   "scots_pine": {
     "drop_shaded": 0.15,
@@ -419,7 +462,9 @@
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15,
     "turn_up_in_shade": 0.0,
-    "turn_to_horizon": 0.1
+    "turn_to_horizon": 0.1,
+    "add_angle": 0.9,
+    "add_only_on_end": 0.6
   },
   "european_oak": {
     "drop_shaded": 0.15,
