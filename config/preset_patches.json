@@ -445,6 +445,21 @@
     "Judged in UE (TreeGallery_SilverFirTune: preset, T, F1, F2): 'F1 or T as alternative.",
     "All rather similar though.'"
   ],
+  "_why_douglas_fir_tuning_2026_10_13": [
+    "OWNER DECISION 2026-10-13: douglas_fir gets add_angle 0.8, add_only_on_end 0.8 and",
+    "bend_mass 0.7 (candidate T: the spruce recipe applied relatively to the Grand fir preset's",
+    "1.0 / 1.0 / 1.0) on top of the turn-up entries above. Chosen by eye in UE",
+    "(TreeGallery_DouglasFirTune: preset, T, D3, W3 side by side, built 2026-10-12).",
+    "Measured at 20 m, r07, 3 seeds, undecimated growth JSONs",
+    "(data/tmp/overnight_2026-10-07/sweep/douglas_fir/report.md, waves_20m.csv):",
+    "  preset  belly 0.077, tip curl 28 deg, lower/mid angle 83/86 deg, laterals 10.2/m, crown 0.181 m/cm DBH",
+    "  T       0.076, 25 deg, 79/83 deg, 11.3/m, 0.167",
+    "  W3      0.018, 12 deg, 70/72 deg, 8.3/m, 0.175 (add_angle 0.8, grow_length 0.4, add_up 0.1)",
+    "Rejected: D1-D3 (more branches per whorl, but the waviest branches), W1-W4 (straight",
+    "branches by the numbers; W3 not chosen in UE). The irregularity round on top of W3 is",
+    "dropped. Real Douglas fir (St. Clair 1994) carries 14-18 branches per node, about half",
+    "interwhorl; no Grove arm reaches that without the wave."
+  ],
   "norway_spruce": {
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15,
@@ -478,6 +493,9 @@
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15,
     "turn_up_in_shade": 0.0,
-    "turn_to_horizon": 0.1
+    "turn_to_horizon": 0.1,
+    "add_angle": 0.8,
+    "add_only_on_end": 0.8,
+    "bend_mass": 0.7
   }
 }
