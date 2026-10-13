@@ -1,7 +1,8 @@
 """Where growpy's output lives inside an Unreal project.
 
-The project-wide content layout agreed on 2026-09-24 (knowledge hub,
-``90-DEEP-DIVES/02-SYSTEM-ARCHITECTURE/unreal-collaboration-boundaries`` §9.3). Everything
+The project-wide content layout agreed on 2026-09-24 and merged with the team's
+folder proposal on 2026-10-13 (knowledge hub,
+``02-SYSTEM-ARCHITECTURE/unreal-content-structure-plan``). Everything
 growpy imports is regenerable and lands under ``TREES_ROOT``, which a dataset
 run may wipe and re-import. The schema those imports depend on lives outside
 it, under ``SCHEMA_ROOT``: UE's Python API cannot create a UserDefinedStruct,
@@ -17,11 +18,11 @@ TREES_ROOT = "/Game/Generated/Trees"
 
 # Schema, never wiped: ST_TreeCatalogEntry, DT_TreeCatalogTemplate (the empty
 # table growpy-pve-catalog duplicates) and the local MA_Foliage_Trees copy.
-SCHEMA_ROOT = "/Game/XRFF/Twin"
+SCHEMA_ROOT = "/Game/XRFF/Forest/Data"
 
 # The plot-tree spawn graph whose TreeCatalogDataTable parameter points at the
 # catalog.
-PCG_TREES_GRAPH = "/Game/XRFF/PCG/PCG_Trees"
+PCG_TREES_GRAPH = "/Game/XRFF/Forest/Trees/PCG_Trees"
 
 # QA levels growpy-pve-gallery writes. A personal sandbox: never migrated to
 # the production project, never committed.

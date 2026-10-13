@@ -14,9 +14,9 @@ project_path = "/Game/Generated/Trees"
 # UserDefinedStruct, so the struct has to exist as an asset before an import
 # run -- this is only where the script looks for it. Keep it OUT of
 # project_path: that folder gets deleted and recreated, and the schema has to
-# survive that. /Game/XRFF/Twin is the stable home for schema-only assets and
+# survive that. /Game/XRFF/Forest/Data is the stable home for schema-only assets and
 # is the default for exactly this reason (layout: growpy/config/ue_layout.py).
-db_path = "/Game/XRFF/Twin"
+db_path = "/Game/XRFF/Forest/Data"
 # Content Browser base the wind and PVE post-import scripts search for
 # assemblies. Leave unset (or empty) so it follows project_path -- assemblies
 # import to project_path, so wind data and PVE presets have to look for them

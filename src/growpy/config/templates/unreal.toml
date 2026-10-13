@@ -12,7 +12,7 @@ import_to_unreal = true
 project_path = "/Game/Generated/Trees"
 # Where ST_TreeCatalogEntry lives. Keep it out of project_path, which gets
 # deleted and recreated; the struct is schema and has to survive that.
-db_path = "/Game/XRFF/Twin"
+db_path = "/Game/XRFF/Forest/Data"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.

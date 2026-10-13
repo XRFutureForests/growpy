@@ -382,7 +382,7 @@ If you have added a loop over Grove geometry, hoist the property read out of it.
 Look for a dangling `bindJoint` token — a single one silently kills the whole assembly.
 
 **PVE materials render as shifting magenta/violet/neon**
-Either a clone got re-parented to the `/Game/XRFF/Twin` copy of `MA_Foliage_Trees`, or the
+Either a clone got re-parented to the `/Game/XRFF/Forest/Data` copy of `MA_Foliage_Trees`, or the
 textures are non-virtual. Grep the log for `expects texture`.
 
 **Season and health do not change the leaves**

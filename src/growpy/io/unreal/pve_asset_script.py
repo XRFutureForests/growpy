@@ -32,7 +32,7 @@ THREE TRAPS, ALL PAID FOR ALREADY
 * **Clone a known-good instance; never factory-create, and never parent to the**
   project's schema-folder **copy of** ``MA_Foliage_Trees``. Both have produced
   broken materials before. :class:`PVEAssetPlan` rejects a master under
-  ``SCHEMA_ROOT`` (``/Game/XRFF/Twin``) outright, and the generated script duplicates a working
+  ``SCHEMA_ROOT`` (``/Game/XRFF/Forest/Data``) outright, and the generated script duplicates a working
   sample instance rather than running the factory.
 
 * **Verify by read-back.** The script re-loads every asset it wrote and asserts

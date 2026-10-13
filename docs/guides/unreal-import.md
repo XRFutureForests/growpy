@@ -56,8 +56,8 @@ Generated scripts land in `unreal_scripts/`. Each is idempotent and VRAM-aware.
 ### Enable script generation
 
 The paths follow the project's Unreal content layout: generated trees under
-`/Game/Generated/Trees` (wiped per dataset run), schema under `/Game/XRFF/Twin`, the
-spawn graph at `/Game/XRFF/PCG/PCG_Trees`, gallery levels under
+`/Game/Generated/Trees` (wiped per dataset run), schema under `/Game/XRFF/Forest/Data`, the
+spawn graph at `/Game/XRFF/Forest/Trees/PCG_Trees`, gallery levels under
 `/Game/Developers/Max/TreeGallery`. Every default comes from
 `src/growpy/config/ue_layout.py`; `config/unreal.toml` overrides them per project.
 
@@ -66,7 +66,7 @@ spawn graph at `/Game/XRFF/PCG/PCG_Trees`, gallery levels under
 [unreal]
 import_to_unreal         = true
 project_path             = "/Game/Generated/Trees"
-db_path                  = "/Game/XRFF/Twin"   # ST_TreeCatalogEntry lives here; keep it out of project_path, which gets wiped
+db_path                  = "/Game/XRFF/Forest/Data"   # ST_TreeCatalogEntry lives here; keep it out of project_path, which gets wiped
 voxelization             = true
 generate_wind_data       = true
 generate_pve_presets     = false   # deprecated Preset-Loader route; leave false
@@ -174,7 +174,7 @@ Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assemb
 
 - **"bone count exceeds 32767"**: run Step 4 with `--skeleton-reduce 0.5 --skeleton-length 2.5`. `skeleton-reduce` is the strongest lever.
 - **Twigs missing after import**: the shared-foliage batch must run first. Check Content Browser at `{project_path}/Foliage/` (default `/Game/Generated/Trees/Foliage/`). Note the on-disk export folder is still called `Instances/`; only the UE destination is `Foliage/`.
-- **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` expects `MA_Foliage_Trees` duplicated into the project at `{db_path}/MA_Foliage_Trees` (default `/Game/XRFF/Twin/MA_Foliage_Trees`) -- beside `ST_TreeCatalogEntry`, not under a `Materials/` subfolder. Duplicate it from the ProceduralVegetationEditor plugin (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`) via `EditorAssetLibrary.duplicate_asset`, then re-run the batch.
+- **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` expects `MA_Foliage_Trees` duplicated into the project at `{db_path}/MA_Foliage_Trees` (default `/Game/XRFF/Forest/Data/MA_Foliage_Trees`) -- beside `ST_TreeCatalogEntry`, not under a `Materials/` subfolder. Duplicate it from the ProceduralVegetationEditor plugin (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`) via `EditorAssetLibrary.duplicate_asset`, then re-run the batch.
 - **DataTable missing / "ST_TreeCatalogEntry struct not found"**: `import_batch_100_datatable.py` expects the struct at `{db_path}/ST_TreeCatalogEntry`. If it exists elsewhere in the project, duplicate it to that path (or set `config.unreal_db_path` to wherever it already lives) before re-running.
 - **VRAM climbs until crash**: lower `target_residency_kb`, split per-species batches, or disable voxelization on first pass.
 - **DynamicWind attributes stripped**: re-enable USD Importer → Preserve Custom Prims. Fallback: `wind_import.py` applies JSON sidecars.

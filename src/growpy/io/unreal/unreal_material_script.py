@@ -42,7 +42,7 @@ def _build_material_script(
     """
     if parent_material_path is None:
         # Fallback only. Callers should pass the configured [unreal] db_path
-        # (the reusable-template dir, e.g. /Game/XRFF/Twin) -- see
+        # (the reusable-template dir, e.g. /Game/XRFF/Forest/Data) -- see
         # generate_unreal_import_script. This default expects the master
         # material duplicated into the project because the plugin's own content
         # path is fragile across UE versions/mount state

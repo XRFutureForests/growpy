@@ -10,7 +10,7 @@ coverage manifest ``plan_pve_graphs`` wrote, in the running editor:
 1. every expected mesh is loaded; a missing one is reported, never invented,
    and the bounds height is read back beside the stage it was grown to;
 2. ``DT_TreeCatalog`` is (re)built under the PVE content root by duplicating
-   the schema template in ``SCHEMA_ROOT`` (``/Game/XRFF/Twin``) and filling it
+   the schema template in ``SCHEMA_ROOT`` (``/Game/XRFF/Forest/Data``) and filling it
    from CSV, one row
    per exported mesh;
 3. ``PCG_Trees``' ``TreeCatalogDataTable`` graph parameter is pointed at it

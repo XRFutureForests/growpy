@@ -216,8 +216,8 @@ class TestRefusals:
     def test_the_schema_folder_master_is_refused(self):
         # Parenting to the schema-folder copy of MA_Foliage_Trees has
         # produced broken materials before.
-        with pytest.raises(ValueError, match="/Game/XRFF/Twin"):
-            _plan(master_material="/Game/XRFF/Twin/MA_Foliage_Trees")
+        with pytest.raises(ValueError, match="/Game/XRFF/Forest/Data"):
+            _plan(master_material="/Game/XRFF/Forest/Data/MA_Foliage_Trees")
 
     def test_factory_creation_has_no_path_without_a_clone_source(self):
         with pytest.raises(ValueError, match="known-good instance"):
