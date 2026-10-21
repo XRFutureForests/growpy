@@ -104,6 +104,15 @@ establish. They are defaults here so no caller has to rediscover them.
   is activated on the distributor, and vice versa** -- ``ConditionSpec`` and
   ``PaletteAttributes`` are two halves of one setting.
 
+* **The static twin is a second Export node on the same distributor.**
+  ``PVEGraphSpec.static_export_folder`` gives every chain an Export node with
+  ``export_mesh_type = STATIC_MESH`` writing ``SM_<name>`` (``static_twin_name``)
+  beside the skinned one. The plot keeps the skinned tree for its wind; the
+  surround forest takes the static one, because skinned instances cost CPU per
+  component and per instance (XRFFL_Dev2, 2026-10-20: a 180 k-tree skinned ring
+  added 15-35 ms game thread, its static twin about 1 ms). One distributor
+  output feeds both, so the twins cannot drift apart, and one click exports both.
+
 Each Export node needs one manual click in the editor -- the export is modal --
 but a graph with N chains yields N meshes per click, so a whole species costs a
 handful of clicks rather than one per tree.
@@ -138,6 +147,7 @@ __all__ = [
     "generate_pve_retune_script",
     "split_by_triangles",
     "write_coverage_manifest",
+    "static_twin_name",
     "DEFAULT_TREE_WIND_SETTINGS",
     "DEFAULT_SAPLING_WIND_SETTINGS",
 ]
@@ -151,6 +161,16 @@ DEFAULT_TREE_WIND_SETTINGS = (
 DEFAULT_SAPLING_WIND_SETTINGS = (
     "/ProceduralVegetationEditor/SampleAssets/WindSettings/DefaultSaplingWindSettings"
 )
+
+
+def static_twin_name(mesh_name: str) -> str:
+    """The static twin's asset name: ``SK_X`` -> ``SM_X``.
+
+    The surround forest finds a plot tree's twin by this rule plus the folder
+    swap ``Catalog/`` -> ``CatalogStatic/`` (``PCG_ForestStatic`` derives the
+    path in the graph), so the two must stay in step.
+    """
+    return "SM_" + (mesh_name[3:] if mesh_name.startswith("SK_") else mesh_name)
 
 # The distributor's condition axes, as PVDistributionConditionParams spells
 # them; each pairs a bActivate<Name> flag with a <Name>=(Weight, Offset).
@@ -660,6 +680,10 @@ class PVEGraphSpec:
     # to and under in VR, so trunk AND branches collide. NONE is the engine
     # default and what every probe before this shipped.
     collision_generation: str = "ALL_GENERATIONS"
+    # Folder for every chain's static twin (``static_twin_name``): a second
+    # Export node, STATIC_MESH, on the same distributor. None exports the
+    # skinned mesh only.
+    static_export_folder: str | None = None
 
     def __post_init__(self) -> None:
         if not self.chains:
@@ -804,10 +828,12 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
         "create_nanite_foliage": graph.create_nanite_foliage,
         "nanite_shape_preservation": graph.nanite_shape_preservation,
         "collision_generation": graph.collision_generation,
+        "static_export_folder": graph.static_export_folder,
         "chains": [
             {
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
                 "mesh_name": c.mesh_name,
+                "static_mesh_name": static_twin_name(c.mesh_name),
                 "wind_settings": c.wind_settings,
                 "bark_wraps": list(c.bark_wraps),
                 "palette": _palette_payload(c.palette),
@@ -1231,6 +1257,40 @@ def build(spec):
                     % (chain["mesh_name"], prop, written.get_editor_property(prop), wanted)
                 )
 
+        # The static twin: a second Export node on the same distributor output,
+        # carrying the skinned node's Nanite and collision settings.
+        static_edges = []
+        if spec["static_export_folder"]:
+            static_node, static_settings = graph.add_node_of_type(
+                unreal.PVExportSettings
+            )
+            static_node.set_node_position(
+                1020 + 360 * len(chain["layers"]), row + 220
+            )
+            twin = static_settings.get_editor_property("export_settings")
+            folder = unreal.DirectoryPath()
+            folder.set_editor_property("path", spec["static_export_folder"])
+            twin.set_editor_property("content_browser_folder", folder)
+            twin.set_editor_property("mesh_name", chain["static_mesh_name"])
+            twin.set_editor_property(
+                "export_mesh_type", unreal.PVExportMeshType.STATIC_MESH
+            )
+            for prop in (
+                "create_nanite_foliage",
+                "collision_generation",
+                "nanite_shape_preservation",
+            ):
+                twin.set_editor_property(prop, written.get_editor_property(prop))
+            static_settings.set_editor_property("export_settings", twin)
+            got = static_settings.get_editor_property(
+                "export_settings").get_editor_property("export_mesh_type")
+            if got != unreal.PVExportMeshType.STATIC_MESH:
+                raise RuntimeError(
+                    "%s: export_mesh_type read back as %s, wanted STATIC_MESH"
+                    % (chain["static_mesh_name"], got)
+                )
+            static_edges.append((last_node, "Out", static_node, "In"))
+
         for src, src_pin, dst, dst_pin in (
             (import_node, "Out", mesh_node, "In"),
             (profile_node, profile_pin, mesh_node, "Profile"),
@@ -1240,6 +1300,7 @@ def build(spec):
             (chain_palette, "Out", dist_node, "Foliage"),
             *layer_edges,
             (last_node, "Out", export_node, "In"),
+            *static_edges,
         ):
             graph.add_edge(src, src_pin, dst, dst_pin)
 
@@ -1252,7 +1313,7 @@ def build(spec):
                 pass
     expected = 7 * len(spec["chains"]) + 2 * sum(
         len(c["layers"]) for c in spec["chains"]
-    )
+    ) + (len(spec["chains"]) if spec["static_export_folder"] else 0)
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(
@@ -1538,10 +1599,21 @@ def write_coverage_manifest(
                 "palette_meshes": list(g.palette_meshes),
                 "nanite_shape_preservation": g.nanite_shape_preservation,
                 "collision_generation": g.collision_generation,
+                "static_export_folder": g.static_export_folder,
                 "meshes": [
                     {
                         "mesh_name": c.mesh_name,
                         "asset": f"{g.export_folder}/{c.mesh_name}",
+                        **(
+                            {
+                                "static_asset": (
+                                    f"{g.static_export_folder}/"
+                                    f"{static_twin_name(c.mesh_name)}"
+                                )
+                            }
+                            if g.static_export_folder
+                            else {}
+                        ),
                         "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
                         "branch_density": c.distributor.branch_density,
                         "relative_start": c.distributor.relative_start,

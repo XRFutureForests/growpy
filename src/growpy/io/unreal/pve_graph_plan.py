@@ -943,6 +943,7 @@ def plan_pve_graphs(
     species: Sequence[str] | None = None,
     max_assembly_instances: int = 60_000,
     tree_triangle_cap: float = 400e6,
+    static_twins: bool = False,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
 
@@ -988,6 +989,10 @@ def plan_pve_graphs(
             an ash r16_h25m solved to 806 M on 2026-09-15, which no click
             should carry. Divided by the species' mean triangles per instance
             it is the other bound on ``max_instances``.
+        static_twins: Also export every tree as a static Nanite mesh,
+            ``SM_<name>`` under ``<content_root>/CatalogStatic/<species>``, for
+            the surround forest (owner, 2026-10-21). Roughly doubles the export
+            time; oak static builds ran 16-18 min each.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
@@ -1166,6 +1171,11 @@ def plan_pve_graphs(
                     profile_pin=calibration.profile_pin,
                     nanite_shape_preservation=nanite_shape_preservation,
                     collision_generation=collision_generation,
+                    static_export_folder=(
+                        f"{content_root}/CatalogStatic/{species}"
+                        if static_twins
+                        else None
+                    ),
                 )
             )
 

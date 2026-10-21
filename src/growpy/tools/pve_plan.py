@@ -101,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         calibration_path=args.calibration,
         species=args.species or None,
         max_assembly_instances=args.max_instances,
+        static_twins=config.unreal_pve_static_twins,
     )
     if plan.script is None:
         logger.error(

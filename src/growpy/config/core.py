@@ -259,6 +259,11 @@ class GrowPyConfig:
             "internal tuning, no CLI need identified: it is a property of the "
             "machine's export headroom, not of a run"
         ),
+        "unreal_pve_static_twins": (
+            "project-level choice, config-only: whether the catalog carries a "
+            "static twin per tree is what the UE project's surround forest "
+            "expects, not a per-run flag"
+        ),
         "unreal_editor_exe": "environment-level path, config-only by design",
         "unreal_uproject": "environment-level path, config-only by design",
         "helios_simplification_enabled": "internal toggle, no CLI need identified",
@@ -628,6 +633,10 @@ class GrowPyConfig:
     # autosave crash on a ~378 M-triangle beech click destroyed nine meshes
     # that had all already exported and logged.
     unreal_pve_triangle_cap: float = 120e6
+    # Also export each tree as a static Nanite mesh (SM_<name> under
+    # <pve_content_root>/CatalogStatic/<species>) for the surround forest,
+    # where skinned instances cost CPU per component and per instance.
+    unreal_pve_static_twins: bool = False
     # Content Browser base for the wind/PVE post-import scripts. Empty means
     # "follow unreal_project_path", which is what you want: assemblies import to
     # project_path, so wind data and PVE presets have to look for them there.
@@ -1013,6 +1022,8 @@ class GrowPyConfig:
                     f"[unreal] pve_triangle_cap must be positive, got {cap}"
                 )
             kwargs["unreal_pve_triangle_cap"] = cap
+        if "pve_static_twins" in unreal:
+            kwargs["unreal_pve_static_twins"] = bool(unreal["pve_static_twins"])
         watchdog = unreal.get("watchdog", {})
         if "editor_exe" in watchdog:
             kwargs["unreal_editor_exe"] = str(watchdog["editor_exe"])

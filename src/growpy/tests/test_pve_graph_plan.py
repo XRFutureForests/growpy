@@ -10,6 +10,7 @@ exporting a tree that carries the wrong leaf area.
 from __future__ import annotations
 
 import ast
+import dataclasses
 import json
 import re
 from pathlib import Path
@@ -415,6 +416,15 @@ class TestCoverageManifest:
         path = write_coverage_manifest(tmp_path, [self._graph()])
         data = json.loads(path.read_text())
         assert data["graphs"][0]["meshes"][0]["asset"] == "/Game/Exported/SK_one"
+        assert "static_asset" not in data["graphs"][0]["meshes"][0]
+
+    def test_it_records_the_static_twin_when_there_is_one(self, tmp_path):
+        graph = dataclasses.replace(self._graph(), static_export_folder="/Game/Static")
+        data = json.loads(write_coverage_manifest(tmp_path, [graph]).read_text())
+        assert data["graphs"][0]["static_export_folder"] == "/Game/Static"
+        assert data["graphs"][0]["meshes"][1]["static_asset"] == "/Game/Static/SM_two"
+        # The count stays the skinned meshes: the catalog rows are written from it.
+        assert data["expected_mesh_count"] == 2
 
 
 class TestRetuneScript:
@@ -707,6 +717,21 @@ class TestPlanEndToEnd:
         data = json.loads(plan.manifest.read_text())
         assert data["expected_mesh_count"] == plan.chain_count
 
+    def test_static_twins_land_per_species_beside_the_catalog(
+        self, tmp_path, forest_root
+    ):
+        root = "/Game/PVE_Test"
+        off = plan_pve_graphs(tmp_path / "off", forest_root, content_root=root)
+        assert all(g.static_export_folder is None for g in off.graphs)
+        on = plan_pve_graphs(
+            tmp_path / "on", forest_root, content_root=root, static_twins=True
+        )
+        assert on.graphs
+        for graph in on.graphs:
+            species = graph.export_folder.rsplit("/", 1)[1]
+            assert graph.export_folder == f"{root}/Catalog/{species}"
+            assert graph.static_export_folder == f"{root}/CatalogStatic/{species}"
+
 
 class TestPipelineWiring:
     def test_the_new_route_is_off_by_default(self):
@@ -734,6 +759,15 @@ class TestPipelineWiring:
         config = GrowPyConfig.from_toml(toml, set_as_global=False)
         assert config.unreal_generate_pve_graphs is True
         assert config.unreal_pve_triangle_cap == 2.5e8
+        assert config.unreal_pve_static_twins is False
+
+    def test_static_twins_read_from_toml(self, tmp_path):
+        from growpy.config.core import GrowPyConfig
+
+        toml = tmp_path / "growpy.toml"
+        toml.write_bytes(b"[unreal]\npve_static_twins = true\n")
+        config = GrowPyConfig.from_toml(toml, set_as_global=False)
+        assert config.unreal_pve_static_twins is True
 
     def test_a_nonpositive_cap_is_refused(self, tmp_path):
         from growpy.config.core import GrowPyConfig

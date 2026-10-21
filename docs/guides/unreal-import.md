@@ -71,6 +71,7 @@ voxelization             = true
 generate_wind_data       = true
 generate_pve_presets     = false   # deprecated Preset-Loader route; leave false
 generate_pve_graphs      = false   # the live PVE route (growth JSON → authored graphs); XRFF-452 decides the default
+pve_static_twins         = false   # also export SM_<name> to <pve_content_root>/CatalogStatic/<species> (surround forest)
 pve_import_base          = ""                  # empty = follow project_path
 
 [unreal.nanite]

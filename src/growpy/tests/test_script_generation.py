@@ -29,6 +29,7 @@ class _FakeConfig:
         self.unreal_generate_pve_graphs = False
         self.unreal_pve_content_root = "/Game/PVE"
         self.unreal_pve_triangle_cap = 120e6
+        self.unreal_pve_static_twins = False
         self.__dict__.update(overrides)
 
 
@@ -152,12 +153,14 @@ class TestGenerateUnrealScripts:
                 unreal_generate_pve_graphs=True,
                 unreal_pve_content_root="/Game/PVE_Test",
                 unreal_pve_triangle_cap=2.0e8,
+                unreal_pve_static_twins=True,
             ),
             include_static=False,
         )
         assert len(planned) == 1
         assert planned[0]["content_root"] == "/Game/PVE_Test"
         assert planned[0]["triangle_cap"] == 2.0e8
+        assert planned[0]["static_twins"] is True
         assert planned[0]["graph_folder"] == "/Game/PVE_Test/Graphs"
         assert "pve_graph_script" not in calls
 

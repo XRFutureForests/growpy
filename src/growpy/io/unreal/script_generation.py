@@ -118,6 +118,7 @@ def generate_unreal_scripts(
             content_root=config.unreal_pve_content_root,
             graph_folder=f"{config.unreal_pve_content_root}/Graphs",
             triangle_cap=config.unreal_pve_triangle_cap,
+            static_twins=config.unreal_pve_static_twins,
         )
         if plan.script is None:
             logger.warning(

@@ -5,6 +5,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-21 — static twins for the surround forest
+
+#### Added
+
+- **`[unreal] pve_static_twins`** (on in `config/unreal.toml`). Every PVE chain gets a second
+  Export node on the same distributor, `export_mesh_type = STATIC_MESH`, writing `SM_<name>`
+  (`static_twin_name`: `SK_` → `SM_`) to `<pve_content_root>/CatalogStatic/<species>`. One
+  click exports both meshes, and the two cannot drift apart. The plot trees stay skinned for
+  wind. The UE surround forest spawns the static twins, because skinned instances cost CPU per
+  component and per instance: in XRFFL_Dev2 a 180 k-tree skinned ring added 15–35 ms game
+  thread and its static twin about 1 ms. The coverage manifest records each twin as
+  `static_asset`; `expected_mesh_count` still counts the skinned meshes. Oak static builds run
+  16–18 min each, so allow for the doubled export work.
+
 ## [0.5.0] - 2026-09-17
 
 ### 2026-09-16 — every exported asset carries a TAMF record

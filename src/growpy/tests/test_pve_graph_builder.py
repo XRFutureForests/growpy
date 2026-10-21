@@ -22,6 +22,7 @@ from growpy.io.unreal.pve_graph_builder import (
     generate_pve_graph_builder_script,
     mask_fraction_of,
     masked_palette,
+    static_twin_name,
 )
 
 
@@ -381,6 +382,39 @@ class TestFoliageLayers:
     def test_a_chain_without_layers_keeps_the_seven_edge_shape(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
         assert "'layers': []" in path.read_text(encoding="utf-8")
+
+
+class TestStaticTwin:
+    def test_the_twin_swaps_the_skinned_prefix(self):
+        # PCG_ForestStatic derives the twin's path by the same rule
+        # (Catalog/ -> CatalogStatic/, SK_ -> SM_), so it must not drift.
+        assert static_twin_name("SK_Beech_r07_h10m") == "SM_Beech_r07_h10m"
+        assert static_twin_name("Beech") == "SM_Beech"
+
+    def test_off_by_default(self, tmp_path):
+        assert _graph().static_export_folder is None
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()]).read_text(
+            encoding="utf-8"
+        )
+        assert "'static_export_folder': None" in body
+
+    def test_a_static_folder_adds_a_static_export_node_per_chain(self, tmp_path):
+        graph = _graph(
+            chains=(_chain("SK_A"), _chain("SK_B")),
+            static_export_folder="/Game/Static/beech",
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [graph])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'static_export_folder': '/Game/Static/beech'" in body
+        assert "'static_mesh_name': 'SM_A'" in body
+        assert "'static_mesh_name': 'SM_B'" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert "unreal.PVExportMeshType.STATIC_MESH" in build
+        # The twin hangs off the same distributor output as the skinned node,
+        # and the edge check counts it.
+        assert '(last_node, "Out", static_node, "In")' in build
+        assert 'if spec["static_export_folder"] else 0' in build
 
 
 class TestGenerateScript:

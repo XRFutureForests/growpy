@@ -193,9 +193,19 @@ generate_wind_data = true
 #   A single tree over the cap cannot be split further -- a chain is one mesh --
 #   so it gets a click of its own and a warning. At 120 M, four of the shipped
 #   fifteen are individually over it.
+#
+# pve_static_twins: every chain also exports a STATIC Nanite twin, SM_<name>
+#   under <pve_content_root>/CatalogStatic/<species>, from the same distributor
+#   (one click, both meshes). The plot trees stay skinned for wind; the UE
+#   surround forest (PCG_ForestStatic) spawns the twins, because skinned
+#   instances cost CPU per component and per instance -- a 180 k-tree skinned
+#   ring added 15-35 ms game thread, the static one about 1 ms (XRFFL_Dev2,
+#   2026-10-20). Owner decision 2026-10-21. Doubles the export work; oak static
+#   builds take 16-18 min each.
 generate_pve_graphs = true
 pve_content_root = "/Game/Generated/Trees"
 pve_triangle_cap = 120e6
+pve_static_twins = true
 
 [unreal.growth_data_json]
 enabled = true
