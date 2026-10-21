@@ -331,6 +331,20 @@ class TestGeneratedScript:
         assert "TC_MASKS" in body
         assert "TC_NORMALMAP" not in body
 
+    def test_the_bark_normal_keeps_its_ambient_occlusion(self, script):
+        # The trunk function reads AO from the Normal map's B (MegaPlants' _NAH
+        # bark); BC5 drops B, so TC_NORMALMAP rendered every trunk black in shade.
+        body = script.split("def import_bark_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "TC_MASKS" in body
+        assert "TC_NORMALMAP" not in body
+
+    def test_the_leaf_colour_keeps_its_coverage_at_distance(self, script):
+        # Without coverage-scaled mips the averaged alpha stays above the 0.333
+        # clip and distant leaf cards render as opaque squares.
+        body = script.split("def import_foliage_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "do_scale_mips_for_alpha_coverage" in body
+        assert "0.3333" in body
+
     def test_a_leaf_is_repaired_in_place_not_replaced(self, script):
         # Exported trees reference the palette's leaf instances by path.
         body = script.split("def repoint_leaf_materials", 1)[1].split("\ndef ", 1)[0]

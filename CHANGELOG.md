@@ -19,6 +19,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `static_asset`; `expected_mesh_count` still counts the skinned meshes. Oak static builds run
   16–18 min each, so allow for the doubled export work.
 
+#### Fixed
+
+- **Bark normal maps import as `TC_MASKS`, not `TC_NORMALMAP`.** `MA_Foliage_Trees`' trunk
+  function reads ambient occlusion from the Normal map's B channel (MegaPlants ships its bark as
+  `_NAH`: normal, AO, height). BC5 normal-map compression keeps only R/G, so B read 0, the bark
+  received no indirect light and every shaded trunk rendered black. Both import paths
+  (`unreal_texture_script`, `pve_asset_script.import_bark_texture`) now use Masks; the Grove
+  normal's B (the normal's Z, mean 0.96–0.99) acts as near-neutral AO. Existing projects: re-run
+  the PVE asset step, which re-applies the setting and then recompiles each bark instance. A
+  compression change alone is not enough: until the instance is recompiled
+  (`update_material_instance`), its trunks render the grey placeholder checker.
+- **Leaf colour maps keep their coverage in every mip.** The packed twig Base Color now imports
+  with `do_scale_mips_for_alpha_coverage` at the master's 0.333 opacity clip. Without it the
+  averaged alpha of a large leaf stayed above the clip in the lower mips, and from about 8 m
+  every leaf card rendered as an opaque square, so the canopy read as blocks. Re-running the PVE
+  asset step re-imports the maps and recompiles the foliage instances.
+
 ## [0.5.0] - 2026-09-17
 
 ### 2026-09-16 — every exported asset carries a TAMF record

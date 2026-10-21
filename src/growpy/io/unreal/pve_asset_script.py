@@ -649,8 +649,11 @@ def import_bark_texture(entry, is_normal):
         return "texture missing after import: %s" % entry["asset"]
 
     if is_normal:
+        # Masks, not normal-map compression: the trunk function reads ambient
+        # occlusion from the Normal map's B (MegaPlants ships bark as _NAH),
+        # and BC5 keeps only R/G -- B reads 0 and the bark gets no indirect light.
         tex.set_editor_property(
-            "compression_settings", unreal.TextureCompressionSettings.TC_NORMALMAP)
+            "compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
         tex.set_editor_property("srgb", False)
     if not tex.get_editor_property("virtual_texture_streaming"):
         tex.set_editor_property("virtual_texture_streaming", True)
@@ -768,6 +771,13 @@ def import_foliage_texture(entry, is_normal):
     tex.set_editor_property(
         "compression_settings", tcs.TC_MASKS if is_normal else tcs.TC_DEFAULT)
     tex.set_editor_property("srgb", not is_normal)
+    if not is_normal:
+        # Hold each mip's leaf coverage at the master's 0.333 opacity clip:
+        # averaged alpha otherwise stays above it, and from ~8 m every leaf
+        # card renders as an opaque square.
+        tex.set_editor_property(
+            "alpha_coverage_thresholds", unreal.Vector4(0.0, 0.0, 0.0, 0.3333))
+        tex.set_editor_property("do_scale_mips_for_alpha_coverage", True)
     tex.set_editor_property("virtual_texture_streaming", True)
     eal.save_asset(entry["asset"], only_if_is_dirty=False)
     if not eal.load_asset(entry["asset"]).get_editor_property(
