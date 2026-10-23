@@ -109,7 +109,7 @@ establish. They are defaults here so no caller has to rediscover them.
   ``export_mesh_type = STATIC_MESH`` writing ``SM_<name>`` (``static_twin_name``)
   beside the skinned one. The plot keeps the skinned tree for its wind; the
   surround forest takes the static one, because skinned instances cost CPU per
-  component and per instance (XRFFL_Dev2, 2026-10-20: a 180 k-tree skinned ring
+  component and per instance (XRFF_Twin, 2026-10-20: a 180 k-tree skinned ring
   added 15-35 ms game thread, its static twin about 1 ms). One distributor
   output feeds both, so the twins cannot drift apart, and one click exports both.
 

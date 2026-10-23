@@ -81,7 +81,7 @@ class TestEditorScript:
         ast.parse(text)
 
     def test_schema_root_names_the_templates(self, tmp_path):
-        """The templates follow [unreal] db_path, e.g. XRFFL_Dev2's schema folder."""
+        """The templates follow [unreal] db_path, e.g. XRFF_Twin's schema folder."""
         schema = "/Game/00_XRFF/20_DigitalTwinDatabase"
         text = _script(tmp_path, schema_root=schema)
         assert f"TEMPLATE_STRUCT = '{schema}/ST_TreeCatalogEntry'" in text

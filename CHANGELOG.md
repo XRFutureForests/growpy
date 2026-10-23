@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### 2026-10-23 — Unreal layout per project (XRFFL_Dev2)
+### 2026-10-23 — Unreal layout per project (XRFF_Twin)
 
 #### Added
 
@@ -13,13 +13,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Its path differs per project, so it is config like `db_path`; the default stays the old
   XRFFL_Dev path. `growpy-pve-catalog` now takes the schema folder, the catalog and the graph
   from config (`db_path`, `pve_content_root`, `pcg_trees_graph`); `--catalog` and `--pcg-graph`
-  still win. The repository's `config/unreal.toml` points at the reference project XRFFL_Dev2
+  still win. The repository's `config/unreal.toml` points at the reference project XRFF_Twin
   (`/Game/00_XRFF/20_DigitalTwinDatabase`, `/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees`).
 
 #### Fixed
 
 - **USD-route material batch without `MA_Foliage_Trees`.** When the project keeps no copy at
-  `db_path` (XRFFL_Dev2 has none), the batch parents to the PVE plugin's master instead of
+  `db_path` (XRFF_Twin has none), the batch parents to the PVE plugin's master instead of
   aborting; it reports "Parent material not found" only when neither exists.
 
 ### 2026-10-21 — static twins for the surround forest
@@ -31,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`static_twin_name`: `SK_` → `SM_`) to `<pve_content_root>/CatalogStatic/<species>`. One
   click exports both meshes, and the two cannot drift apart. The plot trees stay skinned for
   wind. The UE surround forest spawns the static twins, because skinned instances cost CPU per
-  component and per instance: in XRFFL_Dev2 a 180 k-tree skinned ring added 15–35 ms game
+  component and per instance: in XRFF_Twin a 180 k-tree skinned ring added 15–35 ms game
   thread and its static twin about 1 ms. The coverage manifest records each twin as
   `static_asset`; `expected_mesh_count` still counts the skinned meshes. Oak static builds run
   16–18 min each, so allow for the doubled export work.

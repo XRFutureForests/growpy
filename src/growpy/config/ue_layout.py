@@ -10,7 +10,7 @@ so a wipe that took ``ST_TreeCatalogEntry`` would stop every later import.
 
 Every Unreal path default in growpy comes from here; ``[unreal]`` in
 ``config/unreal.toml`` overrides them per project, because projects differ
-(XRFFL_Dev2 keeps the schema in ``/Game/00_XRFF/20_DigitalTwinDatabase``):
+(XRFF_Twin keeps the schema in ``/Game/00_XRFF/20_DigitalTwinDatabase``):
 ``project_path`` and ``pve_content_root`` for ``TREES_ROOT``, ``db_path`` for
 ``SCHEMA_ROOT``, ``pcg_trees_graph`` for ``PCG_TREES_GRAPH``.
 """

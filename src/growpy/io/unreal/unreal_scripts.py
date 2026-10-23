@@ -1068,7 +1068,7 @@ def generate_unreal_import_script(
         # unreal.log_error ("Parent material not found"), which goes to UE's
         # log and not to ue_exec's stdout, so the batch still reports as
         # completed and every tree silently keeps its raw USD materials. A
-        # project with no copy at db_path (XRFFL_Dev2) gets the PVE plugin's
+        # project with no copy at db_path (XRFF_Twin) gets the PVE plugin's
         # own master instead, which the cloned reference instances use anyway.
         # Bark normals and packed PVE twig maps are referenced by no mesh, so
         # the USD import never brings them in. Batch 97 imports them; batch 98

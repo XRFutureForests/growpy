@@ -344,7 +344,7 @@ def main(argv: list[str] | None = None) -> int:
     from growpy.config.core import get_config
 
     # The project's layout ([unreal] in config/unreal.toml), not ue_layout's
-    # defaults: the schema and the spawn graph sit elsewhere in XRFFL_Dev2.
+    # defaults: the schema and the spawn graph sit elsewhere in XRFF_Twin.
     config = get_config()
     script = write_ue_script(
         args.manifest,

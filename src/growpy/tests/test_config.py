@@ -250,7 +250,7 @@ pve_import_base = "/Game/Assets/TheGrove"
 class TestUnrealLayoutOverride:
     """[unreal] db_path / pcg_trees_graph select a project's layout.
 
-    XRFFL_Dev2 keeps the schema and the spawn graph elsewhere than the
+    XRFF_Twin keeps the schema and the spawn graph elsewhere than the
     ue_layout defaults (XRFFL_Dev's); a config that sets nothing keeps them.
     """
 

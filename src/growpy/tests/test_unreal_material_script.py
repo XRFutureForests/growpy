@@ -1,6 +1,6 @@
 """import_batch_98_materials: the parent-material lookup.
 
-XRFFL_Dev2 keeps no MA_Foliage_Trees copy at db_path; the batch must fall back
+XRFF_Twin keeps no MA_Foliage_Trees copy at db_path; the batch must fall back
 to the PVE plugin's own master rather than abort.
 """
 

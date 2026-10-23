@@ -95,7 +95,7 @@ IMPORT_PATH = "{project_path}"
 MATERIALS_PATH = IMPORT_PATH + "/Materials"
 PARENT_MATERIAL_PATH = "{parent_material_path}"
 # The plugin's own master, which every cloned reference instance is parented
-# to. Used when the project keeps no copy at PARENT_MATERIAL_PATH (XRFFL_Dev2
+# to. Used when the project keeps no copy at PARENT_MATERIAL_PATH (XRFF_Twin
 # has none), instead of aborting the batch.
 PLUGIN_MATERIAL_PATH = "{DEFAULT_MASTER_MATERIAL}"
 
