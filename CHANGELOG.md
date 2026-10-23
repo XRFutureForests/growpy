@@ -5,6 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-23 — Unreal layout per project (XRFFL_Dev2)
+
+#### Added
+
+- **`[unreal] pcg_trees_graph`**: the PCG graph `growpy-pve-catalog` points at `DT_TreeCatalog`.
+  Its path differs per project, so it is config like `db_path`; the default stays the old
+  XRFFL_Dev path. `growpy-pve-catalog` now takes the schema folder, the catalog and the graph
+  from config (`db_path`, `pve_content_root`, `pcg_trees_graph`); `--catalog` and `--pcg-graph`
+  still win. The repository's `config/unreal.toml` points at the reference project XRFFL_Dev2
+  (`/Game/00_XRFF/20_DigitalTwinDatabase`, `/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees`).
+
+#### Fixed
+
+- **USD-route material batch without `MA_Foliage_Trees`.** When the project keeps no copy at
+  `db_path` (XRFFL_Dev2 has none), the batch parents to the PVE plugin's master instead of
+  aborting; it reports "Parent material not found" only when neither exists.
+
 ### 2026-10-21 — static twins for the surround forest
 
 #### Added

@@ -247,6 +247,35 @@ pve_import_base = "/Game/Assets/TheGrove"
         assert config.unreal_pve_import_base == "/Game/Assets/TheGrove"
 
 
+class TestUnrealLayoutOverride:
+    """[unreal] db_path / pcg_trees_graph select a project's layout.
+
+    XRFFL_Dev2 keeps the schema and the spawn graph elsewhere than the
+    ue_layout defaults (XRFFL_Dev's); a config that sets nothing keeps them.
+    """
+
+    def test_unset_keeps_ue_layout_defaults(self):
+        from growpy.config.ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT
+
+        config = GrowPyConfig()
+        assert config.unreal_db_path == SCHEMA_ROOT
+        assert config.unreal_pcg_trees_graph == PCG_TREES_GRAPH
+
+    def test_toml_overrides_schema_and_graph(self, tmp_path):
+        toml_file = tmp_path / "unreal.toml"
+        toml_file.write_bytes(b"""
+[unreal]
+db_path = "/Game/00_XRFF/20_DigitalTwinDatabase"
+pcg_trees_graph = "/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees"
+""")
+        config = GrowPyConfig.from_toml(toml_file, set_as_global=False)
+        assert config.unreal_db_path == "/Game/00_XRFF/20_DigitalTwinDatabase"
+        assert (
+            config.unreal_pcg_trees_graph
+            == "/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees"
+        )
+
+
 class TestGrowPyConfigSurroundSection:
     """Tests for [surround] radii parsing."""
 

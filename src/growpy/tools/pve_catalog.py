@@ -10,9 +10,8 @@ coverage manifest ``plan_pve_graphs`` wrote, in the running editor:
 1. every expected mesh is loaded; a missing one is reported, never invented,
    and the bounds height is read back beside the stage it was grown to;
 2. ``DT_TreeCatalog`` is (re)built under the PVE content root by duplicating
-   the schema template in ``SCHEMA_ROOT`` (``/Game/XRFF/Forest/Data``) and filling it
-   from CSV, one row
-   per exported mesh;
+   the schema template in ``[unreal] db_path`` (default ``SCHEMA_ROOT``) and
+   filling it from CSV, one row per exported mesh;
 3. ``PCG_Trees``' ``TreeCatalogDataTable`` graph parameter is pointed at it
    (the parameter is a property bag, written through ``import_text`` and read
    back), so the join is live without a manual edit.
@@ -49,9 +48,11 @@ from growpy.config.ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT, TREES_ROOT
 
 logger = logging.getLogger("growpy.pve_catalog")
 
-TEMPLATE_STRUCT = f"{SCHEMA_ROOT}/ST_TreeCatalogEntry"
-TEMPLATE_TABLE = f"{SCHEMA_ROOT}/DT_TreeCatalogTemplate"
-DEFAULT_CATALOG = f"{TREES_ROOT}/DT_TreeCatalog"
+# Names inside the schema folder; the folder itself is [unreal] db_path.
+TEMPLATE_STRUCT_NAME = "ST_TreeCatalogEntry"
+TEMPLATE_TABLE_NAME = "DT_TreeCatalogTemplate"
+CATALOG_NAME = "DT_TreeCatalog"
+DEFAULT_CATALOG = f"{TREES_ROOT}/{CATALOG_NAME}"
 DEFAULT_PCG_GRAPH = PCG_TREES_GRAPH
 PCG_PARAMETER = "TreeCatalogDataTable"
 
@@ -272,6 +273,7 @@ def write_ue_script(
     set_pcg: bool,
     pcg_graph: str = DEFAULT_PCG_GRAPH,
     load_meshes: bool = True,
+    schema_root: str = SCHEMA_ROOT,
 ) -> Path:
     script = manifest_path.parent / "growpy_pve_catalog.py"
     script.write_text(
@@ -279,8 +281,8 @@ def write_ue_script(
             rows=rows,
             csv=rows_to_csv(rows),
             catalog=catalog,
-            template_table=TEMPLATE_TABLE,
-            template_struct=TEMPLATE_STRUCT,
+            template_table=f"{schema_root}/{TEMPLATE_TABLE_NAME}",
+            template_struct=f"{schema_root}/{TEMPLATE_STRUCT_NAME}",
             pcg_graph=pcg_graph,
             pcg_parameter=PCG_PARAMETER,
             set_pcg=set_pcg,
@@ -307,8 +309,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "manifest", type=Path, help="pve_export_manifest.json of the run"
     )
-    parser.add_argument("--catalog", default=DEFAULT_CATALOG)
-    parser.add_argument("--pcg-graph", default=DEFAULT_PCG_GRAPH)
+    parser.add_argument(
+        "--catalog",
+        help="catalog DataTable (default: <[unreal] pve_content_root>/DT_TreeCatalog)",
+    )
+    parser.add_argument(
+        "--pcg-graph", help="spawn graph to repoint (default: [unreal] pcg_trees_graph)"
+    )
     parser.add_argument(
         "--no-pcg", action="store_true", help="do not repoint PCG_Trees at the catalog"
     )
@@ -334,13 +341,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     json_path, csv_path = write_inventory(args.manifest, rows)
     logger.info("inventory: %s, %s (%d trees)", json_path, csv_path, len(rows))
+    from growpy.config.core import get_config
+
+    # The project's layout ([unreal] in config/unreal.toml), not ue_layout's
+    # defaults: the schema and the spawn graph sit elsewhere in XRFFL_Dev2.
+    config = get_config()
     script = write_ue_script(
         args.manifest,
         rows,
-        catalog=args.catalog,
+        catalog=args.catalog or f"{config.unreal_pve_content_root}/{CATALOG_NAME}",
         set_pcg=not args.no_pcg,
-        pcg_graph=args.pcg_graph,
+        pcg_graph=args.pcg_graph or config.unreal_pcg_trees_graph,
         load_meshes=not args.no_load,
+        schema_root=config.unreal_db_path,
     )
     logger.info("UE script: %s", script)
     if args.script_only:

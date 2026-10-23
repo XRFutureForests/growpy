@@ -13,6 +13,8 @@ project_path = "/Game/Generated/Trees"
 # Where ST_TreeCatalogEntry lives. Keep it out of project_path, which gets
 # deleted and recreated; the struct is schema and has to survive that.
 db_path = "/Game/XRFF/Forest/Data"
+# The PCG graph growpy-pve-catalog points at DT_TreeCatalog.
+pcg_trees_graph = "/Game/XRFF/Forest/Trees/PCG_Trees"
 # Automatically set Nanite shape preservation to Voxelize on imported assemblies.
 # Voxelization produces the best visual quality but adds significant import time.
 # Set to false for faster testing iterations; re-enable for production exports.

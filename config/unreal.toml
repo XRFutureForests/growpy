@@ -14,9 +14,14 @@ project_path = "/Game/Generated/Trees"
 # UserDefinedStruct, so the struct has to exist as an asset before an import
 # run -- this is only where the script looks for it. Keep it OUT of
 # project_path: that folder gets deleted and recreated, and the schema has to
-# survive that. /Game/XRFF/Forest/Data is the stable home for schema-only assets and
-# is the default for exactly this reason (layout: growpy/config/ue_layout.py).
-db_path = "/Game/XRFF/Forest/Data"
+# survive that. The reference project is XRFFL_Dev2 (UE 5.8), which keeps the
+# schema in /Game/00_XRFF/20_DigitalTwinDatabase; the code default,
+# /Game/XRFF/Forest/Data, is the old XRFFL_Dev layout (growpy/config/ue_layout.py).
+db_path = "/Game/00_XRFF/20_DigitalTwinDatabase"
+# The PCG graph growpy-pve-catalog points at DT_TreeCatalog (its
+# TreeCatalogDataTable parameter). XRFFL_Dev2's; the code default is XRFFL_Dev's
+# /Game/XRFF/Forest/Trees/PCG_Trees.
+pcg_trees_graph = "/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees"
 # Content Browser base the wind and PVE post-import scripts search for
 # assemblies. Leave unset (or empty) so it follows project_path -- assemblies
 # import to project_path, so wind data and PVE presets have to look for them
@@ -229,7 +234,7 @@ min_point_spacing = 0.0
 # always take priority when given.
 [unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
-# uproject = "D:\\Unreal\\XRLabDB 5.8\\XRLabDB.uproject"
+# uproject = "D:\\Unreal\\XRFFL_Dev2\\XRFFL_Dev2.uproject"
 
 # --- per-species decimation fraction (XRFF-466, 2026-09-16) ---
 # Overrides [unreal.growth_data_json] min_branch_radius_fraction above, keyed by

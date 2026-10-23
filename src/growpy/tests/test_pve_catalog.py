@@ -7,6 +7,7 @@ import ast
 from growpy.tools.pve_catalog import (
     DEFAULT_CATALOG,
     catalog_rows,
+    main,
     parse_tree_id,
     rows_to_csv,
     write_ue_script,
@@ -78,6 +79,32 @@ class TestEditorScript:
         text = _script(tmp_path, load_meshes=False)
         assert "LOAD_MESHES = False" in text
         ast.parse(text)
+
+    def test_schema_root_names_the_templates(self, tmp_path):
+        """The templates follow [unreal] db_path, e.g. XRFFL_Dev2's schema folder."""
+        schema = "/Game/00_XRFF/20_DigitalTwinDatabase"
+        text = _script(tmp_path, schema_root=schema)
+        assert f"TEMPLATE_STRUCT = '{schema}/ST_TreeCatalogEntry'" in text
+        assert f"TEMPLATE_TABLE = '{schema}/DT_TreeCatalogTemplate'" in text
+
+    def test_main_takes_the_layout_from_config(self, tmp_path, monkeypatch):
+        import json
+
+        from growpy.config.core import GrowPyConfig
+
+        config = GrowPyConfig(
+            unreal_db_path="/Game/Schema",
+            unreal_pcg_trees_graph="/Game/Forest/PCG_Trees",
+            unreal_pve_content_root="/Game/Trees",
+        )
+        monkeypatch.setattr("growpy.config.core.get_config", lambda: config)
+        manifest_path = tmp_path / "pve_export_manifest.json"
+        manifest_path.write_text(json.dumps(MANIFEST), encoding="utf-8")
+        assert main([str(manifest_path), "--script-only"]) == 0
+        text = (tmp_path / "growpy_pve_catalog.py").read_text(encoding="utf-8")
+        assert "TEMPLATE_STRUCT = '/Game/Schema/ST_TreeCatalogEntry'" in text
+        assert "CATALOG = '/Game/Trees/DT_TreeCatalog'" in text
+        assert "PCG_GRAPH = '/Game/Forest/PCG_Trees'" in text
 
     def test_load_asset_sits_behind_the_switch(self, tmp_path):
         """A cold-cache mesh BUILDS on load (~5 min); the switch must guard it."""

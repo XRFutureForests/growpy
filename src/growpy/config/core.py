@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
-from .ue_layout import SCHEMA_ROOT, TREES_ROOT
+from .ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT, TREES_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +247,7 @@ class GrowPyConfig:
         "unreal_nanite_lerp_uvs": "internal toggle, no CLI need identified",
         "unreal_nanite_fallback_target": "internal tuning, no CLI need identified",
         "unreal_db_path": "environment-level path, config-only by design",
+        "unreal_pcg_trees_graph": "environment-level path, config-only by design",
         # "unreal_generate_pve_presets" removed: now CLI-mapped via --pve (XRFF-293).
         "unreal_pve_import_base": "environment-level path, config-only by design",
         "unreal_generate_pve_graphs": (
@@ -617,6 +618,9 @@ class GrowPyConfig:
     # survive it. SCHEMA_ROOT (config/ue_layout.py) is the stable home for
     # schema-only assets.
     unreal_db_path: str = SCHEMA_ROOT
+    # The PCG graph growpy-pve-catalog points at DT_TreeCatalog. Where it sits
+    # differs per project, so it is config like db_path.
+    unreal_pcg_trees_graph: str = PCG_TREES_GRAPH
     unreal_generate_pve_presets: bool = True
     # The live PVE route (XRFF-442). Deliberately NOT the same flag as
     # generate_pve_presets, which drives the deprecated Preset Loader: that
@@ -996,6 +1000,8 @@ class GrowPyConfig:
             ).lower()
         if "db_path" in unreal:
             kwargs["unreal_db_path"] = str(unreal["db_path"])
+        if "pcg_trees_graph" in unreal:
+            kwargs["unreal_pcg_trees_graph"] = str(unreal["pcg_trees_graph"])
         if "generate_pve_presets" in unreal:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
             if kwargs["unreal_generate_pve_presets"]:

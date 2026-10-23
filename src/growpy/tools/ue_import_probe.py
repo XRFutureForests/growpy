@@ -538,8 +538,8 @@ def run_import_probe(
                 ue_side_failure = True
                 notes.append(
                     f"'{_MATERIALS_PREREQ_MARKER}' seen in output -- "
-                    "MA_Foliage_Trees not duplicated to db_path (see "
-                    "docs/guides/unreal-import.md troubleshooting)."
+                    "MA_Foliage_Trees neither at db_path nor in the PVE "
+                    "plugin (see docs/guides/unreal-import.md troubleshooting)."
                 )
             m = _MATERIALS_SUMMARY_PATTERN.search(output_text)
             if m and int(m.group(1)) == 0:

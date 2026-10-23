@@ -12,6 +12,8 @@ import json
 import logging
 from typing import Any
 
+from .pve_asset_script import DEFAULT_MASTER_MATERIAL
+
 logger = logging.getLogger(__name__)
 
 
@@ -92,6 +94,10 @@ print("=" * 60)
 IMPORT_PATH = "{project_path}"
 MATERIALS_PATH = IMPORT_PATH + "/Materials"
 PARENT_MATERIAL_PATH = "{parent_material_path}"
+# The plugin's own master, which every cloned reference instance is parented
+# to. Used when the project keeps no copy at PARENT_MATERIAL_PATH (XRFFL_Dev2
+# has none), instead of aborting the batch.
+PLUGIN_MATERIAL_PATH = "{DEFAULT_MASTER_MATERIAL}"
 
 # Species color data sourced from config/tree_asset_lookup.csv (linear RGBA).
 SPECIES_COLORS = {colors_json}
@@ -140,7 +146,13 @@ asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 editor_asset_lib = unreal.EditorAssetLibrary
 mel = unreal.MaterialEditingLibrary
 
-parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
+parent_mat = None
+if editor_asset_lib.does_asset_exist(PARENT_MATERIAL_PATH):
+    parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
+elif editor_asset_lib.does_asset_exist(PLUGIN_MATERIAL_PATH):
+    print(f"No MA_Foliage_Trees at {{PARENT_MATERIAL_PATH}}; using the plugin's")
+    PARENT_MATERIAL_PATH = PLUGIN_MATERIAL_PATH
+    parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
 if parent_mat is None:
     unreal.log_error(
         f"Parent material not found: {{PARENT_MATERIAL_PATH}} -- aborting."
