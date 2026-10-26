@@ -640,6 +640,48 @@ class TestWindPresets:
         with pytest.raises(ValueError, match="package path"):
             WindPresets(sapling="WS_Sapling")
 
+class TestBoneReduction:
+    def test_off_unless_configured(self):
+        # 0 wires no Bone Reduction node.
+        assert _species().bone_reduction_strength == 0.0
+
+    def test_the_shipped_per_species_table(self, shipped):
+        # Owner decision 2026-10-26. The table reaches the species with a block
+        # (beech, fir) and those built from the defaults (oak, spruce, Douglas).
+        assert shipped.for_species("european_beech").bone_reduction_strength == 0.6
+        assert shipped.for_species("silver_fir").bone_reduction_strength == 0.7
+        for name, habit in (
+            ("european_oak", "broadleaf"),
+            ("norway_spruce", "conifer"),
+            ("douglas_fir", "conifer"),
+        ):
+            derived = shipped.for_species(name, habit)
+            assert derived.derived, name
+            assert derived.bone_reduction_strength == 0.7, name
+        pine = shipped.for_species("scots_pine", "conifer")
+        assert pine.bone_reduction_strength == 0.0
+
+    def test_read_from_the_defaults(self, tmp_path):
+        path = tmp_path / "pve_calibration.toml"
+        text = CALIBRATION_TOML.read_text(encoding="utf-8")
+        assert "[pve_calibration.defaults]\n" in text
+        path.write_text(
+            text.replace(
+                "[pve_calibration.defaults]\n",
+                "[pve_calibration.defaults]\nbone_reduction_strength = 0.6\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        derived = load_pve_calibration(path).for_species("not_a_listed_species")
+        assert derived.derived
+        assert derived.bone_reduction_strength == 0.6
+
+    @pytest.mark.parametrize("strength", [-0.1, 1.5])
+    def test_outside_zero_to_one_is_refused(self, strength):
+        with pytest.raises(ValueError, match="bone_reduction_strength"):
+            _species(bone_reduction_strength=strength)
+
 
 class TestRoundTripToGeneratedScript:
     """config -> graph spec -> generated UE script, densities intact."""

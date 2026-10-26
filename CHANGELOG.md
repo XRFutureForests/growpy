@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-26 — PVE Bone Reduction per species
+
+#### Added
+
+- **PVE Bone Reduction in the catalog graphs.** `[pve_calibration]
+  bone_reduction_strength_per_species` (0-1) sets it per species, for species with a block and
+  for those built from the defaults alike; a block or the defaults can also carry
+  `bone_reduction_strength`. Above 0 the graph builder wires a Bone Reduction node between
+  MeshBuilder and the foliage distributor, Epic's order on the MegaPlants pines (strength
+  0.55-0.70 there). The node rebuilds only the bone data of the finished mesh, so geometry and
+  twig placement stay as they are; the wind deformation gets coarser. Shipped (owner decision):
+  0.7 for European oak, silver fir, Norway spruce and Douglas fir, 0.6 for European beech;
+  estimated from the catalog growth JSONs that keeps about 56 % of an oak's bones, 51 % of a
+  fir's or spruce's, 40 % of a Douglas fir's and 78 % of a beech's. Why: a scene's distinct
+  wind-skinned meshes share one transform buffer (16 entries per bone, 2^22 in all), and the
+  ECOSENSE plot used 85-101 % of it; meshes past it render in their rest pose. A re-export
+  applies it. `SpeciesCalibration.bone_reduction_strength`,
+  `TreeChainSpec.bone_reduction_strength`.
+
 ### 2026-10-26 — bark instances can follow a separate master
 
 #### Added

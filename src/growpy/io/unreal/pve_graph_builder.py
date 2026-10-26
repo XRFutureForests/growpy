@@ -18,6 +18,10 @@ Chain shape, one per tree::
     MeshBuilderBranchRadius->|BranchRadius                      ^
     MeshBuilderMaterialDetail->|MaterialDetails      FoliagePalette
 
+With ``bone_reduction_strength > 0`` a Bone Reduction node sits between
+MeshBuilder and FoliageDistributor (``MeshBuilder -> BoneReduction ->
+FoliageDistributor``), Epic's order on the MegaPlants pines.
+
 The profile loader, palette and bark material are shared by every chain in a
 graph; importer, mesher, distributor and export node are per tree.
 
@@ -633,6 +637,10 @@ class TreeChainSpec:
     # TrunkGenerationMaterialSetup each, X Range (0, k)); generations past the
     # end take the last entry. Empty keeps PVE's native single wrap.
     bark_wraps: tuple[int, ...] = ()
+    # PVE Bone Reduction strength between MeshBuilder and distributor; 0 wires
+    # no node. It thins the bones of the finished mesh only (geometry and
+    # foliage placement unchanged), see SpeciesCalibration.bone_reduction_strength.
+    bone_reduction_strength: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
@@ -646,6 +654,11 @@ class TreeChainSpec:
             raise ValueError(
                 f"chain {self.mesh_name!r} names no wind_settings asset; a null "
                 "WindSettings exports a tree with no simulation groups"
+            )
+        if not 0.0 <= self.bone_reduction_strength <= 1.0:
+            raise ValueError(
+                f"chain {self.mesh_name!r} bone_reduction_strength must be in "
+                f"[0, 1], got {self.bone_reduction_strength}"
             )
         if self.palette is not None and not any(
             not e.use_as_mask for e in self.palette
@@ -836,6 +849,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "static_mesh_name": static_twin_name(c.mesh_name),
                 "wind_settings": c.wind_settings,
                 "bark_wraps": list(c.bark_wraps),
+                "bone_reduction_strength": c.bone_reduction_strength,
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1177,6 +1191,28 @@ def build(spec):
                 % (chain["mesh_name"], got, chain["bark_wraps"])
             )
 
+        # Bone Reduction (Epic's place for it, MeshBuilder -> BoneReduction ->
+        # distributor): rebuilds the mesh's bone data only, so the distributor
+        # and both Export nodes see the same geometry with fewer bones.
+        upstream = mesh_node
+        bone_edges = []
+        if chain["bone_reduction_strength"] > 0.0:
+            bone_node, bone_settings = graph.add_node_of_type(
+                unreal.PVBoneReductionSettings
+            )
+            bone_node.set_node_position(490, row + 120)
+            bone_settings.set_editor_property(
+                "strength", float(chain["bone_reduction_strength"])
+            )
+            got = bone_settings.get_editor_property("strength")
+            if abs(got - chain["bone_reduction_strength"]) > 1e-6:
+                raise RuntimeError(
+                    "%s: bone reduction strength read back as %s, wanted %s"
+                    % (chain["mesh_name"], got, chain["bone_reduction_strength"])
+                )
+            bone_edges.append((mesh_node, "Out", bone_node, "In"))
+            upstream = bone_node
+
         dist_node, dist_settings = graph.add_node_of_type(
             unreal.PVFoliageDistributorSettings
         )
@@ -1296,7 +1332,8 @@ def build(spec):
             (profile_node, profile_pin, mesh_node, "Profile"),
             (radius_node, "Out", mesh_node, "BranchRadius"),
             (material_node, "Out", mesh_node, "MaterialDetails"),
-            (mesh_node, "Out", dist_node, "In"),
+            *bone_edges,
+            (upstream, "Out", dist_node, "In"),
             (chain_palette, "Out", dist_node, "Foliage"),
             *layer_edges,
             (last_node, "Out", export_node, "In"),
@@ -1313,7 +1350,9 @@ def build(spec):
                 pass
     expected = 7 * len(spec["chains"]) + 2 * sum(
         len(c["layers"]) for c in spec["chains"]
-    ) + (len(spec["chains"]) if spec["static_export_folder"] else 0)
+    ) + (len(spec["chains"]) if spec["static_export_folder"] else 0) + sum(
+        1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0
+    )
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(

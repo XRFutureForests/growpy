@@ -670,3 +670,35 @@ class TestPhyllotaxyArrangement:
             DistributorSpec(
                 branch_density=5, phyllotaxy_type="WHORLED", node_buds=buds
             )
+
+
+class TestBoneReduction:
+    def test_no_node_by_default(self, tmp_path):
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        body = body.read_text(encoding="utf-8")
+        assert "'bone_reduction_strength': 0.0" in body
+
+    def test_strength_reaches_the_script(self, tmp_path):
+        chain = TreeChainSpec(
+            Path("data/tmp/tree.json"),
+            "SK_Test",
+            DistributorSpec(branch_density=17),
+            bone_reduction_strength=0.6,
+        )
+        body = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = body.read_text(encoding="utf-8")
+        assert "'bone_reduction_strength': 0.6" in body
+        # The node sits between mesher and distributor, and its edge is counted.
+        assert "unreal.PVBoneReductionSettings" in body
+        assert '(upstream, "Out", dist_node, "In")' in body
+        assert 'c["bone_reduction_strength"] > 0.0' in body
+
+    @pytest.mark.parametrize("strength", [-0.2, 1.01])
+    def test_outside_zero_to_one_is_refused(self, strength):
+        with pytest.raises(ValueError, match="bone_reduction_strength"):
+            TreeChainSpec(
+                Path("data/tmp/tree.json"),
+                "SK_Test",
+                DistributorSpec(branch_density=17),
+                bone_reduction_strength=strength,
+            )

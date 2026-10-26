@@ -59,6 +59,18 @@
 [pve_calibration]
 schema_version = 1
 
+# PVE Bone Reduction strength per species (0-1; a species not listed: none, or
+# the `bone_reduction_strength` of its block / the defaults). The graph builder
+# wires MeshBuilder -> BoneReduction -> FoliageDistributor, which rebuilds only
+# the bone data of the finished mesh: geometry and twigs stay, the sway gets
+# coarser. Why: the distinct wind-skinned meshes of a scene share one transform
+# buffer of 2^22 slots (16 per bone), and the ECOSENSE plot used 85-101 % of it
+# (2026-10-26); trees past it render in their rest pose. Epic uses 0.55-0.70 on
+# the MegaPlants pines. Owner decision 2026-10-26: 0.7 for oak and the conifers
+# of the plot, 0.6 for beech; estimated bones kept 56 % (oak), 51 % (fir,
+# spruce), 40 % (Douglas fir), 78 % (beech).
+bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, norway_spruce = 0.7, douglas_fir = 0.7, european_beech = 0.6 }
+
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
 # trunk profile; growpy divides emitted radii by it so a tape-measured DBH
 # survives. `profile_pin` is which pin of PVPlantProfileLoader the graph must

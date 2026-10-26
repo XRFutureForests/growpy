@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -489,12 +489,27 @@ class SpeciesCalibration:
     # it ~3x magnified and blurry (2026-10-07); the plan ports Grove's rule
     # onto PVE's per-generation X Range. See ``bark_wraps_by_generation``.
     bark_texture_repeat: int = 3
+    # Strength of a PVE Bone Reduction node between the MeshBuilder and the
+    # foliage distributor (0 = no node). It rebuilds only the bone data of the
+    # finished mesh (``PVBoneFacade::CreateBoneData``: per run between two
+    # child attachments it keeps ``lerp(n, 1, strength)`` bones), so geometry
+    # and twig placement are unchanged and only the wind deformation gets
+    # coarser. Epic runs it at 0.55-0.70 on the MegaPlants pines. Exists
+    # because a scene's distinct wind-skinned meshes share one transform
+    # buffer of 2^22 entries (16 per bone): the ECOSENSE plot sat at 95-97 %
+    # in 2026-10, and meshes past it render in their rest pose.
+    bone_reduction_strength: float = 0.0
 
     def __post_init__(self) -> None:
         if self.bark_texture_repeat < 1:
             raise ValueError(
                 f"species {self.species!r} bark_texture_repeat must be >= 1, "
                 f"got {self.bark_texture_repeat}"
+            )
+        if not 0.0 <= self.bone_reduction_strength <= 1.0:
+            raise ValueError(
+                f"species {self.species!r} bone_reduction_strength must be in "
+                f"[0, 1], got {self.bone_reduction_strength}"
             )
         if not 0.0 <= self.relative_start < 1.0:
             raise ValueError(
@@ -632,6 +647,11 @@ class PVECalibration:
     profile_pin: str
     species: dict[str, SpeciesCalibration]
     defaults: dict[str, Any] = field(default_factory=dict)
+    # ``[pve_calibration] bone_reduction_strength_per_species``: species ->
+    # PVE Bone Reduction strength. Wins over a species block or the defaults,
+    # and reaches the species built from the defaults too, which have no
+    # block to carry it.
+    bone_reduction_per_species: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -672,7 +692,9 @@ class PVECalibration:
                 f"calibration for {species!r} cannot record what decimation its "
                 f"growth JSONs carry"
             )
-        return _species(species, data, derived=True)
+        return _with_bone_reduction(
+            _species(species, data, derived=True), self.bone_reduction_per_species
+        )
 
 
 _HABITS = ("conifer", "broadleaf")
@@ -871,6 +893,7 @@ def _species(
         phyllotaxy_formation=str(data.get("phyllotaxy_formation", "OCTASTICHOUS")),
         bark_y_scale=_opt_float(data.get("bark_y_scale")),
         bark_texture_repeat=int(data.get("bark_texture_repeat", 3)),
+        bone_reduction_strength=float(data.get("bone_reduction_strength", 0.0)),
         prototype_area_per_triangle_m2=_opt_float(
             data.get("prototype_area_per_triangle_m2")
         ),
@@ -891,6 +914,15 @@ def _species(
         build_from=str(data.get("build_from", "measured")),
         derived=derived,
     )
+
+
+def _with_bone_reduction(
+    species: SpeciesCalibration, per_species: dict[str, float]
+) -> SpeciesCalibration:
+    """The species with its ``bone_reduction_strength_per_species`` entry."""
+    if species.species not in per_species:
+        return species
+    return replace(species, bone_reduction_strength=per_species[species.species])
 
 
 def _merge_defaults(defaults: dict[str, Any], habit: str | None) -> dict[str, Any]:
@@ -937,15 +969,20 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
     defaults = data.get("defaults") or {}
     if not isinstance(defaults, dict):
         raise ValueError(f"{toml_path}: [pve_calibration.defaults] must be a table")
+    per_species = {
+        str(k): float(v)
+        for k, v in (data.get("bone_reduction_strength_per_species") or {}).items()
+    }
     calibration = PVECalibration(
         schema_version=int(data.get("schema_version", 0)),
         profile_mean=float(data["profile_mean"]),
         profile_pin=str(data["profile_pin"]),
         species={
-            name: _species(name, species_data)
+            name: _with_bone_reduction(_species(name, species_data), per_species)
             for name, species_data in sorted(data.get("species", {}).items())
         },
         defaults=defaults,
+        bone_reduction_per_species=per_species,
     )
     logger.debug(
         "loaded PVE calibration from %s: %d species, %d trees",
