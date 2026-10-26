@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-26 — bark instances can follow a separate master
+
+#### Added
+
+- **`growpy-pve-assets --bark-master-material`.** The bark instances are parented to (and read
+  back against) this material when it is given; the leaf materials and the clone-source check
+  stay on `--master-material`. XRFF_Twin parents the bark to its copy of `MA_Foliage_Trees` that
+  thins or thickens the trunk to the database DBH, and a re-run without the flag would put the
+  bark back on the plugin master. `PVEAssetPlan.bark_master_material`; empty = the master.
+
+### 2026-10-25 — evergreen conifers keep out of the season
+
+#### Changed
+
+- **`growpy-pve-assets`: the leaf material's `Seasons` switch follows the habit.** Broadleaves
+  and larch keep it on, evergreen conifers (spruce, fir, pine, Douglas fir) get it off, so the
+  foliage actor's autumn colouring no longer turns their needles yellow and brown. The
+  generated script sets the switch instead of keeping the cloned sample's, and its read-back
+  check expects the habit's value. `SpeciesAssetSpec.seasons` gives it per species.
+
 ### 2026-10-23 — Unreal layout per project (XRFF_Twin)
 
 #### Added

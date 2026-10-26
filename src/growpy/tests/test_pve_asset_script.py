@@ -139,6 +139,20 @@ class TestSpecResolution:
     def test_the_growth_habit_picks_the_foliage_sample(self, species, habit):
         assert build_species_asset_spec(species).habit == habit
 
+    @pytest.mark.parametrize(
+        "species,habit,seasons",
+        [
+            ("silver_fir", "conifer", False),
+            ("norway_spruce", "conifer", False),
+            ("european_larch", "conifer", True),
+            ("european_beech", "broadleaf", True),
+        ],
+    )
+    def test_evergreen_conifers_keep_out_of_the_season(self, species, habit, seasons):
+        # Broadleaves and larch colour in autumn; spruce, fir, pine and
+        # Douglas fir keep their needles green (decision 2026-10-25).
+        assert _spec(species=species, habit=habit).seasons is seasons
+
     def test_missing_foliage_maps_are_named_not_silently_skipped(self, monkeypatch):
         monkeypatch.setattr(
             "pathlib.Path.is_file",
@@ -219,6 +233,10 @@ class TestRefusals:
         with pytest.raises(ValueError, match="/Game/XRFF/Forest/Data"):
             _plan(master_material="/Game/XRFF/Forest/Data/MA_Foliage_Trees")
 
+    def test_the_schema_folder_master_is_refused_for_the_bark_too(self):
+        with pytest.raises(ValueError, match="/Game/XRFF/Forest/Data"):
+            _plan(bark_master_material="/Game/XRFF/Forest/Data/MA_Foliage_Trees")
+
     def test_factory_creation_has_no_path_without_a_clone_source(self):
         with pytest.raises(ValueError, match="known-good instance"):
             _plan(clone_sources=())
@@ -266,7 +284,7 @@ class TestGeneratedScript:
         # untextured beech trunk for a magenta one.
         loop = script.split("for spec in PLAN[", 1)[1]
         vt = loop.index("import_bark_texture(entry, is_normal)")
-        material = loop.index("build_bark_material(spec, master)")
+        material = loop.index("build_bark_material(spec, master, bark_master)")
         assert vt < material
 
     def test_it_clones_rather_than_factory_creating(self, script):
@@ -316,6 +334,9 @@ class TestGeneratedScript:
         assert FOLIAGE_SAMPLES["broadleaf"] in script
         assert FOLIAGE_SAMPLES["conifer"] in script
         assert "def repoint_leaf_materials" in script
+        # The switch is set from the habit, not left as the cloned sample has it.
+        assert '"Seasons", fol["seasons"]' in script
+        assert "'seasons': False" in script and "'seasons': True" in script
 
     def test_leaf_maps_come_before_the_leaf_material_and_the_leaves(self, script):
         loop = script.split("for spec in PLAN[", 1)[1]
@@ -365,6 +386,25 @@ class TestGeneratedScript:
             # once as the USD import, once as the re-framed part
             assert script.count(f"SM_{species}_foliage") == 2 * count
             assert len(re.findall(rf"SM_{species}_foliage\w*_ZUP", script)) == count
+
+    def test_the_bark_follows_the_master_unless_the_plan_names_another(self, script):
+        # Clone sources are checked against the master; the bark is parented to
+        # (and read back against) the bark master.
+        assert f"'bark_master_material': '{DEFAULT_MASTER_MATERIAL}'" in script
+        body = script.split("def build_bark_material", 1)[1].split("\ndef ", 1)[0]
+        assert "resolve_clone_source(master)" in body
+        assert "eal.load_asset(bark_master)" in body
+        assert "if parent != bark_master:" in body
+
+    def test_a_named_bark_master_reaches_the_script(self, tmp_path):
+        trunk = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
+        plan = PVEAssetPlan(
+            species=(build_species_asset_spec("european_beech"),),
+            bark_master_material=trunk,
+        )
+        script = generate_pve_asset_script(tmp_path, plan).read_text(encoding="utf-8")
+        assert f"'bark_master_material': '{trunk}'" in script
+        assert f"'master_material': '{DEFAULT_MASTER_MATERIAL}'" in script
 
     def test_redeploying_to_the_same_path_overwrites(self, tmp_path):
         plan = PVEAssetPlan(species=(build_species_asset_spec("european_beech"),))

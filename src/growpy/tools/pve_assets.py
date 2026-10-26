@@ -72,6 +72,13 @@ def main(argv: list[str] | None = None) -> int:
         "of MA_Foliage_Trees is refused",
     )
     parser.add_argument(
+        "--bark-master-material",
+        default="",
+        help="material to parent bark instances to when it is not the master, "
+        "e.g. a project copy of MA_Foliage_Trees with a trunk-DBH offset "
+        "(XRFF_Twin: /Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH)",
+    )
+    parser.add_argument(
         "--lookup",
         type=Path,
         default=Path("config/tree_asset_lookup.csv"),
@@ -105,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     script = generate_pve_asset_script(
         args.output_dir,
         PVEAssetPlan(
-            species=tuple(specs), master_material=args.master_material
+            species=tuple(specs),
+            master_material=args.master_material,
+            bark_master_material=args.bark_master_material,
         ),
     )
 

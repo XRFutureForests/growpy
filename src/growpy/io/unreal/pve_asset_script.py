@@ -251,6 +251,13 @@ class SpeciesAssetSpec:
         return f"{self.materials_folder}/MI_{self.species}_foliage"
 
     @property
+    def seasons(self) -> bool:
+        """Whether the leaves follow the foliage actor's season (the master's
+        ``Seasons`` switch): broadleaves and larch do, evergreen conifers keep
+        their needles green all year."""
+        return self.habit != "conifer" or "larch" in self.species
+
+    @property
     def palette_meshes(self) -> tuple[str, ...]:
         """Palette mesh paths, in prototype order -- the re-framed PARTS.
 
@@ -269,17 +276,23 @@ class PVEAssetPlan:
     species: tuple[SpeciesAssetSpec, ...]
     master_material: str = DEFAULT_MASTER_MATERIAL
     clone_sources: tuple[str, ...] = DEFAULT_CLONE_SOURCES
+    # Parent of the bark instances when it is not master_material, e.g. a
+    # project's copy of MA_Foliage_Trees with a trunk-DBH offset. Empty: the
+    # bark follows master_material. Clone sources are still checked against
+    # master_material, which they are parented to.
+    bark_master_material: str = ""
 
     def __post_init__(self) -> None:
         if not self.species:
             raise ValueError("no species to import")
-        if self.master_material.startswith(_FORBIDDEN_MASTER_PREFIX):
-            raise ValueError(
-                f"refusing to parent bark materials to {self.master_material!r}: "
-                f"the {_FORBIDDEN_MASTER_PREFIX} copy of MA_Foliage_Trees has "
-                f"produced broken materials. Use the plugin's own copy "
-                f"({DEFAULT_MASTER_MATERIAL})"
-            )
+        for master in (self.master_material, self.bark_master_material):
+            if master.startswith(_FORBIDDEN_MASTER_PREFIX):
+                raise ValueError(
+                    f"refusing to parent bark materials to {master!r}: "
+                    f"the {_FORBIDDEN_MASTER_PREFIX} copy of MA_Foliage_Trees has "
+                    f"produced broken materials. Use the plugin's own copy "
+                    f"({DEFAULT_MASTER_MATERIAL})"
+                )
         if not self.clone_sources:
             raise ValueError(
                 "no clone sources -- a species with no existing bark material "
@@ -446,6 +459,7 @@ def _foliage_textures(species: str) -> tuple[Path, Path, Path | None]:
 def _plan_payload(plan: PVEAssetPlan) -> dict:
     return {
         "master_material": plan.master_material,
+        "bark_master_material": plan.bark_master_material or plan.master_material,
         "clone_sources": list(plan.clone_sources),
         "species": [
             {
@@ -498,6 +512,7 @@ def _foliage_payload(s: SpeciesAssetSpec) -> dict | None:
     return {
         "material": s.foliage_material,
         "sample": FOLIAGE_SAMPLES[s.habit],
+        "seasons": s.seasons,
         "color": texture(s.foliage_color),
         "normal": texture(s.foliage_normal),
         "params": params,
@@ -683,12 +698,13 @@ def resolve_clone_source(master):
     return None
 
 
-def build_bark_material(spec, master):
+def build_bark_material(spec, master, bark_master):
     """Create, repair or leave alone one species' bark material.
 
     Repaired IN PLACE rather than replaced: exported meshes reference the
     material by path, so every tree already exported picks a fix up with no
-    re-export.
+    re-export. Clone sources are checked against ``master``; the instance ends
+    up parented to ``bark_master`` (the same unless the plan names another).
     """
     mi_path = spec["bark_material"]
     color = spec["bark_color"]["asset"]
@@ -703,12 +719,12 @@ def build_bark_material(spec, master):
             return ["duplicate_asset failed: %s -> %s" % (source, mi_path)]
 
     mi = eal.load_asset(mi_path)
-    master_asset = eal.load_asset(master)
+    master_asset = eal.load_asset(bark_master)
     if mi is None or master_asset is None:
-        return ["material or master missing: %s / %s" % (mi_path, master)]
+        return ["material or master missing: %s / %s" % (mi_path, bark_master)]
 
     before = _path_of(mi.get_editor_property("parent"))
-    if before != master:
+    if before != bark_master:
         print("   reparenting %s (was %s)" % (spec["species"], before))
         mi.set_editor_property("parent", master_asset)
 
@@ -724,8 +740,8 @@ def build_bark_material(spec, master):
     check = eal.load_asset(mi_path)
     problems = []
     parent = _path_of(check.get_editor_property("parent"))
-    if parent != master:
-        problems.append("%s parent is %s, expected %s" % (mi_path, parent, master))
+    if parent != bark_master:
+        problems.append("%s parent is %s, expected %s" % (mi_path, parent, bark_master))
     for param, want in (("Base Color", color), ("Normal", normal)):
         got = _path_of(
             mel.get_material_instance_texture_parameter_value(check, param))
@@ -817,6 +833,8 @@ def build_foliage_material(spec, master):
                 mi, name, unreal.LinearColor(*rgba))
         elif isinstance(value, (int, float)):
             mel.set_material_instance_scalar_parameter_value(mi, name, float(value))
+    mel.set_material_instance_static_switch_parameter_value(
+        mi, "Seasons", fol["seasons"])
     mel.update_material_instance(mi)
     eal.save_asset(mi_path, only_if_is_dirty=False)
 
@@ -831,9 +849,13 @@ def build_foliage_material(spec, master):
             mel.get_material_instance_texture_parameter_value(check, param))
         if got != want:
             problems.append("%s %s is %s, expected %s" % (mi_path, param, got, want))
-    if not mel.get_material_instance_static_switch_parameter_value(check, "Seasons"):
-        problems.append("%s has Seasons off: the foliage actor's season would "
-                        "not reach it" % mi_path)
+    seasons = bool(
+        mel.get_material_instance_static_switch_parameter_value(check, "Seasons"))
+    if seasons != fol["seasons"]:
+        problems.append("%s has Seasons %s, expected %s: broadleaves and larch follow "
+                        "the foliage actor's season, evergreen conifers stay green"
+                        % (mi_path, "on" if seasons else "off",
+                           "on" if fol["seasons"] else "off"))
     return problems
 
 
@@ -908,8 +930,10 @@ print("GrowPy PVE asset import: %d species" % len(PLAN["species"]))
 print("=" * 64)
 
 master = PLAN["master_material"]
-if eal.load_asset(master) is None:
-    raise RuntimeError("master material not found: %s" % master)
+bark_master = PLAN["bark_master_material"]
+for path in (master, bark_master):
+    if eal.load_asset(path) is None:
+        raise RuntimeError("master material not found: %s" % path)
 trees = trees_in_open_level()
 if trees:
     raise RuntimeError(
@@ -931,7 +955,7 @@ for spec in PLAN["species"]:
         if problem:
             failures.append(problem)
 
-    failures.extend(build_bark_material(spec, master))
+    failures.extend(build_bark_material(spec, master, bark_master))
     failures.extend(audit_for_usd_stubs(spec["bark_folder"]))
 
     # Leaves: the same order, maps before the material that samples them.
