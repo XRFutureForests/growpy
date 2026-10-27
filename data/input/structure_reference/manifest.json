@@ -1,0 +1,30 @@
+{
+  "built": "2026-10-27",
+  "growpy_commit": "1844abb",
+  "inputs": [
+    "data/output/structure/desc_biodivA/descriptors.csv",
+    "data/output/structure/desc_biodivC/descriptors.csv",
+    "data/output/structure/desc_belgium_kew/descriptors.csv"
+  ],
+  "real_trees": 4156,
+  "real_trees_by_source": {
+    "biodiv": 3275,
+    "kew": 820,
+    "belgium": 61
+  },
+  "species": [
+    "common_ash",
+    "european_beech",
+    "european_oak",
+    "norway_spruce",
+    "scots_pine",
+    "silver_birch",
+    "sycamore_maple"
+  ],
+  "bin_m": 5.0,
+  "min_n": 10,
+  "tier_rule": "tiers A and B when a row has >= min_n of them, else all tiers",
+  "normalisation": "height_bin 'all': unit m / height, unit 1/m * height",
+  "prune": "as in the inputs (growpy-qsm-descriptors defaults: laterals < 0.3 m and axes above order 2 removed)",
+  "note": "first build, XRFF-573; QSM (L1) descriptors only"
+}

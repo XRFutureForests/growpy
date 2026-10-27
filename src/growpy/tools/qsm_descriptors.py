@@ -29,6 +29,7 @@ from growpy.structure.store import iter_trees
 IDENTITY = [
     "tree_uid",
     "source",
+    "source_tree_id",
     "source_kind",
     "tier",
     "plot",
@@ -39,6 +40,7 @@ IDENTITY = [
     "valid_qsm",
     "height_m",
     "dbh_m",
+    "trunk_length_m",
 ]
 
 
@@ -126,6 +128,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"skip {meta['tree_uid']}: {exc}", file=sys.stderr)
                 continue
             row = {k: meta.get(k) for k in IDENTITY}
+            row["dataset"] = dataset.name
             row["height_class"] = height_class(float(meta["height_m"]), edges)
             row.update(values)
             rows.append(row)
