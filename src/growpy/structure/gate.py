@@ -16,6 +16,7 @@ height-normalised values with every real tree of the species; a 5 m bin compares
 values where the store has that bin. Only the core descriptors decide a verdict; until
 XRFF-576 fixes the core set it defaults to the scan-robust descriptors (minus the
 conifer-unsafe ones on conifers), and every other descriptor is reported alongside.
+Trees below ``MIN_GATE_HEIGHT_M`` (5 m) are not gated; growth over time still uses them.
 
 ``growth_consistency`` checks one tree grown over time (the height-keyed snapshots of one
 run): height and DBH never fall, the crown base only rises, the stem persists.
@@ -32,6 +33,7 @@ from growpy.structure.reference import POOLED, height_bin, normalise_by_height
 from growpy.structure.score import REFERENCE_OF, is_conifer_unsafe, robust_keys
 
 INSIDE_SHARE = 0.8
+MIN_GATE_HEIGHT_M = 5.0  # owner 2026-10-27: below 5 m reported, never gated (1 tier-A tree)
 TOO_REGULAR = 0.25
 MIN_SERIES = 5
 # growth-over-time tolerances (measurement noise of a standardised skeleton)
@@ -98,7 +100,7 @@ def gate(
     ``reference`` is ``load_reference()``; ``core`` maps species to its core descriptors
     (default: ``default_core``)."""
     generated = table[table["source_kind"] == "generated"].copy()
-    generated = generated[generated["L1.height_m"] > 0]
+    generated = generated[generated["L1.height_m"] >= MIN_GATE_HEIGHT_M]
     generated["series"] = series_of(generated)
     ref_index = reference.set_index(["species_key", "height_bin", "descriptor"])
     rows = []

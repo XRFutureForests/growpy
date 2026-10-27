@@ -10,6 +10,8 @@
 ``score``        catalog against real trees per species (gap table, share within one spread)
 ``gate``         the realism gate and growth-over-time consistency
 ``adequacy``     which descriptors may gate (species, height, source effects; sensitivity)
+``pointcloud``   L2 metrics on point clouds without fitting (profile, envelope, box dimension, gaps)
+``synthetic_scan``  HELIOS++ virtual TLS of a generated tree, alone or in a stand
 
 ``growpy-qsm-standardize`` is the console entry point. The knowledge hub note
 ``04-LOGIC-TIER/structure-extraction-and-encoding`` holds the reasoning (why one cylinder

@@ -157,6 +157,9 @@ def test_gate_passes_matching_trees_and_flags_regular_ones():
     v = verdict(steep).set_index("height_bin")
     assert v.loc["all", "failing"] == "L4.chord_angle_deg_middle"
     assert not verdict(gate(_generated(n_series=3), ref, core))["enough_seeds"].any()
+    small = _generated()
+    small["L1.height_m"] = 4.0  # below 5 m: reported elsewhere, never gated
+    assert gate(small, ref, core).empty
 
 
 def test_growth_consistency_catches_a_falling_crown_base():
