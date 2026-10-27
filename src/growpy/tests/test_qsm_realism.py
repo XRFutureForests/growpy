@@ -206,3 +206,35 @@ def test_adequacy_keeps_a_species_trait_and_drops_its_duplicate():
     assert pair["kept"].sum() == 1  # the same trait twice: one stays
     assert set(pair.loc[~pair["kept"], "redundant_with"]) <= set(pair.index)
     assert "L1.crown_ratio" not in cand.index
+
+
+def test_strata_gate_a_stout_tree_against_stout_real_trees():
+    from growpy.structure.reference import assign_strata, strata_edges
+
+    rng = np.random.default_rng(9)
+    real = _real(600)
+    hd = rng.uniform(50, 110, len(real))  # slenderness: stout 50 .. slender 110
+    real["dbh_m_reported"] = real["L1.height_m"] / hd
+    real["L1.crown_ratio"] = 0.9 - 0.004 * hd + rng.normal(0, 0.01, len(real))
+    edges = strata_edges(real, min_n=10)
+    assert {"hd_p33", "hd_p67"} <= set(edges.columns) and len(edges) >= 3
+    strata = assign_strata(real, edges)
+    assert (strata[hd < 55] == "stout").all() and (strata[hd > 105] == "slender").all()
+
+    ref = build_reference(real, min_n=10, edges=edges)
+    assert {"all", "stout", "medium", "slender"} <= set(ref["stratum"])
+    gen = _generated()
+    gen["dbh_m_reported"] = gen["L1.height_m"] / 60.0  # a stout, free-crowned tree
+    gen["L1.crown_ratio"] = 0.9 - 0.004 * 60.0
+    core = {"european_beech": {"L1.crown_ratio"}}
+
+    flat = gate(gen, ref[ref["stratum"] == "all"], core)
+    flat_row = flat[(flat["height_bin"] == "all")].set_index("descriptor")
+    assert not flat_row.loc["L1.crown_ratio", "median_in_iqr"]
+
+    strat = gate(gen, ref, core, edges)
+    pooled = strat[strat["height_bin"] == "all"]
+    assert set(pooled["stratum"]) <= {"stout", "all"}  # "all": bins without edges
+    row = pooled[pooled["stratum"] == "stout"].set_index("descriptor")
+    assert row.loc["L1.crown_ratio", "reference_stratum"] == "stout"
+    assert row.loc["L1.crown_ratio", "median_in_iqr"]

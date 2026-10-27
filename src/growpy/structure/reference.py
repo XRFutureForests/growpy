@@ -16,7 +16,14 @@ Two kinds of rows in ``reference_percentiles.csv``:
   the bin holds at least ``min_n`` trees.
 
 Tiers are never pooled silently: a row uses tiers A and B when it has at least ``min_n``
-of them, otherwise every tier, and says which in ``tiers``. The store is built from
+of them, otherwise every tier, and says which in ``tiers``.
+
+**Strata (social class).** A 20 m beech in a closed stand is a slender suppressed stem; a
+free-crowned one is stout. Rows carry a ``stratum``: ``all``, or the slenderness tertile
+(height over the reported DBH) within the species x 5 m bin, ``slender`` / ``medium`` /
+``stout``, cut at the edges in ``strata_edges.csv``. A generated tree is placed by its
+own height and exported DBH, so it is gated against real trees of its social class.
+Slenderness is not a gated descriptor, so the stratification is not circular. The store is built from
 ``growpy-qsm-descriptors`` tables of real trees (``source_kind == "scan"``) with
 ``growpy-qsm-reference``; ``load_reference`` reads it back.
 """
@@ -50,6 +57,8 @@ CATALOG_SPECIES = [
     "wild_cherry",
 ]
 PERCENTILES_FILE = "reference_percentiles.csv"
+STRATA_FILE = "strata_edges.csv"
+ALL_STRATA = "all"
 CORE_SET_FILE = "core_set.csv"
 
 
@@ -89,7 +98,13 @@ def _tier_subset(trees: pd.DataFrame, min_n: int) -> tuple[pd.DataFrame, str]:
 
 
 def _percentile_rows(
-    trees: pd.DataFrame, species: str, hbin: str, tiers: str, units: dict, min_n: int
+    trees: pd.DataFrame,
+    species: str,
+    hbin: str,
+    tiers: str,
+    units: dict,
+    min_n: int,
+    stratum: str = ALL_STRATA,
 ) -> list[dict]:
     rows = []
     for key in DEFINITIONS:
@@ -104,6 +119,7 @@ def _percentile_rows(
             {
                 "species_key": species,
                 "height_bin": hbin,
+                "stratum": stratum,
                 "tiers": tiers,
                 "sources": ",".join(sorted(trees["source"].dropna().unique())),
                 "descriptor": key,
@@ -115,31 +131,123 @@ def _percentile_rows(
     return rows
 
 
-def build_reference(
+def _real(table: pd.DataFrame, species: list[str] | None) -> pd.DataFrame:
+    real = table[(table["source_kind"] == "scan") & table["species_key"].notna()]
+    real = real[real["L1.height_m"] > 0]
+    return real if species is None else real[real["species_key"].isin(species)]
+
+
+def reported_dbh(table: pd.DataFrame) -> pd.Series:
+    """DBH for the slenderness class: the reported one (field or point-cloud DBH of a real
+    tree, the exported yield-table DBH of a Grove tree, also in its name as ``_d29cm``),
+    else the QSM's own."""
+    dbh = (
+        table["dbh_m_reported"].astype(float)
+        if "dbh_m_reported" in table
+        else pd.Series(np.nan, index=table.index)
+    )
+    if "source_tree_id" in table:
+        cm = table["source_tree_id"].astype(str).str.extract(r"_d(\d+)cm")[0]
+        dbh = dbh.fillna(cm.astype(float) / 100)
+    return dbh.fillna(table["dbh_m"].astype(float)) if "dbh_m" in table else dbh
+
+
+def slenderness(table: pd.DataFrame) -> pd.Series:
+    """Height over DBH (both in metres)."""
+    return table["L1.height_m"] / reported_dbh(table).where(lambda d: d > 0)
+
+
+def strata_edges(
     table: pd.DataFrame,
     species: list[str] | None = None,
     bin_m: float = BIN_M,
     min_n: int = MIN_N,
 ) -> pd.DataFrame:
-    """Percentile rows from a descriptor table (real trees only are used)."""
-    real = table[(table["source_kind"] == "scan") & table["species_key"].notna()]
-    real = real[real["L1.height_m"] > 0]
-    if species is not None:
-        real = real[real["species_key"].isin(species)]
+    """Slenderness tertiles per species x height bin of the real trees (tier rule as for
+    the percentile rows); bins with fewer than ``3 * min_n`` trees get none."""
+    real = _real(table, species)
+    bins = real["L1.height_m"].map(lambda h: height_bin(h, bin_m))
+    rows = []
+    for (sp, hbin), trees in real.groupby(["species_key", bins]):
+        used, tiers = _tier_subset(trees, min_n)
+        hd = slenderness(used).dropna()
+        if len(hd) < 3 * min_n:
+            continue
+        p33, p67 = np.quantile(hd, [1 / 3, 2 / 3])
+        rows.append(
+            {
+                "species_key": sp,
+                "height_bin": hbin,
+                "tiers": tiers,
+                "n": len(hd),
+                "hd_p33": p33,
+                "hd_p67": p67,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def assign_strata(
+    table: pd.DataFrame,
+    edges: pd.DataFrame,
+    species_of: pd.Series | None = None,
+    bin_m: float = BIN_M,
+) -> pd.Series:
+    """``slender`` / ``medium`` / ``stout`` per row (NaN where its species x bin has no
+    edges). ``species_of`` maps rows to the reference species (default: their own)."""
+    sp = species_of if species_of is not None else table["species_key"]
+    bins = table["L1.height_m"].map(lambda h: height_bin(h, bin_m))
+    idx = edges.set_index(["species_key", "height_bin"])
+    hd = slenderness(table)
+    out = pd.Series(np.nan, index=table.index, dtype=object)
+    for i in table.index:
+        key = (sp.loc[i], bins.loc[i])
+        if key not in idx.index or not np.isfinite(hd.loc[i]):
+            continue
+        p33, p67 = idx.loc[key, ["hd_p33", "hd_p67"]]
+        out.loc[i] = (
+            "stout" if hd.loc[i] <= p33 else "slender" if hd.loc[i] > p67 else "medium"
+        )
+    return out
+
+
+def build_reference(
+    table: pd.DataFrame,
+    species: list[str] | None = None,
+    bin_m: float = BIN_M,
+    min_n: int = MIN_N,
+    edges: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Percentile rows from a descriptor table (real trees only are used); with
+    ``edges`` also one set of rows per slenderness stratum."""
+    real = _real(table, species)
     raw_units = {k: v[0] for k, v in DEFINITIONS.items()}
     norm_units = {k: normalised_unit(u) for k, u in raw_units.items()}
     bins = real["L1.height_m"].map(lambda h: height_bin(h, bin_m))
+    groups = [(ALL_STRATA, real)]
+    if edges is not None and len(edges):
+        strata = assign_strata(real, edges, bin_m=bin_m)
+        groups += [(st, real[strata == st]) for st in ("slender", "medium", "stout")]
     rows: list[dict] = []
-    for sp, trees in real.groupby("species_key"):
-        used, tiers = _tier_subset(trees, min_n)
-        if len(used) >= min_n:
-            rows += _percentile_rows(
-                normalise_by_height(used), sp, POOLED, tiers, norm_units, min_n
-            )
-        for hbin, in_bin in trees.groupby(bins.loc[trees.index]):
-            used, tiers = _tier_subset(in_bin, min_n)
+    for stratum, subset in groups:
+        for sp, trees in subset.groupby("species_key"):
+            used, tiers = _tier_subset(trees, min_n)
             if len(used) >= min_n:
-                rows += _percentile_rows(used, sp, hbin, tiers, raw_units, min_n)
+                rows += _percentile_rows(
+                    normalise_by_height(used),
+                    sp,
+                    POOLED,
+                    tiers,
+                    norm_units,
+                    min_n,
+                    stratum,
+                )
+            for hbin, in_bin in trees.groupby(bins.loc[trees.index]):
+                used, tiers = _tier_subset(in_bin, min_n)
+                if len(used) >= min_n:
+                    rows += _percentile_rows(
+                        used, sp, hbin, tiers, raw_units, min_n, stratum
+                    )
     return pd.DataFrame(rows)
 
 
@@ -160,9 +268,12 @@ def write_reference(
     cover: pd.DataFrame,
     out_dir: Path,
     manifest: dict,
+    edges: pd.DataFrame | None = None,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     reference.to_csv(out_dir / PERCENTILES_FILE, index=False, float_format="%.5g")
+    if edges is not None:
+        edges.to_csv(out_dir / STRATA_FILE, index=False, float_format="%.4g")
     cover.to_csv(out_dir / "coverage.csv", index=False)
     definitions_table().to_csv(out_dir / "descriptor_definitions.csv", index=False)
     (out_dir / "manifest.json").write_text(
@@ -179,7 +290,15 @@ def load_reference(ref_dir: Path | None = None) -> pd.DataFrame:
     )
     if missing:
         raise ValueError(f"{ref_dir / PERCENTILES_FILE}: missing columns {missing}")
+    if "stratum" not in ref.columns:
+        ref["stratum"] = ALL_STRATA
     return ref
+
+
+def load_strata_edges(ref_dir: Path | None = None) -> pd.DataFrame | None:
+    """``strata_edges.csv`` (slenderness tertiles per species x bin) or None."""
+    path = (ref_dir or default_reference_dir()) / STRATA_FILE
+    return pd.read_csv(path) if path.exists() else None
 
 
 def load_core_set(ref_dir: Path | None = None) -> dict[str, set[str]] | None:

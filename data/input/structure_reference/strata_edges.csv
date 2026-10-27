@@ -1,0 +1,15 @@
+species_key,height_bin,tiers,n,hd_p33,hd_p67
+european_beech,h10-15,A/B,183,91.1,109.2
+european_beech,h15-20,A/B,278,96.58,118.5
+european_beech,h20-25,A/B,372,92.8,112.1
+european_beech,h25-30,A/B,467,76.65,92.53
+european_beech,h30-35,A/B,334,68.08,79.35
+european_beech,h35-40,A/B,31,64.47,74.61
+european_oak,h15-20,A/B/C,63,25.05,31.35
+european_oak,h20-25,A/B/C,116,28.27,34.51
+european_oak,h30-35,A/B,53,57.62,66.6
+norway_spruce,h0-5,A/B/C,45,10.29,16.63
+norway_spruce,h10-15,A/B/C,105,34.24,45.53
+norway_spruce,h15-20,A/B/C,172,44.45,56.04
+norway_spruce,h20-25,A/B/C,53,55.4,63.8
+norway_spruce,h5-10,A/B/C,67,25.89,42.61

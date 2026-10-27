@@ -5,7 +5,8 @@ and gate: hub `04-LOGIC-TIER/tree-structure-realism-plan-2026-10`.
 
 | File | Content |
 |---|---|
-| `reference_percentiles.csv` | one row per species x height bin x descriptor: `tiers`, `sources`, `unit`, `n`, `p5`, `p25`, `p50`, `p75`, `p95` |
+| `reference_percentiles.csv` | one row per species x height bin x stratum x descriptor: `tiers`, `sources`, `unit`, `n`, `p5`, `p25`, `p50`, `p75`, `p95` |
+| `strata_edges.csv` | slenderness tertiles (height / reported DBH) per species x 5 m bin with at least 30 trees: `hd_p33`, `hd_p67` |
 | `coverage.csv` | real trees per species x source x tier x 5 m height bin |
 | `descriptor_definitions.csv` | unit, frame, scan robustness and meaning of every descriptor |
 | `manifest.json` | build date, growpy commit, input tables, tier rule, bin width, minimum n |
@@ -18,6 +19,7 @@ and gate: hub `04-LOGIC-TIER/tree-structure-realism-plan-2026-10`.
   and angles are unchanged. Tree height itself has no pooled row.
 - `height_bin = h20-25` and so on: raw values of the trees in that 5 m bin, only where
   the bin holds at least `min_n` (10) trees.
+- `stratum = all` uses every tree; `slender`, `medium` and `stout` use the slenderness tertile of the tree's bin (social class: suppressed stand trees are slender, free-crowned ones stout). `growpy-qsm-gate` places each generated tree in its stratum by its own height and exported DBH and falls back to `all` where a stratum has no row (`--no-stratify` for the unstratified gate). Slenderness is not a gated descriptor.
 - A row uses tiers A and B when it has at least `min_n` of them, otherwise every tier;
   `tiers` says which. Tiers are never pooled silently.
 - Only the catalog's species are kept. Silver fir and Douglas fir have no QSM of their

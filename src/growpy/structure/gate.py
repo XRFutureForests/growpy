@@ -29,11 +29,19 @@ import re
 import numpy as np
 import pandas as pd
 
-from growpy.structure.reference import POOLED, height_bin, normalise_by_height
+from growpy.structure.reference import (
+    ALL_STRATA,
+    POOLED,
+    assign_strata,
+    height_bin,
+    normalise_by_height,
+)
 from growpy.structure.score import REFERENCE_OF, is_conifer_unsafe, robust_keys
 
 INSIDE_SHARE = 0.8
-MIN_GATE_HEIGHT_M = 5.0  # owner 2026-10-27: below 5 m reported, never gated (1 tier-A tree)
+MIN_GATE_HEIGHT_M = (
+    5.0  # owner 2026-10-27: below 5 m reported, never gated (1 tier-A tree)
+)
 TOO_REGULAR = 0.25
 MIN_SERIES = 5
 # growth-over-time tolerances (measurement noise of a standardised skeleton)
@@ -93,27 +101,49 @@ def gate(
     table: pd.DataFrame,
     reference: pd.DataFrame,
     core: dict[str, set[str]] | None = None,
+    edges: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """One row per generated species x height bin ("all" + 5 m bins) x descriptor.
+    """One row per generated species x height bin ("all" + 5 m bins) x stratum x
+    descriptor.
 
     ``table`` is ``growpy-qsm-descriptors`` output (its generated rows are scored);
     ``reference`` is ``load_reference()``; ``core`` maps species to its core descriptors
-    (default: ``default_core``)."""
+    (default: ``default_core``). With ``edges`` (``load_strata_edges()``) every tree is
+    gated against the real trees of its own slenderness stratum; where a stratum has no
+    row, the unstratified one is used and ``reference_stratum`` says so."""
     generated = table[table["source_kind"] == "generated"].copy()
     generated = generated[generated["L1.height_m"] >= MIN_GATE_HEIGHT_M]
     generated["series"] = series_of(generated)
-    ref_index = reference.set_index(["species_key", "height_bin", "descriptor"])
+    ref_sp_of = generated["species_key"].map(lambda s: REFERENCE_OF.get(s, s))
+    generated["stratum"] = (
+        assign_strata(generated, edges, ref_sp_of).fillna(ALL_STRATA)
+        if edges is not None and len(edges)
+        else ALL_STRATA
+    )
+    if "stratum" not in reference.columns:
+        reference = reference.assign(stratum=ALL_STRATA)
+    ref_index = reference.set_index(
+        ["species_key", "height_bin", "stratum", "descriptor"]
+    )
     rows = []
     for species, gen in generated.groupby("species_key"):
         ref_sp = REFERENCE_OF.get(species, species)
         core_set = (core or {}).get(species) or default_core(species)
-        groups = [(POOLED, normalise_by_height(gen), gen["series"])]
         bins = gen["L1.height_m"].map(height_bin)
-        groups += [(b, g, g["series"]) for b, g in gen.groupby(bins)]
-        for hbin, values_table, series in groups:
+        groups = [
+            (POOLED, st, normalise_by_height(g), g["series"])
+            for st, g in gen.groupby("stratum")
+        ]
+        groups += [
+            (b, st, g, g["series"]) for (b, st), g in gen.groupby([bins, "stratum"])
+        ]
+        for hbin, stratum, values_table, series in groups:
             for key in values_table.columns:
-                if (ref_sp, hbin, key) not in ref_index.index:
-                    continue
+                used = stratum
+                if (ref_sp, hbin, used, key) not in ref_index.index:
+                    used = ALL_STRATA
+                    if (ref_sp, hbin, used, key) not in ref_index.index:
+                        continue
                 values = values_table[key].to_numpy(dtype=float)
                 values = values[np.isfinite(values)]
                 if not len(values):
@@ -123,11 +153,13 @@ def gate(
                     "reference": ref_sp,
                     "proxy": ref_sp != species,
                     "height_bin": hbin,
+                    "stratum": stratum,
+                    "reference_stratum": used,
                     "descriptor": key,
                     "core": key in core_set,
                     "series": series.nunique(),
                 }
-                row.update(_row(values, ref_index.loc[(ref_sp, hbin, key)]))
+                row.update(_row(values, ref_index.loc[(ref_sp, hbin, used, key)]))
                 rows.append(row)
     return pd.DataFrame(rows)
 
@@ -139,7 +171,7 @@ def verdict(gated: pd.DataFrame) -> pd.DataFrame:
         return gated
     core = gated[gated["core"]]
     out = (
-        core.groupby(["species_key", "reference", "height_bin"])
+        core.groupby(["species_key", "reference", "height_bin", "stratum"])
         .agg(
             core_scored=("pass", "size"),
             core_pass=("pass", "sum"),
@@ -147,6 +179,7 @@ def verdict(gated: pd.DataFrame) -> pd.DataFrame:
             gen_n=("gen_n", "max"),
             series=("series", "max"),
             real_n_min=("real_n", "min"),
+            reference_stratum=("reference_stratum", "first"),
         )
         .reset_index()
     )
@@ -155,12 +188,14 @@ def verdict(gated: pd.DataFrame) -> pd.DataFrame:
     out["verdict"] = np.where(out["core_pass"] == out["core_scored"], "pass", "fail")
     failing = (
         core[~core["pass"]]
-        .groupby(["species_key", "height_bin"])["descriptor"]
+        .groupby(["species_key", "height_bin", "stratum"])["descriptor"]
         .apply(lambda s: " ".join(sorted(s)))
     )
     out["failing"] = [
-        failing.get((s, b), "")
-        for s, b in zip(out["species_key"], out["height_bin"], strict=True)
+        failing.get((s, b, st), "")
+        for s, b, st in zip(
+            out["species_key"], out["height_bin"], out["stratum"], strict=True
+        )
     ]
     return out
 

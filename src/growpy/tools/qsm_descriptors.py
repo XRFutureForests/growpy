@@ -40,6 +40,7 @@ IDENTITY = [
     "valid_qsm",
     "height_m",
     "dbh_m",
+    "dbh_m_reported",
     "trunk_length_m",
 ]
 

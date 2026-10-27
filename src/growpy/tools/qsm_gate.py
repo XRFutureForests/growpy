@@ -3,7 +3,9 @@
     growpy-qsm-gate <descriptors.csv> [<descriptors.csv> ...] --out-dir <dir>
     growpy-qsm-gate <...> --out-dir <dir> --reference data/input/structure_reference
 
-Scores the generated rows of ``growpy-qsm-descriptors`` tables. Score unthinned growth
+Scores the generated rows of ``growpy-qsm-descriptors`` tables, each tree against the
+real trees of its slenderness stratum when the store has strata (owner 2026-10-27;
+``--no-stratify`` for the unstratified gate). Score unthinned growth
 JSONs only (``export_mode = "growth_json_only"`` with ``min_branch_radius_fraction`` 0):
 the export cuts bias lateral lengths up and conifer crown ratios down. Writes:
 
@@ -23,7 +25,11 @@ from pathlib import Path
 import pandas as pd
 
 from growpy.structure.gate import gate, growth_consistency, verdict
-from growpy.structure.reference import load_core_set, load_reference
+from growpy.structure.reference import (
+    load_core_set,
+    load_reference,
+    load_strata_edges,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,11 +39,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--reference", type=Path, default=None, help="store dir (default: committed)"
     )
+    parser.add_argument(
+        "--no-stratify",
+        action="store_true",
+        help="gate against all real trees, not the slenderness stratum",
+    )
     args = parser.parse_args(argv)
     table = pd.concat(
         [pd.read_csv(p, low_memory=False) for p in args.descriptors], ignore_index=True
     )
-    gated = gate(table, load_reference(args.reference), load_core_set(args.reference))
+    edges = None if args.no_stratify else load_strata_edges(args.reference)
+    gated = gate(
+        table,
+        load_reference(args.reference),
+        load_core_set(args.reference),
+        edges,
+    )
     if gated.empty:
         print("nothing gated: no generated species with a reference row")
         return 1

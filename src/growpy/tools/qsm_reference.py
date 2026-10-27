@@ -7,7 +7,8 @@ Reads ``growpy-qsm-descriptors`` tables, keeps the real trees (``source_kind == 
 of the catalog species and writes per species: percentiles p5/p25/p50/p75/p95 of every
 descriptor, pooled and height-normalised (``height_bin == all``) and raw per 5 m height
 bin where the bin holds at least ``--min-n`` trees; plus ``coverage.csv`` (trees per
-species x source x tier x bin), ``descriptor_definitions.csv`` and ``manifest.json``.
+species x source x tier x bin), ``strata_edges.csv`` (slenderness tertiles; every
+row also exists per stratum), ``descriptor_definitions.csv`` and ``manifest.json``.
 The README in the store is hand-written and left alone.
 """
 
@@ -28,6 +29,7 @@ from growpy.structure.reference import (
     build_reference,
     coverage,
     default_reference_dir,
+    strata_edges,
     write_reference,
 )
 
@@ -63,7 +65,8 @@ def main(argv: list[str] | None = None) -> int:
         [pd.read_csv(p, low_memory=False) for p in args.descriptors], ignore_index=True
     )
     species = None if args.all_species else CATALOG_SPECIES
-    reference = build_reference(table, species, args.bin_m, args.min_n)
+    edges = strata_edges(table, species, args.bin_m, args.min_n)
+    reference = build_reference(table, species, args.bin_m, args.min_n, edges)
     real = table[table["source_kind"] == "scan"]
     if species is not None:
         real = real[real["species_key"].isin(species)]
@@ -79,11 +82,12 @@ def main(argv: list[str] | None = None) -> int:
         "min_n": args.min_n,
         "tier_rule": "tiers A and B when a row has >= min_n of them, else all tiers",
         "normalisation": "height_bin 'all': unit m / height, unit 1/m * height",
+        "strata": "slenderness (height / reported DBH) tertiles per species x bin with >= 3 * min_n trees: slender, medium, stout; stratum all = unstratified",
         "prune": "as in the inputs (growpy-qsm-descriptors defaults: laterals < 0.3 m "
         "and axes above order 2 removed)",
         "note": args.note,
     }
-    write_reference(reference, cover, out_dir, manifest)
+    write_reference(reference, cover, out_dir, manifest, edges)
     pooled = reference[reference["height_bin"] == "all"]
     per_bin = reference[reference["height_bin"] != "all"]
     print(

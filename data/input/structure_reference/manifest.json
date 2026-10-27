@@ -1,10 +1,10 @@
 {
   "built": "2026-10-27",
-  "growpy_commit": "1844abb",
+  "growpy_commit": "58f07f5",
   "inputs": [
-    "data/output/structure/desc_biodivA/descriptors.csv",
-    "data/output/structure/desc_biodivC/descriptors.csv",
-    "data/output/structure/desc_belgium_kew/descriptors.csv"
+    "data/output/structure/v2_desc_biodivA/descriptors.csv",
+    "data/output/structure/v2_desc_biodivC/descriptors.csv",
+    "data/output/structure/v2_desc_belgium_kew/descriptors.csv"
   ],
   "real_trees": 4156,
   "real_trees_by_source": {
@@ -25,6 +25,7 @@
   "min_n": 10,
   "tier_rule": "tiers A and B when a row has >= min_n of them, else all tiers",
   "normalisation": "height_bin 'all': unit m / height, unit 1/m * height",
+  "strata": "slenderness (height / reported DBH) tertiles per species x bin with >= 3 * min_n trees: slender, medium, stout; stratum all = unstratified",
   "prune": "as in the inputs (growpy-qsm-descriptors defaults: laterals < 0.3 m and axes above order 2 removed)",
-  "note": "first build, XRFF-573; QSM (L1) descriptors only"
+  "note": "XRFF-573 store + slenderness strata (owner 2026-10-27)"
 }
