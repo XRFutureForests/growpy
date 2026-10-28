@@ -50,7 +50,13 @@ curl -s https://dt.unr.uni-freiburg.de/survey/api/health
 docker compose -f docker-compose.yml -f docker-compose.dtunr.yml down
 ```
 
+After `up -d --build` the container has a new address and nginx keeps the old one for up to
+30 s (`resolver ... valid=30s`), so `/survey/` can answer 502 for that long. A respondent loses
+nothing: the page keeps every answer in the browser and saves the whole session again with the
+next tree.
+
 Answers are one JSON per respondent in `/media/data/xrff-survey/tree-architecture-2026-10/`.
+`deploytest01.json` there is the deployment check (empty answers, skipped by `analyse.py`).
 They are never served back. They may hold a respondent's name, so they stay out of git.
 
 ## Analyse
