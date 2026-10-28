@@ -3,14 +3,15 @@
 Real-tree TreeQSM reference data for judging the structure of Grove-generated trees
 (`growpy-qsm-to-growth`, `growpy-structure-descriptors`). Downloaded 2026-10-06 from the
 original repositories; everything here except this README is git-ignored and re-downloadable.
-QSM data only, with one exception: 30 BioDiv beech TLS clouds for the QSM fitter check and
-the L2 point-cloud metrics (`biodiv3dtrees_clouds/`, 2026-10-27, XRFF-575 / XRFF-577). No
+QSM data only, with one exception: BioDiv TLS clouds in `biodiv3dtrees_clouds/` (2026-10-27):
+30 beech for the QSM fitter check and the L2 point-cloud metrics (XRFF-575 / XRFF-577), and the
+spruce, pine and Douglas fir clouds for our own conifer QSMs (M2). No
 other point clouds (TLS, ULS, ALS) and no foliage meshes were kept.
 
 | Folder | Source | Content | Licence |
 |--------|--------|---------|---------|
 | `biodiv3dtrees_qsm/` | GRO.data [10.25625/8PB1IF](https://doi.org/10.25625/8PB1IF), paper [10.1038/s41597-025-06421-7](https://doi.org/10.1038/s41597-025-06421-7) | `QSM/raw/` (selected optimal TreeQSM 2.4.1 `.mat`) and `QSM/corrected/` (rTwig 1.4.0 corrected cylinder CSVs) for 3,386 broadleaf trees, streamed out of the 103 GB `QSM.tar.zst`. `QSM/all/` (the 80 candidate models per tree, about 95 GB) skipped | CC BY 4.0 |
-| `biodiv3dtrees_clouds/` | same record, `TLS.tar.zst` (19.94 GB, 4,952 single-tree `TLS/<treeID>_TLS.laz`, LAS point format 3 with RGB, 1 mm scale; one zstd frame, so no random access) | `tls_beech30/`: 30 *Fagus sylvatica* clouds (20 k to 2.7 M points, 82 MB) with `validQSM == True`, six per 5 m bin from 10 to 35 m, at most two per plot (seed 575), streamed out of the archive in one pass; `selection_beech30.csv` (the choice, with published TLS and QSM values); `tls_listing.csv` (every member, its size and offset). Tier A (the published QSMs of the same trees are in `biodiv3dtrees_qsm/`) | CC BY 4.0 |
+| `biodiv3dtrees_clouds/` | same record, `TLS.tar.zst` (19.94 GB, 4,952 single-tree `TLS/<treeID>_TLS.laz`, LAS point format 3 with RGB, 1 mm scale; one zstd frame, so no random access) | `tls_beech30/`: 30 *Fagus sylvatica* clouds (20 k to 2.7 M points, 82 MB) with `validQSM == True`, six per 5 m bin from 10 to 35 m, at most two per plot (seed 575), streamed out of the archive in one pass; `selection_beech30.csv` (the choice, with published TLS and QSM values); `tls_listing.csv` (every member, its size and offset). `conifers/`: all 1,528 *Picea abies*, *Pinus sylvestris* and *Pseudotsuga menziesii* clouds (8.4 GB, second pass 2026-10-27), listed in `selection_conifers.csv`; no QSM exists for them. Tier A (the published QSMs of the same trees are in `biodiv3dtrees_qsm/`) | CC BY 4.0 |
 | `biodiv3dtrees_graphs/` | same record | `Graphs.tar.zst` (cleaned QSM graphs, the GraphML `growpy-qsm-to-growth` reads), `labels.csv` (validity flags, species, split, volQSM), `README.md` (column dictionary) | CC BY 4.0 |
 | `belgium_beech_pine_ash_larch/` | [Zenodo 4557401](https://zenodo.org/records/4557401) | 65 destructively harvested trees: `optimal_QSMs.zip` (TreeQSM 2.3 `.mat`), `Destructive_and_qsm_data_DEMOL.csv` (reference volume) | CC BY 4.0 |
 | `pulse_frequency_ghent/` | [Zenodo 10671784](https://zenodo.org/records/10671784) | `optimal_QSMs.zip` (223 models: Austria 111, Gabon 39 (tropical), Belgium leaf-on 42 and leaf-off 31; each tree once per pulse frequency; flat TreeQSM layout; no species, DBH or height published), `tree_metrics_dataframe.csv` | CC BY 4.0 |
@@ -19,6 +20,7 @@ other point clouds (TLS, ULS, ALS) and no foliage meshes were kept.
 | `wytham_woods/` | [Zenodo 7307956](https://zenodo.org/records/7307956) | `DATA_QSM_opt.zip`: 835 optimised TreeQSM models (`.mat`, 37.6 GB) | CC BY 4.0 |
 | `kew_wakehurst/` | [Zenodo 15373627](https://zenodo.org/records/15373627) | `broadleaf_qsm.zip`, `conifer_qsm.zip`, `coppice_qsm.zip` (TreeQSM `.mat`), `kew-wakehurst-agc.csv` | OGL-UK-3.0 |
 | `czech_central_european/` | [datarepo.eosc.cz](https://datarepo.eosc.cz/datasets/records/datst.xkadt-0cb92), DOI 10.48700/datst.xkadt-0cb92 | Only the trunk-and-branch `*_QSM.obj` meshes (`3D_TREES/<SPECIES>/<tree>/`), `3D_TREE_METADATA.csv`, `ReadMe.txt`, extracted from `Tree_dataset.zip` by range request. Meshes are reconstructed from TLS, not raw QSM cylinders | **CC BY-NC** (non-commercial) |
+| `weiser2024_leafwood/` | heiDATA [10.11588/data/UUMEDI](https://doi.org/10.11588/data/UUMEDI) (Weiser et al. 2024) | 11 leaf-on TLS trees of 7 species (2 *Fagus sylvatica*, 2 *Picea abies*, 2 *Pinus sylvestris*, 2 *Quercus rubra*, *Q. petraea*, *Acer pseudoplatanus*, *Pseudotsuga menziesii*), hand-labelled `Classification` 0 = wood, 1 = leaf, `PointSourceId` 1-7 = scan position, stem positions in `positions_epsg25832.csv`. Point clouds, not QSMs: used for leaf-versus-wood checks of the L2 metrics and the fitter (XRFF-577, XRFF-575) | CC BY 4.0 |
 
 ## Quality tiers
 
@@ -54,7 +56,7 @@ area). It does not prove the branch topology is botanically right.
 BioDiv has no conifer QSM, but its `TLS.tar.zst` holds 1,543 conifer clouds (8.46 GB:
 *Picea abies* 1,005 = 6.26 GB, *Pinus sylvestris* 512 = 2.03 GB, *Pseudotsuga* 11, *Larix* 10,
 *Abies* 5; `tls_listing.csv`). They are spread over the whole archive, so keeping them means
-one more full 20 GB stream (about 26 min at 13 MB/s); not downloaded yet. The SimpleForest archive holds point clouds and scripts, not
+one more full 20 GB stream (24 min); the spruce, pine and Douglas fir clouds are in `biodiv3dtrees_clouds/conifers/` (larch and fir not kept). The SimpleForest archive holds point clouds and scripts, not
 finished QSMs, so only its volume table is kept. Larger conifer sets (German multi-platform
 trees, TreeScanPL10K, NEWFOR) are point-cloud datasets: using them means running our own
 QSM reconstruction, which has not been decided and is outside the QSM-only download.

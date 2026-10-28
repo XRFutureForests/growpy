@@ -542,6 +542,9 @@ def export_obj_direct(ctx: TreeExportContext) -> None:
         mat_prefix=mat_prefix,
         classification_codes=classification_codes,
         up_axis=cfg.helios_obj_up_axis,
+        # One file per stage: without the stage prefix every height stage of
+        # a tree wrote the same {species}_tree_{fid}_helios.obj.
+        name=ctx.file_prefix or None,
     )
 
     ctx.usd_path = obj_path
@@ -1339,6 +1342,8 @@ def generate_forest_stages(
                             export_obj_direct(ctx)
 
                         if ctx.export_success:
+                            if variant_idx == 0:
+                                exported_stage_count += 1
                             exported_files.append(str(ctx.usd_path))
                             logger.info("  Exported (OBJ): %s", ctx.usd_path.name)
                             write_tamf(ctx)

@@ -202,26 +202,29 @@ def _read_twig_mesh_classified(
     return vertices, np.empty((0, 3), dtype=np.int64), all_faces
 
 
-def _scale_trunk_points_radially(
-    points: list, radial_scale: float,
+def _trunk_points_for_obj(
+    model: Any, raw_points: list, bones_info: list | None, radial_scale: float,
 ) -> list[tuple[float, float, float]]:
-    """Scale Grove model points horizontally (X/Z) toward the target DBH.
+    """Grove model points with the USD path's per-bone radial DBH correction.
 
-    Matches the radial-only scaling the USD export path applies via
-    radial_scale: it corrects trunk *diameter* toward the height-DBH
-    allometry target (see pipelines/forest_stages.py::compute_radial_scale),
-    while height (Y, in Grove's native Y-up space) is left unchanged.
-
-    Args:
-        points: Grove model points (objects with .x/.y/.z, e.g. model.points)
-        radial_scale: Horizontal scale factor (1.0 = no change)
-
-    Returns:
-        List of (x, y, z) tuples
+    Uses ``growpy.io.usd.tree_export.radially_scaled_points``: each vertex moves
+    perpendicular to its own bone, so branch radii follow the DBH target while
+    branch positions (crown spread, height) stay as Grove grew them -- the same
+    geometry as the UE asset and the growth JSON. Without bone data the points
+    are returned unscaled, as the USD path does. Plain-float tuples, which is
+    what twig placement expects as ``scaled_points``.
     """
-    if radial_scale == 1.0:
-        return [(p.x, p.y, p.z) for p in points]
-    return [(p.x * radial_scale, p.y, p.z * radial_scale) for p in points]
+    from growpy.io.usd.tree_export import radially_scaled_points
+
+    scaled = radially_scaled_points(model, raw_points, bones_info, radial_scale)
+    if scaled is None:
+        if radial_scale != 1.0:
+            logger.warning(
+                "Direct OBJ export: no bone data, radial DBH correction %.3f skipped",
+                radial_scale,
+            )
+        return [(p.x, p.y, p.z) for p in raw_points]
+    return [(float(x), float(y), float(z)) for x, y, z in scaled]
 
 
 def _read_twig_prototypes_for_direct_export(
@@ -342,6 +345,7 @@ def convert_tree_to_obj_direct(
     mat_prefix: str = "",
     classification_codes: dict[str, int] | None = None,
     up_axis: str = "y",
+    name: str | None = None,
 ) -> Path | None:
     """Convert a Grove model directly to OBJ, bypassing USD/skeleton/Nanite
     entirely for the trunk (export_mode = "helios", see config/core.py).
@@ -366,25 +370,29 @@ def convert_tree_to_obj_direct(
             used -- see _read_twig_prototypes_for_direct_export.
         output_dir: Directory to write the OBJ/MTL pair.
         species_name: Species name for spectra/material lookup.
-        tree_id: Tree identifier for file naming.
-        radial_scale: Horizontal (X/Z) trunk scale toward the DBH allometry
-            target, matching compute_radial_scale()'s output.
-        bones_info: Optional skeleton bones, passed through to
-            extract_twig_placements_from_model for branch-based twig
-            attachment selection (has no effect on the OBJ output itself,
-            which is unskinned, but keeps placement selection consistent
-            with the USD path).
+        tree_id: Tree identifier for file naming (used when ``name`` is unset).
+        radial_scale: DBH correction toward the allometry target
+            (compute_radial_scale()), applied per bone as in the USD path.
+        up_axis: Vertical axis of the written OBJ ("y" or "z"); the Grove
+            points themselves are always Z-up.
+        bones_info: Skeleton bones; carry the per-bone radial scaling and are
+            passed through to extract_twig_placements_from_model for
+            branch-based twig attachment selection.
         simplification_ratios: {'bark': r, 'wood': r, 'leaf': r, 'fruit': r}.
             None disables simplification.
         mat_prefix: Per-tree material name prefix (see
             growpy.io.helios.classification).
         classification_codes: Per-material Helios classification codes.
+        name: File stem; the OBJ is ``{name}_helios.obj``. Pass the stage's
+            file prefix (``ctx.file_prefix``) so the height stages of one tree
+            do not overwrite each other. Defaults to
+            ``{species}_tree_{tree_id}``.
 
     Returns:
         Path to the generated OBJ file, or None if the model has no mesh.
     """
     species_clean = species_name.replace(" ", "_").replace("-", "_").lower()
-    helios_name = f"{species_clean}_tree_{tree_id}_helios"
+    helios_name = f"{name}_helios" if name else f"{species_clean}_tree_{tree_id}_helios"
     obj_path = output_dir / f"{helios_name}.obj"
     mtl_name = f"{helios_name}.mtl"
     mtl_path = output_dir / mtl_name
@@ -395,7 +403,7 @@ def convert_tree_to_obj_direct(
         logger.warning("Direct OBJ export: model has no mesh for tree %s", tree_id)
         return None
 
-    scaled_points = _scale_trunk_points_radially(raw_points, radial_scale)
+    scaled_points = _trunk_points_for_obj(model, raw_points, bones_info, radial_scale)
     trunk_verts = np.array(scaled_points, dtype=np.float64)
     trunk_faces = np.array(raw_faces, dtype=np.int64)
 

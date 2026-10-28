@@ -275,6 +275,8 @@ class TestExportObjDirect:
         assert mock_convert.call_args.kwargs["model"] is ctx.model
         assert mock_convert.call_args.kwargs["twig_usd_map"] is ctx.twig_usd_map
         assert mock_convert.call_args.kwargs["tree_id"] == str(ctx.fid)
+        # Stage-specific file stem, so the height stages of a tree don't overwrite.
+        assert mock_convert.call_args.kwargs["name"] == ctx.file_prefix
 
     def test_failure_sets_flag_false(self, tmp_path):
         ctx = _make_ctx(tree_dir=tmp_path)

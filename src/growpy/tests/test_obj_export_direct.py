@@ -17,7 +17,7 @@ from growpy.core.twig import TwigPlacement
 # first so the pxr import below succeeds.
 from growpy.io.helios.obj_export import (  # noqa: F401
     _read_twig_prototypes_for_direct_export,
-    _scale_trunk_points_radially,
+    _trunk_points_for_obj,
     _twig_placements_to_instance_arrays,
     convert_tree_to_obj_direct,
 )
@@ -35,12 +35,17 @@ class _FakeModel:
     and extract_twig_placements_from_model actually read.
     """
 
-    def __init__(self, points, faces, twig_locations, twig_directions, twig_orientations):
+    def __init__(
+        self, points, faces, twig_locations, twig_directions, twig_orientations,
+        point_attribute_bone_id=None,
+    ):
         self.points = points
         self.faces = faces
         self._twig_locations = twig_locations
         self._twig_directions = twig_directions
         self._twig_orientations = twig_orientations
+        if point_attribute_bone_id is not None:
+            self.point_attribute_bone_id = point_attribute_bone_id
 
     def get_twig_locations(self):
         return self._twig_locations
@@ -83,19 +88,63 @@ def _write_minimal_twig_usd(path, material_names):
     return path
 
 
-class TestScaleTrunkPointsRadially:
+# A Z-up tree like Grove's: a 10 m trunk bone and a 5 m horizontal branch bone at
+# 5 m. Bones are (id, parent_id, start, end, radius) as from grove.tag_bone_id().
+_BONES = [
+    (0, -1, _FakePoint(0.0, 0.0, 0.0), _FakePoint(0.0, 0.0, 10.0), 0.3),
+    (1, 0, _FakePoint(0.0, 0.0, 5.0), _FakePoint(5.0, 0.0, 5.0), 0.1),
+]
+_TREE_POINTS = [
+    _FakePoint(0.2, 0.0, 1.0),  # trunk surface at 1 m (below breast height)
+    _FakePoint(0.0, 0.2, 1.0),
+    _FakePoint(0.0, 0.0, 10.0),  # stem tip, on the trunk axis
+    _FakePoint(3.0, 0.0, 5.2),  # branch surface, 3 m out, 0.2 m above its axis
+]
+_TREE_BONE_IDS = [0, 0, 0, 1]
+
+
+def _branch_scale(radial_scale, z, tree_height=10.0):
+    """Expected per-height scale: full at 1.3 m, 30 % of the correction at 0.85 h."""
+    start, end = 1.3, max(2.3, 0.85 * tree_height)
+    crown = 1.0 + (radial_scale - 1.0) * 0.3
+    t = (z - start) / (end - start)
+    t = t * t * (3.0 - 2.0 * t)
+    return radial_scale + (crown - radial_scale) * t
+
+
+class TestTrunkPointsForObj:
+    def _model(self, with_bone_ids=True):
+        return _FakeModel(
+            points=_TREE_POINTS, faces=[[0, 1, 2], [0, 2, 3]],
+            twig_locations=[], twig_directions=[], twig_orientations=[],
+            point_attribute_bone_id=_TREE_BONE_IDS if with_bone_ids else None,
+        )
+
     def test_identity_when_scale_is_one(self):
-        points = [_FakePoint(1.0, 2.0, 3.0), _FakePoint(4.0, 5.0, 6.0)]
-        result = _scale_trunk_points_radially(points, 1.0)
-        assert result == [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)]
+        pts = _trunk_points_for_obj(self._model(), _TREE_POINTS, _BONES, 1.0)
+        assert pts == [(p.x, p.y, p.z) for p in _TREE_POINTS]
 
-    def test_scales_x_and_z_not_y(self):
-        points = [_FakePoint(2.0, 10.0, 4.0)]
-        result = _scale_trunk_points_radially(points, 0.5)
-        assert result == [(1.0, 10.0, 2.0)]
+    def test_scales_radii_about_each_bone_and_keeps_positions(self):
+        pts = np.array(_trunk_points_for_obj(self._model(), _TREE_POINTS, _BONES, 0.5))
+        # trunk ring at 1 m: radius halved, height unchanged
+        np.testing.assert_allclose(pts[0], [0.1, 0.0, 1.0], atol=1e-6)
+        np.testing.assert_allclose(pts[1], [0.0, 0.1, 1.0], atol=1e-6)
+        # stem tip on the axis: not moved, so the tree keeps its height
+        np.testing.assert_allclose(pts[2], [0.0, 0.0, 10.0], atol=1e-6)
+        # branch point: stays 3 m out along its branch (crown spread kept); only
+        # its 0.2 m offset from the branch axis shrinks by the height-blended scale
+        s = _branch_scale(0.5, 5.2)
+        np.testing.assert_allclose(pts[3], [3.0, 0.0, 5.0 + 0.2 * s], atol=1e-5)
 
-    def test_empty_points(self):
-        assert _scale_trunk_points_radially([], 0.5) == []
+    def test_without_bone_data_points_are_unscaled(self):
+        model = self._model(with_bone_ids=False)
+        pts = _trunk_points_for_obj(model, _TREE_POINTS, _BONES, 0.5)
+        assert pts == [(p.x, p.y, p.z) for p in _TREE_POINTS]
+        assert _trunk_points_for_obj(self._model(), _TREE_POINTS, None, 0.5) == pts
+
+    def test_returns_plain_floats_for_twig_placement(self):
+        pts = _trunk_points_for_obj(self._model(), _TREE_POINTS, _BONES, 0.5)
+        assert all(type(c) is float for p in pts for c in p)
 
 
 class TestTwigPlacementsToInstanceArrays:
@@ -255,26 +304,70 @@ class TestConvertTreeToObjDirect:
         assert "newmtl t01_bark" in mtl_content
         assert "helios_classification 21" in mtl_content
 
-    def test_radial_scale_applied_to_trunk(self, tmp_path):
-        model = _FakeModel(
-            points=[_FakePoint(2.0, 10.0, 0.0), _FakePoint(0.0, 10.0, 2.0), _FakePoint(0.0, 0.0, 0.0)],
-            faces=[[0, 1, 2]],
+    @staticmethod
+    def _tall_model():
+        return _FakeModel(
+            points=_TREE_POINTS,
+            faces=[[0, 1, 2], [0, 2, 3]],
             twig_locations=[],
             twig_directions=[],
             twig_orientations=[],
+            point_attribute_bone_id=_TREE_BONE_IDS,
         )
 
-        obj_path = convert_tree_to_obj_direct(
-            model=model,
+    @staticmethod
+    def _verts(obj_path):
+        rows = [r for r in obj_path.read_text().splitlines() if r.startswith("v ")]
+        return np.array([[float(x) for x in r.split()[1:4]] for r in rows])
+
+    def _convert(self, tmp_path, up_axis):
+        return convert_tree_to_obj_direct(
+            model=self._tall_model(),
             twig_usd_map={},
             output_dir=tmp_path,
             species_name="Selected European beech",
             tree_id="1",
             radial_scale=0.5,
+            bones_info=_BONES,
+            up_axis=up_axis,
         )
 
-        content = obj_path.read_text()
-        # First vertex x should be halved (2.0 -> 1.0); y (height) unchanged.
-        v_lines = [l for l in content.splitlines() if l.startswith("v ")]
-        first = [float(x) for x in v_lines[0].split()[1:]]
-        assert first[0] == pytest.approx(1.0)
+    def test_radial_scale_per_bone_in_z_up_obj(self, tmp_path):
+        v = self._verts(self._convert(tmp_path, "z"))
+        np.testing.assert_allclose(v[:, 2].max(), 10.0)  # height unchanged
+        np.testing.assert_allclose(v[0], [0.1, 0.0, 1.0], atol=1e-5)  # trunk radius halved
+        np.testing.assert_allclose(v[3, :2], [3.0, 0.0], atol=1e-5)  # branch stays put
+
+    def test_radial_scale_per_bone_in_y_up_obj(self, tmp_path):
+        v = self._verts(self._convert(tmp_path, "y"))
+        # Z-up height lands on OBJ y; the branch reach stays on OBJ x
+        np.testing.assert_allclose(v[:, 1].max(), 10.0)
+        np.testing.assert_allclose(v[0], [0.1, 1.0, 0.0], atol=1e-5)
+        np.testing.assert_allclose(v[3, 0], 3.0, atol=1e-5)
+
+    def test_name_sets_file_stem(self, tmp_path):
+        obj_path = convert_tree_to_obj_direct(
+            model=self._tall_model(),
+            twig_usd_map={},
+            output_dir=tmp_path,
+            species_name="Selected European beech",
+            tree_id="1",
+            name="European_Beech_r07_h20m_d29cm_full",
+        )
+        assert obj_path.name == "European_Beech_r07_h20m_d29cm_full_helios.obj"
+        assert obj_path.with_suffix(".mtl").exists()
+
+    def test_two_stages_do_not_overwrite(self, tmp_path):
+        paths = [
+            convert_tree_to_obj_direct(
+                model=self._tall_model(),
+                twig_usd_map={},
+                output_dir=tmp_path,
+                species_name="Selected European beech",
+                tree_id="1",
+                name=f"European_Beech_r07_{stage}_full",
+            )
+            for stage in ("h15m_d22cm", "h20m_d29cm")
+        ]
+        assert paths[0] != paths[1]
+        assert all(p.exists() for p in paths)
