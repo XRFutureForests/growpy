@@ -32,7 +32,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area + export click, preflight, twig ladder, texture packing, diagnostics |
 | `src/growpy/structure/` | Real-tree QSM standardisation: canonical cylinder/tree schema, single axis rule, per-format readers, per-dataset adapters, store (no Grove or bpy import); realism scoring: `reference` (the committed store `data/input/structure_reference/`), `score` (per-species gaps), `gate` (provisional XRFF-549 gate, growth over time), `adequacy` (core-set checks, XRFF-576) |
 | `src/growpy/blender/` | grove_extract, twig_converter |
-| `web/expert-survey/` | Expert tree survey: frozen item set, page, standalone answer server (local or its own container on dt.unr at `/survey/`), analysis; see its README |
+| `web/expert-survey/` | Tree look survey: one-tree 1-5 rating page, item store builder (`add_items.py`, store not in git), standalone server (local or its own container on dt.unr at `/survey/`), analysis; see its README |
 
 ## CLI Scripts
 

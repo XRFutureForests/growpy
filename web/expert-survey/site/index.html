@@ -1,472 +1,252 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>img{max-width:100%}[hidden]{display:none!important}body{margin:0}</style></head><body>
-<title>Tree Architecture Survey</title>
-<meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Literata:opsz,wght@7..72,500;7..72,600&display=swap">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tree Look Survey</title>
 <style>
-/* Layout: one working screen; the tree drawing sits on a white sheet like a herbarium plate, questions beside it (stacked on phones). */
+/* One card at a time: the tree on a white sheet, one 5-point answer, the previous tree's source above. */
 :root {
   --paper: #eef2ee; --ink: #1b241f; --muted: #56645b; --line: #cfd8d1; --card: #f8faf8;
-  --moss: #2f6b45; --moss-ink: #ffffff; --moss-soft: #dcebe0; --bark: #6b4f3a; --sheet: #ffffff; --warn: #9a4b1c;
-  --display: "Literata", Georgia, "Times New Roman", serif;
-  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --moss: #2f6b45; --moss-ink: #ffffff; --moss-soft: #dcebe0; --sheet: #ffffff; --warn: #9a4b1c;
+  --body: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --display: Georgia, "Times New Roman", serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --paper: #111613; --ink: #e3e9e4; --muted: #98a59c; --line: #2b352f; --card: #18201b;
-  --moss: #7bbf8f; --moss-ink: #0e1a12; --moss-soft: #1f3327; --bark: #c4a688; --warn: #e39a6b; color-scheme: dark } }
+  --moss: #7bbf8f; --moss-ink: #0e1a12; --moss-soft: #1f3327; --warn: #e39a6b; color-scheme: dark } }
 :root[data-theme="dark"] {
   --paper: #111613; --ink: #e3e9e4; --muted: #98a59c; --line: #2b352f; --card: #18201b;
-  --moss: #7bbf8f; --moss-ink: #0e1a12; --moss-soft: #1f3327; --bark: #c4a688; --warn: #e39a6b; color-scheme: dark }
+  --moss: #7bbf8f; --moss-ink: #0e1a12; --moss-soft: #1f3327; --warn: #e39a6b; color-scheme: dark }
 *, *::before, *::after { box-sizing: border-box; }
-html, body { height: 100%; }
-body { background: var(--paper); color: var(--ink); font: 15px/1.5 var(--body);
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 24px; }
-.wrap { max-width: 1120px; margin: 0 auto; }
-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; padding-block: 14px 10px; border-bottom: 1px solid var(--line); }
-header h1 { font: 600 1.25rem/1.2 var(--display); margin: 0; letter-spacing: .005em; }
-header .meta { color: var(--muted); font: 13px var(--mono); margin-left: auto; font-variant-numeric: tabular-nums; }
-.bar { height: 3px; background: var(--line); margin-top: -1px; }
-.bar > i { display: block; height: 100%; background: var(--moss); width: 0; transition: width .3s; }
-h2 { font: 600 1.6rem/1.2 var(--display); margin: 0; text-wrap: balance; }
-h3 { font: 600 .78rem/1.3 var(--body); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0; }
-p { margin: 0; max-width: 64ch; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 16px/1.45 var(--body);
+  padding: 0 max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left)); }
+.wrap { max-width: 560px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; align-items: baseline; gap: 10px; padding-top: 14px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+header h1 { font: 600 1.15rem/1.2 var(--display); margin: 0; }
+header .meta { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+h2 { font: 600 1.45rem/1.25 var(--display); margin: 0; }
+p { margin: 0; }
 .muted { color: var(--muted); }
-.intro { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 32px; padding-block: 28px; }
-.intro .col { display: grid; gap: 14px; align-content: start; min-width: 0; }
-.intro ul { margin: 0; padding-left: 1.1em; display: grid; gap: 4px; max-width: 62ch; }
-.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 16px; }
-label.field { display: grid; gap: 6px; font-weight: 500; }
-select, input[type=text], textarea { font: inherit; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; }
-textarea { min-height: 64px; resize: vertical; }
+.panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: grid; gap: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: 500 14px/1.2 var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line);
+  border-radius: 999px; padding: 7px 12px; cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--moss); border-color: var(--moss); color: var(--moss-ink); }
+button { font: inherit; }
+button:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+.primary { font-weight: 600; border-radius: 8px; padding: 11px 20px; cursor: pointer; border: 1px solid var(--moss);
+  background: var(--moss); color: var(--moss-ink); }
+.primary:disabled { opacity: .45; cursor: not-allowed; }
 .check { display: flex; gap: 10px; align-items: flex-start; }
 .check input { margin-top: 4px; accent-color: var(--moss); }
-.stage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 28px; padding-block: 20px; align-items: start; }
-.plate { position: sticky; top: env(safe-area-inset-top, 0px); display: grid; gap: 10px; }
-.sheet { background: var(--sheet); border: 1px solid var(--line); border-radius: 4px; aspect-ratio: 1 / 1; max-width: 100%; display: grid; place-items: center; position: relative; overflow: hidden; }
-.sheet img { width: 100%; height: 100%; object-fit: contain; }
-.sheet .tag { position: absolute; left: 10px; top: 8px; font: 12px var(--mono); color: #4a554e; }
-.sheet .h { position: absolute; right: 10px; top: 8px; font: 500 12px var(--mono); color: #4a554e; background: #ffffffd9; padding: 1px 6px; border-radius: 3px; }
-.plate-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.plate-tools .muted { font-size: 13px; }
-.qs { display: grid; gap: 22px; min-width: 0; }
-.q { display: grid; gap: 10px; }
-.q .hint { font-size: 13px; color: var(--muted); }
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { font: 500 14px/1.2 var(--body); color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 7px 12px; cursor: pointer; }
-.chip:hover { border-color: var(--moss); }
-.chip[aria-pressed="true"] { background: var(--moss); border-color: var(--moss); color: var(--moss-ink); }
-.chip.minor { color: var(--muted); }
-.group-label { width: 100%; font: 12px var(--mono); color: var(--muted); margin-top: 4px; }
+.prev { background: var(--moss-soft); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; font-size: 14px; }
+.prev b { font-size: 15px; }
+.prev .chip { font-size: 13px; padding: 5px 10px; flex: none; }
+.prev .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
+.title { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.title .sub { color: var(--muted); font-size: 14px; }
+.sheet { position: relative; background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; aspect-ratio: 1; overflow: hidden;
+  cursor: pointer; touch-action: manipulation; width: min(100%, 55vh); margin: 0 auto; }
+.sheet img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.sheet .view { position: absolute; right: 8px; top: 8px; font-size: 12px; color: #3d4741; background: #ffffffe0;
+  border: 1px solid #cfd8d1; border-radius: 999px; padding: 3px 9px; }
+.q { font-weight: 600; }
 .scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-.scale .chip { border-radius: 6px; text-align: center; padding: 8px 4px; font-size: 13px; }
-.scale-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
-.reveal { background: var(--moss-soft); border-radius: 8px; padding: 12px 14px; display: grid; gap: 2px; }
-.reveal b { font: 600 1.15rem var(--display); }
-.actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
-button.primary, button.secondary { font: 600 15px var(--body); border-radius: 8px; padding: 10px 18px; cursor: pointer; border: 1px solid var(--moss); }
-button.primary { background: var(--moss); color: var(--moss-ink); }
-button.primary:disabled { opacity: .45; cursor: not-allowed; }
-button.secondary { background: transparent; color: var(--moss); }
-button:focus-visible, .chip:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
-.status { font: 12px var(--mono); color: var(--muted); }
+.scale button { border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px;
+  padding: 12px 0; font-weight: 600; font-size: 17px; cursor: pointer; }
+.scale button:hover { border-color: var(--moss); }
+.scale button:disabled { opacity: .5; cursor: wait; }
+.ends { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); margin-top: -6px; }
+.status { font-size: 13px; color: var(--muted); min-height: 1.2em; }
 .status.bad { color: var(--warn); }
-.done { padding-block: 36px; display: grid; gap: 18px; max-width: 720px; }
-pre.export { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 180px; overflow: auto; font: 12px var(--mono); white-space: pre-wrap; word-break: break-all; }
-@media (max-width: 760px) {
-  .intro, .stage { grid-template-columns: minmax(0, 1fr); gap: 20px; }
-  .plate { position: static; }
-  .sheet { max-height: 62vh; }
-}
+@media (max-width: 420px) { header .lab { display: none; } }
+footer { color: var(--muted); font-size: 13px; display: grid; gap: 4px; border-top: 1px solid var(--line); padding-top: 10px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
-
+</head>
+<body>
 <div class="wrap">
-  <header>
-    <h1>Tree Architecture Survey</h1>
-    <span class="muted">XR Future Forests Lab · University of Freiburg</span>
-    <span class="meta" id="meta"></span>
-  </header>
-  <div class="bar"><i id="bar"></i></div>
+  <header><h1>Tree Look Survey</h1><span class="muted lab">XR Future Forests Lab</span><span class="meta" id="meta"></span></header>
 
-  <section id="intro" class="intro">
-    <div class="col">
-      <h2>Which tree is this, and does it look like one?</h2>
-      <p>We grow trees with a procedural model for a VR forest twin and want to know how close they come to real trees. You will see about <span id="n-items">40</span> leaf-off trees, drawn as plain branch skeletons. Some are generated, some are drawn from laser scans of real trees. All are drawn the same way.</p>
-      <p>For each tree:</p>
-      <ul>
-        <li>name the species you think it is (or say you can't tell);</li>
-        <li>say whether you think it is real or computer-generated, and how natural the branching looks;</li>
-        <li>after that, we tell you which species it is meant to be. You rate how typical the tree is for that species and can mark what looks off.</li>
-      </ul>
-      <p class="muted">About 20–25 minutes. You can stop at any time; your answers stay in this browser and you can resume later. Fine twigs are not drawn, for real and generated trees alike: please judge the stem and branch architecture, not twig density.</p>
-    </div>
-    <form class="col panel" id="profile" novalidate>
-      <h3>About you</h3>
-      <label class="field">Main field
-        <select id="p-field" required>
-          <option value="">Choose…</option>
-          <option>Forest growth and yield</option>
-          <option>Dendrology / tree biology</option>
-          <option>Silviculture</option>
-          <option>Forest ecology</option>
-          <option>Forest inventory / remote sensing</option>
-          <option>Tree modelling / computer graphics</option>
-          <option>Other</option>
-        </select>
-      </label>
-      <label class="field">Years working with trees or forests
-        <select id="p-years" required>
-          <option value="">Choose…</option>
-          <option value="lt3">less than 3</option><option value="3-10">3–10</option><option value="10-20">10–20</option><option value="gt20">more than 20</option>
-        </select>
-      </label>
-      <label class="field">How well can you identify Central European trees in winter, without leaves?
-        <select id="p-winter" required>
-          <option value="">Choose…</option>
-          <option value="1">1 – hardly</option><option value="2">2</option><option value="3">3 – the common species</option><option value="4">4</option><option value="5">5 – reliably, most species</option>
-        </select>
-      </label>
-      <label class="field">Name or initials <span class="muted">(optional, only if we may ask you a follow-up question)</span>
-        <input type="text" id="p-name" autocomplete="off">
-      </label>
-      <label class="check"><input type="checkbox" id="p-consent"> <span>I agree that my answers are stored and analysed for research on tree models. Results are reported only in aggregate.</span></label>
-      <div class="actions">
-        <button type="submit" class="primary" id="start" disabled>Start</button>
-        <span class="status" id="resume-note"></span>
-      </div>
-    </form>
+  <section id="nokey" class="panel" hidden>
+    <h2>By invitation</h2>
+    <p>This survey is open to people who work with trees. Please use the link from your invitation.</p>
   </section>
 
-  <section id="item" class="stage" hidden>
-    <div class="plate">
-      <div class="sheet"><img id="img" alt="Leaf-off drawing of the tree to rate"><span class="tag" id="code"></span><span class="h" id="height"></span></div>
-      <div class="plate-tools">
-        <div class="chips" role="group" aria-label="View">
-          <button type="button" class="chip" id="v-front" aria-pressed="true">Front view</button>
-          <button type="button" class="chip" id="v-side" aria-pressed="false">Side view (90°)</button>
-        </div>
-        <span class="muted" id="side-note"></span>
-      </div>
+  <section id="intro" class="panel" hidden>
+    <h2>Does this tree look right?</h2>
+    <p>You will see leaf-off trees drawn as branch skeletons, with a person for scale. Some come from laser scans of real trees, some from a computer growth model. Each one is labelled with its species and grew in a forest stand.</p>
+    <p>Rate each tree from 1 (clearly wrong) to 5 (looks completely right) for that species. After each answer we tell you where the tree came from. Rate as many as you like; you can stop at any time.</p>
+    <p class="muted">Fine twigs are left out for every tree, scanned and generated alike: please judge the stem and branch architecture.</p>
+    <div>
+      <p style="margin-bottom:6px">You are</p>
+      <div class="chips" id="roles" role="group" aria-label="Your background"></div>
     </div>
+    <label class="check"><input type="checkbox" id="consent"><span>I agree that my ratings are stored and analysed for research on tree models. No name or account is stored, and results are reported in aggregate only.</span></label>
+    <div><button class="primary" id="start" disabled>Start</button></div>
+  </section>
 
-    <div class="qs">
-      <div id="step1" class="qs">
-        <div class="q">
-          <h3>1 · Species</h3>
-          <p>Which species is this tree?</p>
-          <div class="chips" id="q-species" role="group" aria-label="Species"></div>
-        </div>
-        <div class="q" id="q-conf-wrap">
-          <p>How sure are you?</p>
-          <div class="chips" id="q-conf" role="group" aria-label="Confidence"></div>
-        </div>
-        <div class="q">
-          <h3>2 · Real or generated</h3>
-          <p>Is this drawn from a scanned real tree or generated by a computer model?</p>
-          <div class="scale" id="q-real" role="group" aria-label="Real or generated"></div>
-        </div>
-        <div class="q">
-          <h3>3 · Naturalness</h3>
-          <p>How natural does the stem and branch architecture look, for any tree?</p>
-          <div class="scale" id="q-natural" role="group" aria-label="Naturalness"></div>
-          <div class="scale-ends"><span>implausible</span><span>fully natural</span></div>
-        </div>
-        <div class="actions"><button type="button" class="primary" id="next1" disabled>Continue</button><span class="status" id="need1"></span></div>
+  <section id="rate" hidden>
+    <div class="wrap">
+      <div class="prev" id="prev" hidden>
+        <div><b id="prev-title"></b> <span class="muted" id="prev-you"></span></div>
+        <div class="muted" id="prev-lines"></div>
+        <div><span class="muted" style="font-size:13px">What looked off? (optional)</span>
+          <div class="chips" id="flags" role="group" aria-label="What looked off about the previous tree"></div></div>
       </div>
-
-      <div id="step2" class="qs" hidden>
-        <div class="reveal"><span class="muted">This tree is meant to be</span><b id="intended"></b><span class="muted" id="your-guess"></span></div>
-        <div class="q">
-          <h3>4 · Typical for the species</h3>
-          <p>How typical is its architecture for <span id="intended-inline"></span>?</p>
-          <div class="scale" id="q-typical" role="group" aria-label="Typical for the species"></div>
-          <div class="scale-ends"><span>not at all</span><span>very typical</span></div>
-        </div>
-        <div class="q">
-          <h3>5 · What looks off <span class="muted">(optional, any number)</span></h3>
-          <div class="chips" id="q-flaws" role="group" aria-label="What looks off"></div>
-        </div>
-        <div class="q">
-          <h3>6 · Growth situation <span class="muted">(optional)</span></h3>
-          <p>Where would a tree like this have grown?</p>
-          <div class="chips" id="q-situation" role="group" aria-label="Growth situation"></div>
-        </div>
-        <label class="field q">Comment <span class="muted">(optional: what gives it away, what you would change)</span>
-          <textarea id="q-comment"></textarea>
-        </label>
-        <div class="actions"><button type="button" class="secondary" id="back2">Back</button><button type="button" class="primary" id="next2" disabled>Save and next tree</button><span class="status" id="save-status"></span></div>
+      <div class="title"><h2 id="species"></h2><span class="sub" id="sub"></span></div>
+      <div class="sheet" id="sheet" title="Tap to switch between front and side view">
+        <img id="img" alt="Leaf-off drawing of the tree to rate, with a person for scale">
+        <span class="view" id="view">front · tap for side</span>
       </div>
+      <p class="q" id="question"></p>
+      <div class="scale" id="scale" role="group" aria-label="Rating from 1 to 5"></div>
+      <div class="ends"><span>1 clearly wrong</span><span>5 looks completely right</span></div>
+      <div class="status" id="status"></div>
     </div>
   </section>
 
-  <section id="done" class="done" hidden>
-    <h2>Thank you</h2>
-    <p id="done-text"></p>
-    <div class="actions">
-      <button type="button" class="primary" id="dl">Download answers</button>
-      <button type="button" class="secondary" id="copy">Copy answers</button>
-      <span class="status" id="export-status"></span>
-    </div>
-    <p class="muted" id="send-note">If your answers were not saved online, please send the downloaded file (or the copied text) to the survey contact.</p>
-    <pre class="export" id="export"></pre>
+  <section id="done" class="panel" hidden>
+    <h2>That was every tree we have right now</h2>
+    <p>Thank you. We add new trees over time, so feel free to come back later with the same link.</p>
   </section>
+
+  <footer>
+    <span id="score"></span>
+    <span>Keys: 1–5 rate · S switches the view. Questions: Maximilian Sperlich, maximilian.sperlich@unr.uni-freiburg.de</span>
+  </footer>
 </div>
 
 <script>
-/* Survey content is generated by assemble.py: items from build_items.py, contact and endpoint from survey_config.json.
-   The endpoint is relative, so the page saves to whichever survey_server.py serves it. */
-const ITEMS = [{"code":"T119","set":"B","height_m":20,"species":"Common ash","species_key":"common_ash","front":"img/T119_front.png","side":"img/T119_side.png"},{"code":"T126","set":"B","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T126_front.png","side":null},{"code":"T129","set":"B","height_m":11,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T129_front.png","side":"img/T129_side.png"},{"code":"T152","set":"A","height_m":10,"species":"Norway spruce","species_key":"norway_spruce","front":"img/T152_front.png","side":"img/T152_side.png"},{"code":"T156","set":"A","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T156_front.png","side":null},{"code":"T162","set":"A","height_m":10,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T162_front.png","side":"img/T162_side.png"},{"code":"T163","set":"A","height_m":30,"species":"Silver fir","species_key":"silver_fir","front":"img/T163_front.png","side":"img/T163_side.png"},{"code":"T167","set":"A","height_m":20,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T167_front.png","side":"img/T167_side.png"},{"code":"T233","set":"B","height_m":28,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T233_front.png","side":"img/T233_side.png"},{"code":"T253","set":"B","height_m":29,"species":"European beech","species_key":"european_beech","front":"img/T253_front.png","side":"img/T253_side.png"},{"code":"T260","set":"B","height_m":30,"species":"Douglas fir","species_key":"douglas_fir","front":"img/T260_front.png","side":"img/T260_side.png"},{"code":"T267","set":"A","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T267_front.png","side":"img/T267_side.png"},{"code":"T282","set":"B","height_m":20,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T282_front.png","side":"img/T282_side.png"},{"code":"T299","set":"A","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T299_front.png","side":"img/T299_side.png"},{"code":"T319","set":"B","height_m":20,"species":"Silver fir","species_key":"silver_fir","front":"img/T319_front.png","side":"img/T319_side.png"},{"code":"T323","set":"A","height_m":10,"species":"Common ash","species_key":"common_ash","front":"img/T323_front.png","side":"img/T323_side.png"},{"code":"T329","set":"A","height_m":25,"species":"Wild cherry","species_key":"wild_cherry","front":"img/T329_front.png","side":"img/T329_side.png"},{"code":"T342","set":"A","height_m":30,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T342_front.png","side":"img/T342_side.png"},{"code":"T349","set":"B","height_m":30,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T349_front.png","side":"img/T349_side.png"},{"code":"T358","set":"A","height_m":30,"species":"Common ash","species_key":"common_ash","front":"img/T358_front.png","side":"img/T358_side.png"},{"code":"T361","set":"A","height_m":20,"species":"Small-leaved lime","species_key":"small_leaved_linden","front":"img/T361_front.png","side":"img/T361_side.png"},{"code":"T371","set":"B","height_m":20,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T371_front.png","side":"img/T371_side.png"},{"code":"T372","set":"A","height_m":20,"species":"Small-leaved lime","species_key":"small_leaved_linden","front":"img/T372_front.png","side":"img/T372_side.png"},{"code":"T381","set":"B","height_m":11,"species":"Norway spruce","species_key":"norway_spruce","front":"img/T381_front.png","side":"img/T381_side.png"},{"code":"T383","set":"B","height_m":20,"species":"Norway spruce","species_key":"norway_spruce","front":"img/T383_front.png","side":"img/T383_side.png"},{"code":"T387","set":"B","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T387_front.png","side":null},{"code":"T437","set":"B","height_m":10,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T437_front.png","side":"img/T437_side.png"},{"code":"T465","set":"B","height_m":20,"species":"Wild cherry","species_key":"wild_cherry","front":"img/T465_front.png","side":"img/T465_side.png"},{"code":"T479","set":"B","height_m":20,"species":"Common ash","species_key":"common_ash","front":"img/T479_front.png","side":"img/T479_side.png"},{"code":"T481","set":"A","height_m":10,"species":"Scots pine","species_key":"scots_pine","front":"img/T481_front.png","side":"img/T481_side.png"},{"code":"T499","set":"B","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T499_front.png","side":"img/T499_side.png"},{"code":"T504","set":"B","height_m":10,"species":"Small-leaved lime","species_key":"small_leaved_linden","front":"img/T504_front.png","side":"img/T504_side.png"},{"code":"T543","set":"A","height_m":30,"species":"Common ash","species_key":"common_ash","front":"img/T543_front.png","side":"img/T543_side.png"},{"code":"T552","set":"A","height_m":10,"species":"Douglas fir","species_key":"douglas_fir","front":"img/T552_front.png","side":"img/T552_side.png"},{"code":"T561","set":"A","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T561_front.png","side":null},{"code":"T574","set":"A","height_m":20,"species":"Douglas fir","species_key":"douglas_fir","front":"img/T574_front.png","side":"img/T574_side.png"},{"code":"T583","set":"B","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T583_front.png","side":null},{"code":"T617","set":"B","height_m":20,"species":"Scots pine","species_key":"scots_pine","front":"img/T617_front.png","side":"img/T617_side.png"},{"code":"T622","set":"A","height_m":20,"species":"European beech","species_key":"european_beech","front":"img/T622_front.png","side":null},{"code":"T630","set":"A","height_m":18,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T630_front.png","side":"img/T630_side.png"},{"code":"T641","set":"B","height_m":20,"species":"Douglas fir","species_key":"douglas_fir","front":"img/T641_front.png","side":"img/T641_side.png"},{"code":"T656","set":"A","height_m":20,"species":"Norway spruce","species_key":"norway_spruce","front":"img/T656_front.png","side":"img/T656_side.png"},{"code":"T669","set":"A","height_m":20,"species":"Scots pine","species_key":"scots_pine","front":"img/T669_front.png","side":"img/T669_side.png"},{"code":"T670","set":"A","height_m":10,"species":"Silver fir","species_key":"silver_fir","front":"img/T670_front.png","side":"img/T670_side.png"},{"code":"T683","set":"A","height_m":30,"species":"European beech","species_key":"european_beech","front":"img/T683_front.png","side":"img/T683_side.png"},{"code":"T685","set":"B","height_m":25,"species":"Silver birch","species_key":"silver_birch","front":"img/T685_front.png","side":"img/T685_side.png"},{"code":"T690","set":"A","height_m":31,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T690_front.png","side":"img/T690_side.png"},{"code":"T725","set":"B","height_m":30,"species":"Wild cherry","species_key":"wild_cherry","front":"img/T725_front.png","side":"img/T725_side.png"},{"code":"T757","set":"A","height_m":19,"species":"Common ash","species_key":"common_ash","front":"img/T757_front.png","side":"img/T757_side.png"},{"code":"T791","set":"B","height_m":10,"species":"Silver birch","species_key":"silver_birch","front":"img/T791_front.png","side":"img/T791_side.png"},{"code":"T797","set":"B","height_m":10,"species":"Wild cherry","species_key":"wild_cherry","front":"img/T797_front.png","side":"img/T797_side.png"},{"code":"T817","set":"A","height_m":18,"species":"Sycamore maple","species_key":"sycamore_maple","front":"img/T817_front.png","side":"img/T817_side.png"},{"code":"T834","set":"A","height_m":20,"species":"Wild cherry","species_key":"wild_cherry","front":"img/T834_front.png","side":"img/T834_side.png"},{"code":"T838","set":"B","height_m":12,"species":"European beech","species_key":"european_beech","front":"img/T838_front.png","side":"img/T838_side.png"},{"code":"T866","set":"B","height_m":20,"species":"Silver fir","species_key":"silver_fir","front":"img/T866_front.png","side":"img/T866_side.png"},{"code":"T873","set":"A","height_m":20,"species":"Oak (pedunculate / sessile)","species_key":"european_oak","front":"img/T873_front.png","side":"img/T873_side.png"},{"code":"T878","set":"B","height_m":30,"species":"Small-leaved lime","species_key":"small_leaved_linden","front":"img/T878_front.png","side":"img/T878_side.png"},{"code":"T894","set":"A","height_m":20,"species":"Silver birch","species_key":"silver_birch","front":"img/T894_front.png","side":"img/T894_side.png"},{"code":"T919","set":"A","height_m":20,"species":"Silver birch","species_key":"silver_birch","front":"img/T919_front.png","side":"img/T919_side.png"},{"code":"T954","set":"B","height_m":30,"species":"Norway spruce","species_key":"norway_spruce","front":"img/T954_front.png","side":"img/T954_side.png"},{"code":"T973","set":"B","height_m":10,"species":"European beech","species_key":"european_beech","front":"img/T973_front.png","side":"img/T973_side.png"},{"code":"T977","set":"A","height_m":18,"species":"Scots pine","species_key":"scots_pine","front":"img/T977_front.png","side":"img/T977_side.png"},{"code":"T981","set":"B","height_m":11,"species":"Common ash","species_key":"common_ash","front":"img/T981_front.png","side":"img/T981_side.png"},{"code":"T985","set":"B","height_m":30,"species":"Scots pine","species_key":"scots_pine","front":"img/T985_front.png","side":"img/T985_side.png"}];
-const CONFIG = {"contact":"Maximilian Sperlich, maximilian.sperlich@unr.uni-freiburg.de","endpoint":"api/answers"};
-const SURVEY_ID = "tree-architecture-2026-10";
-const STORE_KEY = "xrff-tree-survey:" + SURVEY_ID;
-
-const SPECIES = [
-  ["european_beech", "European beech"], ["european_oak", "Oak"], ["common_ash", "Common ash"],
-  ["sycamore_maple", "Sycamore maple"], ["small_leaved_linden", "Small-leaved lime"], ["wild_cherry", "Wild cherry"],
-  ["silver_birch", "Silver birch"], ["hornbeam", "Hornbeam"], ["norway_maple", "Norway maple"],
-  ["black_alder", "Black alder"], ["poplar", "Poplar / aspen"], ["willow", "Willow"], ["other_broadleaf", "Other broadleaf"],
-  ["norway_spruce", "Norway spruce"], ["silver_fir", "Silver fir"], ["douglas_fir", "Douglas fir"],
-  ["scots_pine", "Scots pine"], ["larch", "Larch"], ["other_conifer", "Other conifer"],
-  ["cannot_tell", "Can't tell"],
-];
-const BROADLEAF_END = 13;
-const CONF = [["1", "Guess"], ["2", "Fairly sure"], ["3", "Certain"]];
-const REAL = [["1", "Surely generated"], ["2", "Probably generated"], ["3", "Can't tell"], ["4", "Probably real"], ["5", "Surely real"]];
-const LIKERT = [["1", "1"], ["2", "2"], ["3", "3"], ["4", "4"], ["5", "5"]];
-const FLAWS = [
-  ["angles_steep", "Branches too upright"], ["angles_flat", "Branches too flat"], ["too_regular", "Too regular, evenly spaced"],
-  ["drooping", "Drooping, dangling ends"], ["many_leaders", "Too many competing leaders"], ["no_forks", "Too few forks"],
-  ["stem_straight", "Stem too straight"], ["stem_wavy", "Stem too wavy"], ["branches_straight", "Branches too straight"],
-  ["branches_wiggly", "Branches too wiggly"], ["crown_narrow", "Crown too narrow"], ["crown_wide", "Crown too wide"],
-  ["crown_base_low", "Crown starts too low"], ["crown_base_high", "Crown starts too high"], ["too_sparse", "Too few branches"],
-  ["too_dense", "Too many branches"], ["stem_branches", "Odd shoots along the stem"], ["proportions", "Branch lengths look wrong"],
-];
-const SITUATION = [["open", "Open-grown / solitary"], ["edge", "Stand edge or gap"], ["dominant", "Stand, dominant"], ["suppressed", "Stand, suppressed"], ["cannot_tell", "Can't tell"]];
-
+const STORE = "xrff-tree-look";
+const ROLES = [["student", "Student"], ["practitioner", "Practitioner (forestry, arboriculture)"], ["researcher", "Researcher"], ["other", "Other"]];
+const FLAGS = [["angles", "Branch angles"], ["lengths", "Branch lengths"], ["regular", "Too regular"], ["drooping", "Drooping, dangling"],
+  ["stem", "Stem form"], ["crown", "Crown shape"], ["density", "Too dense / sparse"], ["artefact", "Scan or drawing artefact"]];
 const $ = (id) => document.getElementById(id);
-const nameOf = (key) => (SPECIES.find(([k]) => k === key) || [key, key])[1];
 
-function load() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "null"); } catch { return null; } }
-function persist() { try { localStorage.setItem(STORE_KEY, JSON.stringify(S)); } catch { /* private window: answers live only in this page */ } }
-function rid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
-function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function load() { try { return JSON.parse(localStorage.getItem(STORE) || "{}"); } catch { return {}; } }
+function save() { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch { /* private window: this visit only */ } }
+const S = load();
+if (!S.device) S.device = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join("");
+const urlKey = new URLSearchParams(location.search).get("k");
+if (urlKey) S.key = urlKey;
+S.pos = S.pos || 0;
+save();
 
-function pickSet() {
-  const h = location.hash.toLowerCase();
-  if (h === "#set-a") return "A";
-  if (h === "#set-b") return "B";
-  return Math.random() < 0.5 ? "A" : "B";
-}
+let card = null, side = false, shownAt = 0, prev = null;
 
-function newSession() {
-  const set = pickSet();
-  const codes = shuffle(ITEMS.filter((it) => it.set === set).map((it) => it.code));
-  const repeats = shuffle(codes.slice(0, Math.min(8, codes.length))).slice(0, 2); // retest: two early items come back at the end
-  return { survey: SURVEY_ID, session: rid(), set, started: new Date().toISOString(), finished: null,
-    profile: null, order: codes.concat(repeats.map((c) => c + "#r")), pos: 0, answers: {} };
-}
-
-let S = load();
-if (!S || S.survey !== SURVEY_ID) S = newSession();
-let cur = null;      // answer being built for the current item
-let view = "front";
-
-// ---- storage targets: claude.ai page database (members), the survey server, or none ----
-const remote = { kind: "none", db: null, uid: null, ok: null };
-async function initRemote() {
-  if (window.claude && typeof window.claude.use === "function") {
-    try {
-      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
-      const uid = db && user ? await user.id() : null;
-      if (uid && (await user.can("data.write")) !== false) { Object.assign(remote, { kind: "db", db, uid }); return; }
-    } catch { /* fall through to the endpoint */ }
-  }
-  if (CONFIG.endpoint && location.protocol.startsWith("http")) remote.kind = "endpoint";
-}
-async function pushRemote() {
-  if (remote.kind === "none" || remote.ok === false) return false;
-  const body = JSON.parse(JSON.stringify(S));
-  try {
-    if (remote.kind === "db") {
-      await remote.db.doc("responses/" + remote.uid).set(body);
-    } else {
-      const res = await fetch(CONFIG.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error(res.status);
-    }
-    remote.ok = true;
-    return true;
-  } catch (e) {
-    if (e && e.code === "invalid_argument") remote.ok = false; // no write access: keep answers local
-    return false;
-  }
-}
-
-// ---- rendering helpers ----
-function chips(el, options, { multi = false, onChange, minorFrom = Infinity } = {}) {
+function show(id) { for (const s of ["nokey", "intro", "rate", "done"]) $(s).hidden = s !== id; }
+function chips(el, options, onClick) {
   el.innerHTML = "";
-  options.forEach(([value, label], i) => {
-    if (i === minorFrom) { const g = document.createElement("span"); g.className = "group-label"; g.textContent = "conifers"; el.appendChild(g); }
+  for (const [value, label] of options) {
     const b = document.createElement("button");
     b.type = "button"; b.className = "chip"; b.textContent = label; b.dataset.value = value;
     b.setAttribute("aria-pressed", "false");
-    b.addEventListener("click", () => {
-      if (multi) b.setAttribute("aria-pressed", b.getAttribute("aria-pressed") === "true" ? "false" : "true");
-      else el.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", c === b ? "true" : "false"));
-      onChange(multi ? [...el.querySelectorAll('.chip[aria-pressed="true"]')].map((c) => c.dataset.value) : value);
-    });
+    b.addEventListener("click", () => onClick(b, value));
     el.appendChild(b);
-  });
-}
-function setPressed(el, values) {
-  const v = new Set([].concat(values ?? []).map(String));
-  el.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", v.has(c.dataset.value) ? "true" : "false"));
-}
-
-function itemFor(entry) { return ITEMS.find((it) => it.code === entry.replace("#r", "")); }
-
-function showItem() {
-  const entry = S.order[S.pos];
-  const it = itemFor(entry);
-  const prev = S.answers[entry];
-  cur = prev ? JSON.parse(JSON.stringify(prev)) : { code: it.code, repeat: entry.endsWith("#r"), position: S.pos + 1, flaws: [], comment: "", views: ["front"] };
-  cur.t0 = Date.now();
-  view = "front";
-  $("intro").hidden = true; $("done").hidden = true; $("item").hidden = false;
-  $("step1").hidden = false; $("step2").hidden = true;
-  $("code").textContent = "Tree " + (S.pos + 1);
-  $("height").textContent = "about " + it.height_m + " m tall";
-  $("side-note").textContent = it.side ? "" : "Only a front view for this tree.";
-  $("v-side").disabled = !it.side;
-  setView("front", it);
-  setPressed($("q-species"), cur.species); setPressed($("q-conf"), cur.conf); setPressed($("q-real"), cur.real);
-  setPressed($("q-natural"), cur.natural); setPressed($("q-typical"), cur.typical); setPressed($("q-flaws"), cur.flaws);
-  setPressed($("q-situation"), cur.situation); $("q-comment").value = cur.comment || "";
-  $("save-status").textContent = ""; $("save-status").className = "status";
-  updateStep1(); updateStep2(); updateMeta();
-  window.scrollTo({ top: 0 });
-}
-
-function setView(v, it = itemFor(S.order[S.pos])) {
-  view = v;
-  $("img").src = v === "side" && it.side ? it.side : it.front;
-  $("v-front").setAttribute("aria-pressed", v === "front" ? "true" : "false");
-  $("v-side").setAttribute("aria-pressed", v === "side" ? "true" : "false");
-  if (cur && !cur.views.includes(v)) cur.views.push(v);
-}
-
-function updateMeta() {
-  const n = S.order.length;
-  const done = Object.keys(S.answers).length;
-  $("meta").textContent = `set ${S.set} · ${Math.min(S.pos + 1, n)} / ${n}`;
-  $("bar").style.width = (100 * done / n) + "%";
-}
-
-function updateStep1() {
-  const needConf = cur.species && cur.species !== "cannot_tell";
-  $("q-conf-wrap").hidden = !needConf;
-  const ok = cur.species && (!needConf || cur.conf) && cur.real && cur.natural;
-  $("next1").disabled = !ok;
-  $("need1").textContent = ok ? "" : "Answer 1–3 to continue";
-}
-function updateStep2() { $("next2").disabled = !cur.typical; }
-
-function toStep2() {
-  const it = itemFor(S.order[S.pos]);
-  $("step1").hidden = true; $("step2").hidden = false;
-  $("intended").textContent = it.species;
-  $("intended-inline").textContent = it.species;
-  $("your-guess").textContent = cur.species === "cannot_tell" ? "You could not tell." : "You said: " + nameOf(cur.species) + ".";
-  window.scrollTo({ top: 0 });
-}
-
-async function saveItem() {
-  const entry = S.order[S.pos];
-  cur.comment = $("q-comment").value.trim();
-  cur.ms = (cur.ms || 0) + (Date.now() - cur.t0);
-  delete cur.t0;
-  cur.saved = new Date().toISOString();
-  S.answers[entry] = cur;
-  S.pos += 1;
-  if (S.pos >= S.order.length) S.finished = new Date().toISOString();
-  persist();
-  $("next2").disabled = true;
-  $("save-status").textContent = "Saving…";
-  const ok = await pushRemote();
-  $("save-status").textContent = ok ? "Saved" : "Saved in this browser";
-  if (S.finished) showDone(ok); else showItem();
-}
-
-function showDone(onlineOk) {
-  $("intro").hidden = true; $("item").hidden = true; $("done").hidden = false;
-  updateMeta();
-  const n = Object.keys(S.answers).length;
-  const contact = CONFIG.contact ? " Contact: " + CONFIG.contact + "." : "";
-  $("done-text").textContent = `You rated ${n} trees.` + (onlineOk ? " Your answers have been saved online." : " Your answers are saved in this browser.") + contact;
-  $("send-note").hidden = !!onlineOk;
-  $("export").textContent = JSON.stringify(S);
-}
-
-async function download() {
-  const text = JSON.stringify(S, null, 1);
-  const filename = `tree-survey_${S.set}_${S.session}.json`;
-  try {
-    const dl = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null;
-    if (dl) { await dl.save({ filename, data: text }); $("export-status").textContent = "File saved"; return; }
-  } catch { $("export-status").textContent = "Download declined. Use Copy instead."; return; }
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([text], { type: "application/json" }));
-  a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-  $("export-status").textContent = "File saved";
-}
-async function copy() {
-  try { await navigator.clipboard.writeText(JSON.stringify(S)); $("export-status").textContent = "Copied"; }
-  catch {
-    const r = document.createRange(); r.selectNodeContents($("export"));
-    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    $("export-status").textContent = "Text selected: press Ctrl+C";
   }
 }
+function speciesInText(name) {
+  // "a European beech", "an oak", "a Scots pine": keep place names capitalised, drop the bracket
+  const base = name.split(" (")[0];
+  const proper = /^(European|Norway|Scots|Douglas)/.test(base);
+  const word = proper ? base : base[0].toLowerCase() + base.slice(1);
+  return (/^[aeiou]/i.test(word) && !/^Europ/.test(word) ? "an " : "a ") + word;
+}
+function setScore(you) {
+  if (!you) return;
+  const calls = you.calls ? ` · your calls matched the source ${you.matched} of ${you.calls} times` : "";
+  $("score").textContent = `${you.rated} ${you.rated === 1 ? "tree" : "trees"} rated${calls}`;
+  $("meta").textContent = `${you.rated} rated`;
+}
 
-// ---- wiring ----
-chips($("q-species"), SPECIES, { minorFrom: BROADLEAF_END, onChange: (v) => { cur.species = v; if (v === "cannot_tell") delete cur.conf; updateStep1(); } });
-chips($("q-conf"), CONF, { onChange: (v) => { cur.conf = +v; updateStep1(); } });
-chips($("q-real"), REAL, { onChange: (v) => { cur.real = +v; updateStep1(); } });
-chips($("q-natural"), LIKERT, { onChange: (v) => { cur.natural = +v; updateStep1(); } });
-chips($("q-typical"), LIKERT, { onChange: (v) => { cur.typical = +v; updateStep2(); } });
-chips($("q-flaws"), FLAWS, { multi: true, onChange: (v) => { cur.flaws = v; } });
-chips($("q-situation"), SITUATION, { onChange: (v) => { cur.situation = v; } });
-$("v-front").addEventListener("click", () => setView("front"));
-$("v-side").addEventListener("click", () => setView("side"));
-$("next1").addEventListener("click", toStep2);
-$("back2").addEventListener("click", () => { $("step2").hidden = true; $("step1").hidden = false; });
-$("next2").addEventListener("click", saveItem);
-$("dl").addEventListener("click", download);
-$("copy").addEventListener("click", copy);
+async function api(path, body) {
+  const opts = body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {};
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 403) { show("nokey"); throw new Error("key"); }
+  if (!res.ok) throw new Error(data.error || res.status);
+  return data;
+}
 
-const form = $("profile");
-const profileOk = () => $("p-field").value && $("p-years").value && $("p-winter").value && $("p-consent").checked;
-form.addEventListener("input", () => { $("start").disabled = !profileOk(); });
-form.addEventListener("change", () => { $("start").disabled = !profileOk(); });
-form.addEventListener("submit", (e) => {
-  e.preventDefault();
-  if (!profileOk()) return;
-  S.profile = { field: $("p-field").value, years: $("p-years").value, winter_id: +$("p-winter").value, name: $("p-name").value.trim(), consent: true };
-  persist();
-  showItem();
+async function next() {
+  $("status").textContent = ""; $("status").className = "status";
+  try {
+    const q = new URLSearchParams({ d: S.device, k: S.key || "" });
+    const c = await api("api/next?" + q);
+    if (c.done) { show("done"); return; }
+    card = c; side = false;
+    $("species").textContent = c.species;
+    $("sub").textContent = `about ${c.height_m} m tall · grew in a stand`;
+    $("question").textContent = `Does this look right for ${speciesInText(c.species)} grown in a stand?`;
+    setView();
+    $("img").onload = () => { shownAt = Date.now(); enable(true); };
+    show("rate");
+  } catch (e) {
+    if (e.message !== "key") fail("Could not load the next tree. Check your connection and press any rating to retry.", true);
+  }
+}
+function setView() {
+  $("img").src = side ? card.side : card.front;
+  $("view").textContent = side ? "side · tap for front" : "front · tap for side";
+  if (side) card.sawSide = true;
+}
+function enable(on) { for (const b of $("scale").children) b.disabled = !on; }
+function fail(msg, retry) { $("status").textContent = msg; $("status").className = "status bad"; if (retry) { card = null; enable(true); } }
+
+async function rate(r) {
+  if (!card) return next();
+  enable(false);
+  try {
+    const res = await api("api/vote", { d: S.device, k: S.key || "", id: card.id, rating: r, ms: Date.now() - shownAt,
+      pos: S.pos + 1, role: S.role, side: !!card.sawSide });
+    S.pos += 1; save();
+    showPrev(card, r, res);
+    setScore(res.you);
+    await next();
+  } catch (e) {
+    if (e.message !== "key") { $("status").textContent = "Not saved, please try again."; $("status").className = "status bad"; enable(true); }
+  }
+}
+function showPrev(c, r, res) {
+  prev = { id: c.id, flags: [] };
+  $("prev-title").textContent = res.reveal.title;
+  $("prev-you").textContent = `· ${c.species}, you gave ${r}`;
+  $("prev-lines").textContent = res.reveal.lines.join(" · ");
+  for (const b of $("flags").children) b.setAttribute("aria-pressed", "false");
+  $("prev").hidden = false;
+}
+async function toggleFlag(b, value) {
+  if (!prev) return;
+  const on = b.getAttribute("aria-pressed") !== "true";
+  b.setAttribute("aria-pressed", on ? "true" : "false");
+  prev.flags = on ? [...prev.flags, value] : prev.flags.filter((f) => f !== value);
+  try { await api("api/flags", { d: S.device, k: S.key || "", id: prev.id, flags: prev.flags }); } catch { /* optional */ }
+}
+
+for (let i = 1; i <= 5; i++) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = i; b.setAttribute("aria-label", `Rate ${i} of 5`);
+  b.addEventListener("click", () => rate(i));
+  $("scale").appendChild(b);
+}
+chips($("flags"), FLAGS, toggleFlag);
+chips($("roles"), ROLES, (b, v) => {
+  S.role = v; for (const c of $("roles").children) c.setAttribute("aria-pressed", c === b ? "true" : "false");
+  $("start").disabled = !$("consent").checked;
+});
+$("consent").addEventListener("change", () => { $("start").disabled = !($("consent").checked && S.role); });
+$("start").addEventListener("click", () => { S.consent = true; save(); next(); });
+$("sheet").addEventListener("click", () => { if (card) { side = !side; setView(); } });
+document.addEventListener("keydown", (e) => {
+  if ($("rate").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.key >= "1" && e.key <= "5" && !$("scale").children[0].disabled) rate(+e.key);
+  if ((e.key === "s" || e.key === "S") && card) { side = !side; setView(); }
 });
 
-$("n-items").textContent = Math.round(ITEMS.length / 2) + 2;
-if (S.profile) {
-  $("p-field").value = S.profile.field; $("p-years").value = S.profile.years; $("p-winter").value = String(S.profile.winter_id);
-  $("p-name").value = S.profile.name || ""; $("p-consent").checked = true; $("start").disabled = false;
-  $("start").textContent = S.finished ? "Show my answers" : "Resume";
-  $("resume-note").textContent = S.finished ? "" : `${Object.keys(S.answers).length} of ${S.order.length} trees answered`;
-  form.addEventListener("submit", () => { if (S.finished) showDone(false); }, { once: true });
-}
-updateMeta();
-initRemote();
+if (S.consent && S.role) next(); else show("intro");
 </script>
-
-</body></html>
+</body>
+</html>

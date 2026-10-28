@@ -82,14 +82,63 @@ def _save(plt, fig, ax, xlim, ylim, path: Path) -> Path:
     return path
 
 
+def _scale_figure(ax, segs: np.ndarray, height_m: float) -> np.ndarray:
+    """A grey standing person ``height_m`` tall, in the tree's metre frame: feet on the
+    lowest drawn point, a fixed gap right of the widest drawn point, plus a ground line under
+    tree and figure. A neutral pictogram (straight rounded torso, two legs, round head) so it
+    reads as a person, not as a man or a woman. Returns the corner points so the frame takes
+    the figure in."""
+    from matplotlib.patches import Circle, FancyBboxPatch
+
+    x_min, x_max = float(segs[..., 0].min()), float(segs[..., 0].max())
+    z0 = float(segs[..., 1].min())
+    h = height_m
+    x = x_max + max(1.0, 0.04 * (x_max - x_min)) + 0.25 * h
+    grey = "#8a918c"
+
+    def block(x0, z_lo, width, z_hi, round_frac):
+        ax.add_patch(
+            FancyBboxPatch(
+                (x + x0 * h, z0 + z_lo * h),
+                width * h,
+                (z_hi - z_lo) * h,
+                boxstyle=f"round,pad=0,rounding_size={round_frac * h}",
+                color=grey,
+                lw=0,
+                zorder=1,
+            )
+        )
+
+    block(-0.090, 0.44, 0.18, 0.81, 0.06)  # torso
+    # arms, hanging with a small gap to the torso
+    block(-0.150, 0.47, 0.050, 0.80, 0.025)
+    block(0.100, 0.47, 0.050, 0.80, 0.025)
+    block(-0.085, 0.0, 0.075, 0.50, 0.03)  # legs
+    block(0.010, 0.0, 0.075, 0.50, 0.03)
+    ax.add_patch(Circle((x, z0 + 0.905 * h), 0.085 * h, color=grey, lw=0, zorder=1))
+    ax.plot([x_min, x + 0.3 * h], [z0, z0], color=grey, lw=0.6, zorder=0)
+    return np.array([(x_min, z0), (x + 0.3 * h, z0 + h)])
+
+
 def tree_icon(
-    path: Path, geo: Geometry, radius: np.ndarray, view: str = "front"
+    path: Path,
+    geo: Geometry,
+    radius: np.ndarray,
+    view: str = "front",
+    figure_m: float | None = None,
 ) -> Path:
-    """One tree, drawn exactly like a catalog branch icon."""
+    """One tree, drawn exactly like a catalog branch icon; ``figure_m`` (survey cards) adds a
+    person of that height at the tree's scale and draws line widths true to the frame, not
+    at the icon's fixed 30 m reference, so stem and branches are as thick as they are."""
     segs, widths = branch_segments(geo, radius, view)
     plt, fig, ax = _canvas()
-    _draw(ax, segs, widths)
-    return _save(plt, fig, ax, *limits_of(segs), path)
+    if not figure_m:
+        _draw(ax, segs, widths)
+        return _save(plt, fig, ax, *limits_of(segs), path)
+    limits = limits_of(segs, _scale_figure(ax, segs, figure_m))
+    span = limits[0][1] - limits[0][0]
+    _draw(ax, segs, widths * REFERENCE_HEIGHT_M / span)
+    return _save(plt, fig, ax, *limits, path)
 
 
 def overlay_icon(

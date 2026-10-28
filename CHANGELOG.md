@@ -18,6 +18,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `/survey/`. `analyse.py` turns the answers into species recognition, real-vs-generated AUC
   and catalog-minus-real gaps per species.
 
+#### Changed
+
+- **The survey is now a one-tree rating app with a growing item set (XRFF-593).** One card at a
+  time shows a leaf-off skeleton, its species and height, and a 1.75 m person drawn to scale.
+  The rater answers one question on a 1–5 scale: does it look right for that species grown
+  in a stand? The tree's source (scanned or generated, and which) is shown right after the
+  vote, with optional "what looked off" flags. There are no accounts: a device id stays in the
+  browser, and invitation keys are set with `SURVEY_KEYS`.
+  - `add_items.py` draws trees into an item store that is not in git. Real and generated
+    trees are balanced per species and height class. Real trees whose stem would look broken
+    on the card are skipped. Rerunning adds only what is missing, and the server picks up new
+    trees without a restart.
+  - `analyse.py` centres ratings per rater. It reports the real-vs-generated AUC per species
+    and per source group, and gives each tree a verdict: reference, implausible or open.
+  - The v1 item set, template and assembly scripts are removed.
+- **`tree_icon(..., figure_m=...)`** adds a person of that height at the tree's scale and
+  draws line widths true to the frame. Catalog icons and galleries are unchanged.
+
 ### 2026-10-26 — PVE Bone Reduction per species
 
 #### Added

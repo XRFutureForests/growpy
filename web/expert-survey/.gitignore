@@ -1,6 +1,11 @@
-# hidden item key: frozen copy in the hub (publications/generated-vs-real-tree-structure/expert-survey/)
-items_key.csv
-# respondents' answers (personal data) and generated outputs
+# item store (card drawings + where each tree comes from): growpy is public, and the metadata
+# would give the answers away; it lives on the dt.unr data disk, rebuilt with add_items.py
+items/
+# invitation keys
+.env
+# respondents' votes and generated outputs
 answers/
 results/
+# v1 leftovers on a local disk
+items_key.csv
 artifact.html
