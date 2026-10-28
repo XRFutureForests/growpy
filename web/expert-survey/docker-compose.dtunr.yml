@@ -1,0 +1,17 @@
+# dt.unr overlay: no host port (only 443 passes the campus ACL), answers on the NFS data
+# disk, and a seat on the dashboard's proxy network so its nginx can reach /survey/.
+# Not on the database network.
+#   docker compose -f docker-compose.yml -f docker-compose.dtunr.yml up -d --build
+services:
+  survey:
+    ports: !reset []
+    user: "65534:65534" # the NFS export squashes root to 65534; the data dir is chowned to it
+    volumes: !override
+      - ${SURVEY_DATA:-/media/data/xrff-survey}:/data
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: ${SURVEY_PROXY_NETWORK:-docker_dashboard-net}

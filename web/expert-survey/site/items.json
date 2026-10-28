@@ -1,0 +1,578 @@
+[
+ {
+  "code": "T119",
+  "set": "B",
+  "height_m": 20,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T119_front.png",
+  "side": "img/T119_side.png"
+ },
+ {
+  "code": "T126",
+  "set": "B",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T126_front.png",
+  "side": null
+ },
+ {
+  "code": "T129",
+  "set": "B",
+  "height_m": 11,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T129_front.png",
+  "side": "img/T129_side.png"
+ },
+ {
+  "code": "T152",
+  "set": "A",
+  "height_m": 10,
+  "species": "Norway spruce",
+  "species_key": "norway_spruce",
+  "front": "img/T152_front.png",
+  "side": "img/T152_side.png"
+ },
+ {
+  "code": "T156",
+  "set": "A",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T156_front.png",
+  "side": null
+ },
+ {
+  "code": "T162",
+  "set": "A",
+  "height_m": 10,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T162_front.png",
+  "side": "img/T162_side.png"
+ },
+ {
+  "code": "T163",
+  "set": "A",
+  "height_m": 30,
+  "species": "Silver fir",
+  "species_key": "silver_fir",
+  "front": "img/T163_front.png",
+  "side": "img/T163_side.png"
+ },
+ {
+  "code": "T167",
+  "set": "A",
+  "height_m": 20,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T167_front.png",
+  "side": "img/T167_side.png"
+ },
+ {
+  "code": "T233",
+  "set": "B",
+  "height_m": 28,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T233_front.png",
+  "side": "img/T233_side.png"
+ },
+ {
+  "code": "T253",
+  "set": "B",
+  "height_m": 29,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T253_front.png",
+  "side": "img/T253_side.png"
+ },
+ {
+  "code": "T260",
+  "set": "B",
+  "height_m": 30,
+  "species": "Douglas fir",
+  "species_key": "douglas_fir",
+  "front": "img/T260_front.png",
+  "side": "img/T260_side.png"
+ },
+ {
+  "code": "T267",
+  "set": "A",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T267_front.png",
+  "side": "img/T267_side.png"
+ },
+ {
+  "code": "T282",
+  "set": "B",
+  "height_m": 20,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T282_front.png",
+  "side": "img/T282_side.png"
+ },
+ {
+  "code": "T299",
+  "set": "A",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T299_front.png",
+  "side": "img/T299_side.png"
+ },
+ {
+  "code": "T319",
+  "set": "B",
+  "height_m": 20,
+  "species": "Silver fir",
+  "species_key": "silver_fir",
+  "front": "img/T319_front.png",
+  "side": "img/T319_side.png"
+ },
+ {
+  "code": "T323",
+  "set": "A",
+  "height_m": 10,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T323_front.png",
+  "side": "img/T323_side.png"
+ },
+ {
+  "code": "T329",
+  "set": "A",
+  "height_m": 25,
+  "species": "Wild cherry",
+  "species_key": "wild_cherry",
+  "front": "img/T329_front.png",
+  "side": "img/T329_side.png"
+ },
+ {
+  "code": "T342",
+  "set": "A",
+  "height_m": 30,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T342_front.png",
+  "side": "img/T342_side.png"
+ },
+ {
+  "code": "T349",
+  "set": "B",
+  "height_m": 30,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T349_front.png",
+  "side": "img/T349_side.png"
+ },
+ {
+  "code": "T358",
+  "set": "A",
+  "height_m": 30,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T358_front.png",
+  "side": "img/T358_side.png"
+ },
+ {
+  "code": "T361",
+  "set": "A",
+  "height_m": 20,
+  "species": "Small-leaved lime",
+  "species_key": "small_leaved_linden",
+  "front": "img/T361_front.png",
+  "side": "img/T361_side.png"
+ },
+ {
+  "code": "T371",
+  "set": "B",
+  "height_m": 20,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T371_front.png",
+  "side": "img/T371_side.png"
+ },
+ {
+  "code": "T372",
+  "set": "A",
+  "height_m": 20,
+  "species": "Small-leaved lime",
+  "species_key": "small_leaved_linden",
+  "front": "img/T372_front.png",
+  "side": "img/T372_side.png"
+ },
+ {
+  "code": "T381",
+  "set": "B",
+  "height_m": 11,
+  "species": "Norway spruce",
+  "species_key": "norway_spruce",
+  "front": "img/T381_front.png",
+  "side": "img/T381_side.png"
+ },
+ {
+  "code": "T383",
+  "set": "B",
+  "height_m": 20,
+  "species": "Norway spruce",
+  "species_key": "norway_spruce",
+  "front": "img/T383_front.png",
+  "side": "img/T383_side.png"
+ },
+ {
+  "code": "T387",
+  "set": "B",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T387_front.png",
+  "side": null
+ },
+ {
+  "code": "T437",
+  "set": "B",
+  "height_m": 10,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T437_front.png",
+  "side": "img/T437_side.png"
+ },
+ {
+  "code": "T465",
+  "set": "B",
+  "height_m": 20,
+  "species": "Wild cherry",
+  "species_key": "wild_cherry",
+  "front": "img/T465_front.png",
+  "side": "img/T465_side.png"
+ },
+ {
+  "code": "T479",
+  "set": "B",
+  "height_m": 20,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T479_front.png",
+  "side": "img/T479_side.png"
+ },
+ {
+  "code": "T481",
+  "set": "A",
+  "height_m": 10,
+  "species": "Scots pine",
+  "species_key": "scots_pine",
+  "front": "img/T481_front.png",
+  "side": "img/T481_side.png"
+ },
+ {
+  "code": "T499",
+  "set": "B",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T499_front.png",
+  "side": "img/T499_side.png"
+ },
+ {
+  "code": "T504",
+  "set": "B",
+  "height_m": 10,
+  "species": "Small-leaved lime",
+  "species_key": "small_leaved_linden",
+  "front": "img/T504_front.png",
+  "side": "img/T504_side.png"
+ },
+ {
+  "code": "T543",
+  "set": "A",
+  "height_m": 30,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T543_front.png",
+  "side": "img/T543_side.png"
+ },
+ {
+  "code": "T552",
+  "set": "A",
+  "height_m": 10,
+  "species": "Douglas fir",
+  "species_key": "douglas_fir",
+  "front": "img/T552_front.png",
+  "side": "img/T552_side.png"
+ },
+ {
+  "code": "T561",
+  "set": "A",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T561_front.png",
+  "side": null
+ },
+ {
+  "code": "T574",
+  "set": "A",
+  "height_m": 20,
+  "species": "Douglas fir",
+  "species_key": "douglas_fir",
+  "front": "img/T574_front.png",
+  "side": "img/T574_side.png"
+ },
+ {
+  "code": "T583",
+  "set": "B",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T583_front.png",
+  "side": null
+ },
+ {
+  "code": "T617",
+  "set": "B",
+  "height_m": 20,
+  "species": "Scots pine",
+  "species_key": "scots_pine",
+  "front": "img/T617_front.png",
+  "side": "img/T617_side.png"
+ },
+ {
+  "code": "T622",
+  "set": "A",
+  "height_m": 20,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T622_front.png",
+  "side": null
+ },
+ {
+  "code": "T630",
+  "set": "A",
+  "height_m": 18,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T630_front.png",
+  "side": "img/T630_side.png"
+ },
+ {
+  "code": "T641",
+  "set": "B",
+  "height_m": 20,
+  "species": "Douglas fir",
+  "species_key": "douglas_fir",
+  "front": "img/T641_front.png",
+  "side": "img/T641_side.png"
+ },
+ {
+  "code": "T656",
+  "set": "A",
+  "height_m": 20,
+  "species": "Norway spruce",
+  "species_key": "norway_spruce",
+  "front": "img/T656_front.png",
+  "side": "img/T656_side.png"
+ },
+ {
+  "code": "T669",
+  "set": "A",
+  "height_m": 20,
+  "species": "Scots pine",
+  "species_key": "scots_pine",
+  "front": "img/T669_front.png",
+  "side": "img/T669_side.png"
+ },
+ {
+  "code": "T670",
+  "set": "A",
+  "height_m": 10,
+  "species": "Silver fir",
+  "species_key": "silver_fir",
+  "front": "img/T670_front.png",
+  "side": "img/T670_side.png"
+ },
+ {
+  "code": "T683",
+  "set": "A",
+  "height_m": 30,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T683_front.png",
+  "side": "img/T683_side.png"
+ },
+ {
+  "code": "T685",
+  "set": "B",
+  "height_m": 25,
+  "species": "Silver birch",
+  "species_key": "silver_birch",
+  "front": "img/T685_front.png",
+  "side": "img/T685_side.png"
+ },
+ {
+  "code": "T690",
+  "set": "A",
+  "height_m": 31,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T690_front.png",
+  "side": "img/T690_side.png"
+ },
+ {
+  "code": "T725",
+  "set": "B",
+  "height_m": 30,
+  "species": "Wild cherry",
+  "species_key": "wild_cherry",
+  "front": "img/T725_front.png",
+  "side": "img/T725_side.png"
+ },
+ {
+  "code": "T757",
+  "set": "A",
+  "height_m": 19,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T757_front.png",
+  "side": "img/T757_side.png"
+ },
+ {
+  "code": "T791",
+  "set": "B",
+  "height_m": 10,
+  "species": "Silver birch",
+  "species_key": "silver_birch",
+  "front": "img/T791_front.png",
+  "side": "img/T791_side.png"
+ },
+ {
+  "code": "T797",
+  "set": "B",
+  "height_m": 10,
+  "species": "Wild cherry",
+  "species_key": "wild_cherry",
+  "front": "img/T797_front.png",
+  "side": "img/T797_side.png"
+ },
+ {
+  "code": "T817",
+  "set": "A",
+  "height_m": 18,
+  "species": "Sycamore maple",
+  "species_key": "sycamore_maple",
+  "front": "img/T817_front.png",
+  "side": "img/T817_side.png"
+ },
+ {
+  "code": "T834",
+  "set": "A",
+  "height_m": 20,
+  "species": "Wild cherry",
+  "species_key": "wild_cherry",
+  "front": "img/T834_front.png",
+  "side": "img/T834_side.png"
+ },
+ {
+  "code": "T838",
+  "set": "B",
+  "height_m": 12,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T838_front.png",
+  "side": "img/T838_side.png"
+ },
+ {
+  "code": "T866",
+  "set": "B",
+  "height_m": 20,
+  "species": "Silver fir",
+  "species_key": "silver_fir",
+  "front": "img/T866_front.png",
+  "side": "img/T866_side.png"
+ },
+ {
+  "code": "T873",
+  "set": "A",
+  "height_m": 20,
+  "species": "Oak (pedunculate / sessile)",
+  "species_key": "european_oak",
+  "front": "img/T873_front.png",
+  "side": "img/T873_side.png"
+ },
+ {
+  "code": "T878",
+  "set": "B",
+  "height_m": 30,
+  "species": "Small-leaved lime",
+  "species_key": "small_leaved_linden",
+  "front": "img/T878_front.png",
+  "side": "img/T878_side.png"
+ },
+ {
+  "code": "T894",
+  "set": "A",
+  "height_m": 20,
+  "species": "Silver birch",
+  "species_key": "silver_birch",
+  "front": "img/T894_front.png",
+  "side": "img/T894_side.png"
+ },
+ {
+  "code": "T919",
+  "set": "A",
+  "height_m": 20,
+  "species": "Silver birch",
+  "species_key": "silver_birch",
+  "front": "img/T919_front.png",
+  "side": "img/T919_side.png"
+ },
+ {
+  "code": "T954",
+  "set": "B",
+  "height_m": 30,
+  "species": "Norway spruce",
+  "species_key": "norway_spruce",
+  "front": "img/T954_front.png",
+  "side": "img/T954_side.png"
+ },
+ {
+  "code": "T973",
+  "set": "B",
+  "height_m": 10,
+  "species": "European beech",
+  "species_key": "european_beech",
+  "front": "img/T973_front.png",
+  "side": "img/T973_side.png"
+ },
+ {
+  "code": "T977",
+  "set": "A",
+  "height_m": 18,
+  "species": "Scots pine",
+  "species_key": "scots_pine",
+  "front": "img/T977_front.png",
+  "side": "img/T977_side.png"
+ },
+ {
+  "code": "T981",
+  "set": "B",
+  "height_m": 11,
+  "species": "Common ash",
+  "species_key": "common_ash",
+  "front": "img/T981_front.png",
+  "side": "img/T981_side.png"
+ },
+ {
+  "code": "T985",
+  "set": "B",
+  "height_m": 30,
+  "species": "Scots pine",
+  "species_key": "scots_pine",
+  "front": "img/T985_front.png",
+  "side": "img/T985_side.png"
+ }
+]

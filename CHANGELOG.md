@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-28 — Expert tree survey
+
+#### Added
+
+- **`web/expert-survey/`: a web survey for forest experts.** 64 leaf-off trees (catalog trees
+  of all 11 species, real tier A/B QSM trees, six trees from the owner's blind beech ranking)
+  drawn alike by the structure gallery renderer. Respondents name the species, judge real or
+  generated, and rate naturalness and species typicality. They can also tick flaws that map
+  onto descriptor families. `survey_server.py` (standard library only) serves the page and
+  writes one JSON per respondent. It runs locally or as its own container, live on dt.unr at
+  `/survey/`. `analyse.py` turns the answers into species recognition, real-vs-generated AUC
+  and catalog-minus-real gaps per species.
+
 ### 2026-10-26 — PVE Bone Reduction per species
 
 #### Added

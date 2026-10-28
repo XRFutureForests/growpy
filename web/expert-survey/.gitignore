@@ -1,0 +1,6 @@
+# hidden item key: frozen copy in the hub (publications/generated-vs-real-tree-structure/expert-survey/)
+items_key.csv
+# respondents' answers (personal data) and generated outputs
+answers/
+results/
+artifact.html
