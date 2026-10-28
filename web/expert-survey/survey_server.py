@@ -82,6 +82,7 @@ class Handler(SimpleHTTPRequestHandler):
         fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(doc, fh, ensure_ascii=False)
+        os.chmod(tmp, 0o644)  # mkstemp makes 0600; the host admin copies the files as another uid
         os.replace(tmp, target)
         return self._json(HTTPStatus.OK, {"ok": True})
 
