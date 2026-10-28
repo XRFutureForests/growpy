@@ -1,8 +1,7 @@
 # Tree look survey
 
-A one-tree-at-a-time rating app for people who work with trees (XRFF-593, replaces the v1
-expert survey proof of concept). Each card shows a leaf-off branch skeleton, its species and
-height, and a 1.75 m person for scale. The rater answers one question: *does this look right
+A one-tree-at-a-time rating app for people who work with trees (XRFF-593). Each card shows
+a leaf-off branch skeleton, its species and height, and a 1.75 m person for scale. The rater answers one question: *does this look right
 for a <species> grown in a stand?* on a 1–5 scale. Right after the vote the page says where
 the tree came from (a laser-scanned real tree or a generated one, and which), and the rater
 can tick what looked off. No accounts: a random device id in the browser, and an invitation

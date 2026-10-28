@@ -6,6 +6,3 @@ items/
 # respondents' votes and generated outputs
 answers/
 results/
-# v1 leftovers on a local disk
-items_key.csv
-artifact.html

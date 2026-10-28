@@ -5,23 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### 2026-10-28 — Expert tree survey
+### 2026-10-28 — Tree look survey
 
 #### Added
 
-- **`web/expert-survey/`: a web survey for forest experts.** 64 leaf-off trees (catalog trees
-  of all 11 species, real tier A/B QSM trees, six trees from the owner's blind beech ranking)
-  drawn alike by the structure gallery renderer. Respondents name the species, judge real or
-  generated, and rate naturalness and species typicality. They can also tick flaws that map
-  onto descriptor families. `survey_server.py` (standard library only) serves the page and
-  writes one JSON per respondent. It runs locally or as its own container, live on dt.unr at
-  `/survey/`. `analyse.py` turns the answers into species recognition, real-vs-generated AUC
-  and catalog-minus-real gaps per species.
-
-#### Changed
-
-- **The survey is now a one-tree rating app with a growing item set (XRFF-593).** One card at a
-  time shows a leaf-off skeleton, its species and height, and a 1.75 m person drawn to scale.
+- **`web/expert-survey/`: a one-tree rating app with a growing item set (XRFF-593).** One
+  card at a time shows a leaf-off skeleton, its species and height, and a 1.75 m person drawn to scale.
   The rater answers one question on a 1–5 scale: does it look right for that species grown
   in a stand? The tree's source (scanned or generated, and which) is shown right after the
   vote, with optional "what looked off" flags. There are no accounts: a device id stays in the
@@ -32,7 +21,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
     trees without a restart.
   - `analyse.py` centres ratings per rater. It reports the real-vs-generated AUC per species
     and per source group, and gives each tree a verdict: reference, implausible or open.
-  - The v1 item set, template and assembly scripts are removed.
 - **`tree_icon(..., figure_m=...)`** adds a person of that height at the tree's scale and
   draws line widths true to the frame. Catalog icons and galleries are unchanged.
 
