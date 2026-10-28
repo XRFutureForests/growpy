@@ -27,11 +27,10 @@ patched there, everything else under ``data/`` is a junction to the real folders
 reads the baked seed JSON, so this is the only way to vary a preset key without touching
 the shared ``data/assets`` (A19).
 
-After the runs: ``growpy-qsm-standardize growpy-forest`` per seed, one
-``growpy-qsm-descriptors`` table over all seeds, ``growpy-qsm-gate`` against the
-committed reference store. Layout under ``data/output/structure/regrow/<species>/<arm>/``:
-``arm.json``, ``seed<k>/{config,forest,run.log}``, ``std/seed<k>``, ``descriptors/``,
-``gate/``.
+Layout under ``data/output/regrow/<species>/<arm>/``: ``arm.json`` and
+``seed<k>/{config,forest,run.log}``. Scoring lives in the tree-structure repo since
+the split of 2026-10-28: run ``tree-structure-score-arm <arm dir>`` in its env, which
+standardises the seeds, writes ``descriptors/`` and gates into ``gate/``.
 """
 
 from __future__ import annotations
@@ -214,31 +213,6 @@ def run_seed(species: str, cfg: Path, root: Path, log: Path, max_height: float |
     return proc.returncode, time.time() - started
 
 
-def score(arm_dir: Path, seed_dirs: list[Path], reference: Path | None) -> int:
-    from growpy.structure.sources import growpy_forest
-    from growpy.structure.store import write_dataset
-    from growpy.tools import qsm_descriptors, qsm_gate
-
-    std_dirs = []
-    for seed_dir in seed_dirs:
-        std = arm_dir / "std" / seed_dir.name
-        if std.exists():
-            shutil.rmtree(std)
-        n = write_dataset(growpy_forest(seed_dir / "forest"), std)
-        print(f"{seed_dir.name}: {n} growth JSONs standardised")
-        if n:
-            std_dirs.append(std)
-    if not std_dirs:
-        print("no growth JSONs to score")
-        return 1
-    desc = arm_dir / "descriptors"
-    qsm_descriptors.main([*map(str, std_dirs), "--out-dir", str(desc)])
-    gate_args = [str(desc / "descriptors.csv"), "--out-dir", str(arm_dir / "gate")]
-    if reference:
-        gate_args += ["--reference", str(reference)]
-    return qsm_gate.main(gate_args)
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("species", help='common name, e.g. "European Beech"')
@@ -253,10 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--out-root",
         type=Path,
-        default=REPO / "data" / "output" / "structure" / "regrow",
+        default=REPO / "data" / "output" / "regrow",
     )
-    parser.add_argument("--reference", type=Path, help="store dir (default: committed)")
-    parser.add_argument("--score-only", action="store_true", help="skip the regrow")
     parser.add_argument("--dry-run", action="store_true", help="configs only, no run")
     args = parser.parse_args(argv)
 
@@ -269,58 +241,56 @@ def main(argv: list[str] | None = None) -> int:
     arm_dir = (args.out_root / species_key(args.species) / args.arm).resolve()
     seed_dirs = [arm_dir / f"seed{s}" for s in seeds]
 
-    if not args.score_only:
-        arm_dir.mkdir(parents=True, exist_ok=True)
-        root = arm_dir / "root" if overrides else REPO
-        knobs = build_sandbox(root, args.species, overrides) if overrides else {}
-        for seed, seed_dir in zip(seeds, seed_dirs, strict=True):
-            build_seed_config(seed_dir / "config", seed, seed_dir / "forest", radii)
-            got = verify_seed_config(
-                seed_dir / "config", seed, seed_dir / "forest", root
-            )
-            print(f"seed {seed}: {got}")
-        record = {
-            "species": args.species,
-            "arm": args.arm,
-            "seeds": seeds,
-            "preset_overrides": knobs,
-            "radii": radii or "production",
-            "max_height": args.max_height,
-            "started": datetime.now().isoformat(timespec="seconds"),
-        }
-        (arm_dir / "arm.json").write_text(
-            json.dumps(record, indent=2), encoding="utf-8"
+    arm_dir.mkdir(parents=True, exist_ok=True)
+    root = arm_dir / "root" if overrides else REPO
+    knobs = build_sandbox(root, args.species, overrides) if overrides else {}
+    for seed, seed_dir in zip(seeds, seed_dirs, strict=True):
+        build_seed_config(seed_dir / "config", seed, seed_dir / "forest", radii)
+        got = verify_seed_config(
+            seed_dir / "config", seed, seed_dir / "forest", root
         )
-        if args.dry_run:
-            return 0
-
-        def one(pair):
-            seed, seed_dir = pair
-            if (seed_dir / "forest").exists():
-                shutil.rmtree(seed_dir / "forest")
-            code, secs = run_seed(
-                args.species, seed_dir / "config", root, seed_dir / "run.log",
-                args.max_height,
-            )  # fmt: skip
-            print(f"seed {seed}: exit {code} after {secs / 60:.1f} min")
-            return seed, code, secs
-
-        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
-            results = list(pool.map(one, zip(seeds, seed_dirs, strict=True)))
-        record["runs"] = [
-            {"seed": s, "exit": c, "minutes": round(t / 60, 1)} for s, c, t in results
-        ]
-        record["finished"] = datetime.now().isoformat(timespec="seconds")
-        (arm_dir / "arm.json").write_text(
-            json.dumps(record, indent=2), encoding="utf-8"
-        )
-        failed = [s for s, c, _ in results if c != 0]
-        if failed:
-            print(f"seeds failed: {failed} (see seed<k>/run.log)")
-
-    return score(
-        arm_dir, [d for d in seed_dirs if (d / "forest").exists()], args.reference
+        print(f"seed {seed}: {got}")
+    record = {
+        "species": args.species,
+        "arm": args.arm,
+        "seeds": seeds,
+        "preset_overrides": knobs,
+        "radii": radii or "production",
+        "max_height": args.max_height,
+        "started": datetime.now().isoformat(timespec="seconds"),
+    }
+    (arm_dir / "arm.json").write_text(
+        json.dumps(record, indent=2), encoding="utf-8"
     )
+    if args.dry_run:
+        return 0
+
+    def one(pair):
+        seed, seed_dir = pair
+        if (seed_dir / "forest").exists():
+            shutil.rmtree(seed_dir / "forest")
+        code, secs = run_seed(
+            args.species, seed_dir / "config", root, seed_dir / "run.log",
+            args.max_height,
+        )  # fmt: skip
+        print(f"seed {seed}: exit {code} after {secs / 60:.1f} min")
+        return seed, code, secs
+
+    with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+        results = list(pool.map(one, zip(seeds, seed_dirs, strict=True)))
+    record["runs"] = [
+        {"seed": s, "exit": c, "minutes": round(t / 60, 1)} for s, c, t in results
+    ]
+    record["finished"] = datetime.now().isoformat(timespec="seconds")
+    (arm_dir / "arm.json").write_text(
+        json.dumps(record, indent=2), encoding="utf-8"
+    )
+    failed = [s for s, c, _ in results if c != 0]
+    if failed:
+        print(f"seeds failed: {failed} (see seed<k>/run.log)")
+
+    print(f"score it: tree-structure-score-arm {arm_dir}  (tree-structure env)")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

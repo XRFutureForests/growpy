@@ -30,9 +30,9 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/config/` | TOML config, species overrides |
 | `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
 | `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area + export click, preflight, twig ladder, texture packing, diagnostics |
-| `src/growpy/structure/` | Real-tree QSM standardisation: canonical cylinder/tree schema, single axis rule, per-format readers, per-dataset adapters, store (no Grove or bpy import); realism scoring: `reference` (the committed store `data/input/structure_reference/`), `score` (per-species gaps), `gate` (provisional XRFF-549 gate, growth over time), `adequacy` (core-set checks, XRFF-576) |
 | `src/growpy/blender/` | grove_extract, twig_converter |
-| `web/expert-survey/` | Tree look survey: one-tree 1-5 rating page, item store builder (`add_items.py`, store not in git), standalone server (local or its own container on dt.unr at `/survey/`), analysis; see its README |
+
+Structure evaluation (QSM readers, descriptors, reference store, gate, point-cloud metrics, synthetic scans) moved to the internal repo **tree-structure**, and the tree look survey to **tree-survey**, on 2026-10-28 (owner decision; history kept). growpy grows and exports trees; tree-structure judges them from growpy's output files.
 
 ## CLI Scripts
 
@@ -55,24 +55,9 @@ documentation is not redistributed — point at thegrove3d.com.
 | `growpy-pve-export` | Trigger the Export of PVE graphs in the running editor (posted Ctrl+E + UI Automation; works with the workstation locked) |
 | `growpy-pve-gallery` | Lay the exported PVE trees out in gallery levels (one per species: stand radius x stage) to judge the catalog by eye; skips meshes over the 32,767-bone cap; `--shots` photographs each stand row |
 | `growpy-twig-audit` | Offline audit of where the PVE plan places foliage, per catalog cell, against `config/twig_audit.toml` (upturned shoots, leader foliage, top-band density); needs no editor |
-| `growpy-structure-descriptors` | Branching-structure descriptors of growth JSONs in the hub's schema frames (whorls per node, tier spacing, chord angle to half length, straightness, crown profile, regularity indices); `--compare A B` for side-by-side cells |
-| `growpy-qsm-to-growth` | Convert a TreeQSM point graph (GraphML, e.g. BioDiv-3DTrees) to the growth-JSON layout so a real tree goes through the same descriptor code as a generated one |
-| `growpy-qsm-standardize` | Convert a published QSM dataset (Kew, Belgium, Ghent, TreeML, BioDiv graphs) to the canonical cylinder + tree tables of `growpy.structure`: one frame, one axis rule, DBH/height/volume measured the same way, source metadata and quality numbers side by side |
-| `growpy-qsm-export-growth` | Write growth JSONs from a standardised QSM dataset so real trees go through the same tools as Grove trees (descriptors, PVE exporter) |
-| `growpy-qsm-descriptors` | Structure descriptors on standardised trees after a common-resolution prune: geometry (L), size-free growth-rule fingerprint (G), topology (T), sequences (S) and branch/crown form (F: dangling, wave, irregularity, asymmetry, crown per DBH against the reported DBH), with definitions (unit, frame, scan robustness) and a summary by source kind × species × height class |
-| `growpy-qsm-score` | Catalog against real trees per species: robust, conifer-safe descriptors, silver/Douglas fir against Norway spruce as a proxy, the share within one spread (the 2026-10-26 re-score), `--form` for visible-trait medians |
-| `growpy-qsm-reference` | Build the committed reference store `data/input/structure_reference/` from real-tree descriptor tables: p5/p25/p50/p75/p95 per species, pooled height-normalised and per 5 m bin (n >= 10), coverage, manifest |
-| `growpy-qsm-gate` | Gate generated trees against the store: share inside p5-p95, median inside p25-p75, IQR ratio and too-regular flag, verdict over the core descriptors, growth-over-time consistency per grown individual. Score unthinned growth JSONs only |
-| `growpy-qsm-adequacy` | Core-set checks for gate descriptors: balanced species effect inside BioDiv tier A, height tracking, source effect, redundancy pruning; `--arm` gate tables give the knob sensitivity |
-| `growpy-structure-regrow` | Regrow one species for scoring: N seeds, unthinned `growth_json_only`, optional preset knobs (`--set key=value`) in a sandbox project root, then standardise, describe and gate into `data/output/structure/regrow/<species>/<arm>/` |
-| `growpy-pointcloud-metrics` | L2 point-cloud metrics without QSM fitting, identical for real and synthetic clouds: height-normalised profile, RANSAC stem DBH, crown base, hull volumes, crown projection and asymmetry, box dimension, voxel occupancy and gap fractions |
-| `growpy-synthetic-scan` | HELIOS++ virtual TLS (conda env `helios`) of a generated tree alone (ring of tripod positions) or inside its neighbours; returns metre xyz with part and position ids, ground dropped while streaming |
+| `growpy-structure-regrow` | Regrow one species for scoring: N seeds, unthinned `growth_json_only`, optional preset knobs (`--set key=value`) in a sandbox project root, into `data/output/regrow/<species>/<arm>/`; score the arm with `tree-structure-score-arm` (tree-structure repo) |
 | `growpy-export-budget` | Export budget report (XRFF-592): bones, branches with bones, planned parts and triangles per catalog mesh; skinned transform buffer share per site x scenario step from the twin's tree caches, gated against the draft PCVR budget |
-| `growpy-structure-gallery` | Owner gallery: regrow arms (seeds across) next to real trees of the same height in the catalog icon style, pipe-model radii from DBH; `--blind` shuffles tiles for ranking |
 | `growpy-skeleton-budget` | Bone budget of catalog growth JSONs (points, polylines, Douglas-Peucker keep shares) and, with `--spacing`, what `min_point_spacing` would save |
-| `growpy-qsm-prototypes` | Prototype silhouettes of real trees per species x height class x crown-width tertile, drawn in the catalog icon style (front view, 512 px, pipe-model radii from DBH): occupancy map, template skeleton from median unrolled branch curves, medoid tree; `branch_curves.csv`, Grove overlays and per-decile curve scores (`--grove-lane`), `prototype_overview.md` laid out like `dataset_overview.md` |
-| `growpy-qsm-to-mtg` | Write the quality-checked standardised QSM trees as OpenAlea MTG files (tree and cylinder scales, `<`/`+` edges, geometry and axis properties) at the common resolution, plus `index.csv`; needs the `growpy-openalea` conda env (openalea.mtg, `-c openalea3`) |
-| `growpy-branching-model` | Fit a stochastic branching model per species x height class from the MTG files (Bayesian-smoothed position-dependent Markov chain of lateral events along axes, real-data pools of laterals and stems), generate trees with its L-Py rule set (`structure/branching.lpy`), and validate them against real trees and the Grove catalog through the descriptors; `growpy-openalea` env |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |

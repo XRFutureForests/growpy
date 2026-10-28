@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-10-28 — Structure evaluation and the survey move to their own repos
+
+#### Removed
+
+- **`growpy.structure` and the 16 structure tools moved to the internal repo tree-structure**
+  (owner decision, history kept). They are QSM standardisation, descriptors, the reference
+  store `data/input/structure_reference/`, score, gate, adequacy, point-cloud metrics,
+  synthetic scans, prototypes, the branching model and the gallery. Their commands are now
+  `tree-structure-*` (for example `growpy-qsm-gate` → `tree-structure-gate`) and run in the
+  `tree-structure` conda env. No released version contained them (v0.5.0 predates them).
+- **`web/expert-survey/` moved to the internal repo tree-survey.**
+
+#### Changed
+
+- **`growpy-structure-regrow` grows only.** Arms go to `data/output/regrow/<species>/<arm>/`.
+  Score them with `tree-structure-score-arm <arm dir>` in the tree-structure env. `--score-only`
+  and `--reference` are gone.
+
 ### 2026-10-28 — Tree look survey
 
 #### Added

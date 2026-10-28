@@ -1,8 +1,0 @@
-# item store (card drawings + where each tree comes from): growpy is public, and the metadata
-# would give the answers away; it lives on the dt.unr data disk, rebuilt with add_items.py
-items/
-# invitation keys
-.env
-# respondents' votes and generated outputs
-answers/
-results/
