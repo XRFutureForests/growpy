@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Optional
 
+from .ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT, TREES_ROOT
+
 logger = logging.getLogger(__name__)
 
 _global_config: Optional["GrowPyConfig"] = None
@@ -201,6 +203,7 @@ class GrowPyConfig:
         "export_max_skeleton_joints": "internal tuning, no CLI need identified",
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
+        "export_dbh_nudge_weight": "scenario-level setting (owner decision), config-only",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
         "quality_build_cutoff_thickness_per_species": (
@@ -211,6 +214,7 @@ class GrowPyConfig:
         "surround_grow_per_species": "nested dict structure, config-only by design",
         "surround_freeze_height": "scenario-level setting, config-only by design",
         "surround_freeze_height_per_species": "nested dict, config-only by design",
+        "surround_freeze_height_per_species_radius": "nested dict, config-only by design",
         "surround_height_per_species": "nested dict, config-only by design",
         "surround_density_per_species": "nested dict structure, config-only by design",
         "surround_density_per_species_radius": (
@@ -243,6 +247,7 @@ class GrowPyConfig:
         "unreal_nanite_lerp_uvs": "internal toggle, no CLI need identified",
         "unreal_nanite_fallback_target": "internal tuning, no CLI need identified",
         "unreal_db_path": "environment-level path, config-only by design",
+        "unreal_pcg_trees_graph": "environment-level path, config-only by design",
         # "unreal_generate_pve_presets" removed: now CLI-mapped via --pve (XRFF-293).
         "unreal_pve_import_base": "environment-level path, config-only by design",
         "unreal_generate_pve_graphs": (
@@ -254,6 +259,11 @@ class GrowPyConfig:
         "unreal_pve_triangle_cap": (
             "internal tuning, no CLI need identified: it is a property of the "
             "machine's export headroom, not of a run"
+        ),
+        "unreal_pve_static_twins": (
+            "project-level choice, config-only: whether the catalog carries a "
+            "static twin per tree is what the UE project's surround forest "
+            "expects, not a per-run flag"
         ),
         "unreal_editor_exe": "environment-level path, config-only by design",
         "unreal_uproject": "environment-level path, config-only by design",
@@ -272,8 +282,10 @@ class GrowPyConfig:
         "yield_sources_yield_tables_dir": "environment-level path, config-only",
         "yield_sources_preferred_region": "scenario-level setting, config-only",
         "yield_sources_preferred_site_index": "scenario-level setting, config-only",
+        "yield_sources_allometry_reference": "scenario-level setting, config-only",
         "yield_sources_documents": "nested dict of source paths, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
+        "surround_neighbours": "scenario-level setting, config-only by design",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
         "surround_grow": "scenario-level setting, config-only by design",
@@ -404,6 +416,11 @@ class GrowPyConfig:
     # which is far cheaper. A tree's surround_radius value (0 = none, >0 = shell
     # distance in meters) picks which of these configured radii applies.
     surround_radii: list = field(default_factory=lambda: [0.0])
+    # Real neighbours instead of Grove's shell: >0 plants this many trees of the
+    # same species on a ring at the radius around the dataset tree, grows them
+    # together (Grove's own light competition; Surround is off for a multi-tree
+    # grove) and exports only the centre. 0 = the single-tree Surround shell.
+    surround_neighbours: int = 0
     surround_density: float = 0.7
     surround_height: float = 5.0
     surround_grow: bool = True
@@ -559,6 +576,13 @@ class GrowPyConfig:
     surround_density_per_species_radius: dict[str, dict[str, float]] = field(
         default_factory=dict
     )
+    # Freeze height for one species AT ONE RADIUS (rNN label), over the
+    # per-species table: the release height is where the r08/r16 crown
+    # diameters of a frozen conifer separate (2026-09-17), so it is a
+    # per-cell quantity like the density above.
+    surround_freeze_height_per_species_radius: dict[str, dict[str, float]] = field(
+        default_factory=dict
+    )
 
 
     # Distance (m) beyond which a twig orphaned by the cutoff is pulled back
@@ -582,13 +606,21 @@ class GrowPyConfig:
 
     # [unreal]
     unreal_import_to_unreal: bool = True
-    unreal_project_path: str = "/Game/GrowPy"
+    unreal_project_path: str = TREES_ROOT
     unreal_voxelization: bool = True
     unreal_generate_wind_data: bool = True
     unreal_nanite_fallback_percent: float = 0.01
     unreal_nanite_fallback_target: str = "percent_triangles"
     unreal_nanite_lerp_uvs: bool = True
-    unreal_db_path: str = "/Game/Assets/TheGrove"
+    # Where ST_TreeCatalogEntry lives. Deliberately NOT under
+    # unreal_project_path: that folder is working content, wiped and
+    # re-imported between dataset runs, and the struct is schema that has to
+    # survive it. SCHEMA_ROOT (config/ue_layout.py) is the stable home for
+    # schema-only assets.
+    unreal_db_path: str = SCHEMA_ROOT
+    # The PCG graph growpy-pve-catalog points at DT_TreeCatalog. Where it sits
+    # differs per project, so it is config like db_path.
+    unreal_pcg_trees_graph: str = PCG_TREES_GRAPH
     unreal_generate_pve_presets: bool = True
     # The live PVE route (XRFF-442). Deliberately NOT the same flag as
     # generate_pve_presets, which drives the deprecated Preset Loader: that
@@ -598,13 +630,17 @@ class GrowPyConfig:
     # UE package path the twig palette and bark material were imported under
     # by growpy-pve-assets. A graph names its palette meshes by path, so this
     # must match what that step used.
-    unreal_pve_content_root: str = "/Game/PVE"
+    unreal_pve_content_root: str = TREES_ROOT
     # Predicted-triangle ceiling per graph, i.e. per Export click. One click
     # builds every chain in its graph and holds the result in memory until it
     # finishes, so a click that dies takes its whole graph with it -- an
     # autosave crash on a ~378 M-triangle beech click destroyed nine meshes
     # that had all already exported and logged.
     unreal_pve_triangle_cap: float = 120e6
+    # Also export each tree as a static Nanite mesh (SM_<name> under
+    # <pve_content_root>/CatalogStatic/<species>) for the surround forest,
+    # where skinned instances cost CPU per component and per instance.
+    unreal_pve_static_twins: bool = False
     # Content Browser base for the wind/PVE post-import scripts. Empty means
     # "follow unreal_project_path", which is what you want: assemblies import to
     # project_path, so wind data and PVE presets have to look for them there.
@@ -637,6 +673,10 @@ class GrowPyConfig:
     # DBH realisation at export. Independent of calibration: its input is the
     # height-DBH allometry artifact, which needs no simulation.
     export_dbh_from_allometry: bool = True
+    # How far the export moves Grove's DBH toward the allometric one:
+    # scale = (target / grove) ** weight (utils.allometry.nudge_radial_scale).
+    # 1.0 = the full correction, 0.0 = Grove's pipe model untouched.
+    export_dbh_nudge_weight: float = 0.5
     calibration_plot: bool = True
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -650,6 +690,10 @@ class GrowPyConfig:
     )
     yield_sources_preferred_region: str = ""
     yield_sources_preferred_site_index: float | None = None
+    # Which height-DBH pairs the allometry is fitted on: "table" = the one
+    # resolved table, "envelope_max" = the per-height maximum over every store
+    # table of the species (see utils/allometry.py, WHICH TABLE).
+    yield_sources_allometry_reference: str = "envelope_max"
     # Per-provider source document for the yield-table providers that parse a
     # local file (PDF or XLSX). Keyed on the pylometree provider name, because
     # every PDF provider reads the same "pdf_path" key and so must be handed its
@@ -880,6 +924,13 @@ class GrowPyConfig:
         # Deprecated alias: export.radial_scale -> export_dbh_from_allometry
         if "radial_scale" in export:
             kwargs["export_dbh_from_allometry"] = export["radial_scale"]
+        if "dbh_nudge_weight" in export:
+            w = float(export["dbh_nudge_weight"])
+            if not 0.0 <= w <= 1.0:
+                raise ValueError(
+                    f"[export] dbh_nudge_weight must be in [0, 1], got {w}"
+                )
+            kwargs["export_dbh_nudge_weight"] = w
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "build_cutoff_thickness_per_species" in export:
@@ -949,6 +1000,8 @@ class GrowPyConfig:
             ).lower()
         if "db_path" in unreal:
             kwargs["unreal_db_path"] = str(unreal["db_path"])
+        if "pcg_trees_graph" in unreal:
+            kwargs["unreal_pcg_trees_graph"] = str(unreal["pcg_trees_graph"])
         if "generate_pve_presets" in unreal:
             kwargs["unreal_generate_pve_presets"] = bool(unreal["generate_pve_presets"])
             if kwargs["unreal_generate_pve_presets"]:
@@ -975,6 +1028,8 @@ class GrowPyConfig:
                     f"[unreal] pve_triangle_cap must be positive, got {cap}"
                 )
             kwargs["unreal_pve_triangle_cap"] = cap
+        if "pve_static_twins" in unreal:
+            kwargs["unreal_pve_static_twins"] = bool(unreal["pve_static_twins"])
         watchdog = unreal.get("watchdog", {})
         if "editor_exe" in watchdog:
             kwargs["unreal_editor_exe"] = str(watchdog["editor_exe"])
@@ -1044,6 +1099,14 @@ class GrowPyConfig:
         if "preferred_site_index" in ys:
             val = float(ys["preferred_site_index"])
             kwargs["yield_sources_preferred_site_index"] = val if val > 0 else None
+        if "allometry_reference" in ys:
+            ref = str(ys["allometry_reference"])
+            if ref not in ("table", "envelope_max"):
+                raise ValueError(
+                    "[yield_sources] allometry_reference must be 'table' or "
+                    f"'envelope_max', got {ref!r}"
+                )
+            kwargs["yield_sources_allometry_reference"] = ref
         if "documents" in ys:
             kwargs["yield_sources_documents"] = {
                 str(name): str(path) for name, path in ys["documents"].items()
@@ -1064,6 +1127,11 @@ class GrowPyConfig:
             # and because it rewrote them the assembly count kept climbing while
             # data was being lost. Callers that want the baseline list 0.0.
             kwargs["surround_radii"] = sorted({float(r) for r in surr["radii"]})
+        if "neighbours" in surr:
+            n = int(surr["neighbours"])
+            if n < 0:
+                raise ValueError(f"[surround] neighbours must be >= 0, got {n}")
+            kwargs["surround_neighbours"] = n
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:
@@ -1091,6 +1159,13 @@ class GrowPyConfig:
             kwargs["surround_freeze_height_per_species"] = {
                 str(k): float(v) for k, v in surr["freeze_height_per_species"].items()
             }
+        if "freeze_height_per_species_radius" in surr:
+            kwargs["surround_freeze_height_per_species_radius"] = {
+                str(species): {
+                    str(label): float(value) for label, value in per_radius.items()
+                }
+                for species, per_radius in surr["freeze_height_per_species_radius"].items()
+            }
         if "height_per_species" in surr:
             kwargs["surround_height_per_species"] = {
                 str(k): float(v) for k, v in surr["height_per_species"].items()
@@ -1117,6 +1192,8 @@ class GrowPyConfig:
             # dataclass owns. Listed so a legitimate section is not reported as
             # a typo. See config/README.md.
             "pve_calibration",
+            # Likewise read as a named file by growpy.tools.twig_audit.
+            "twig_audit",
         }
         for _section in data:
             if _section not in _known_sections:
@@ -1228,17 +1305,28 @@ class GrowPyConfig:
                 return self.surround_density_per_species[key]
         return self.surround_density
 
-    def get_surround_freeze_height(self, species: str) -> float:
+    def get_surround_freeze_height(
+        self, species: str, radius: float | None = None
+    ) -> float:
         """Height (m) at which this species' growing shell is frozen; 0 = never.
 
-        Resolves ``[surround.freeze_height_per_species]`` first, falling back
-        to the global ``[surround] freeze_height``. Accepts a common name or a
-        standardized one.
+        Resolves ``[surround.freeze_height_per_species_radius.<species>]`` by
+        the ``rNN`` label when a radius is given, then
+        ``[surround.freeze_height_per_species]``, then the global ``[surround]
+        freeze_height``. Accepts a common name or a standardized one.
         """
         from growpy.utils.naming import standardize_species_name
 
+        key = standardize_species_name(species) if species else ""
+        if radius is not None and self.surround_freeze_height_per_species_radius:
+            from growpy.config.paths import radius_label
+
+            per_radius = self.surround_freeze_height_per_species_radius.get(key)
+            if per_radius:
+                label = radius_label(radius)
+                if label in per_radius:
+                    return per_radius[label]
         if self.surround_freeze_height_per_species:
-            key = standardize_species_name(species)
             if key in self.surround_freeze_height_per_species:
                 return self.surround_freeze_height_per_species[key]
         return self.surround_freeze_height

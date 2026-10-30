@@ -228,3 +228,56 @@ class TestMinPointSpacing:
             1.5,
             2.5,
         ]
+
+
+class TestCrownBaseCut:
+    """``crown_base_cut_m`` drops side branches attached below it (XRFF-476)."""
+
+    _POINTS = TestMinPointSpacing._POINTS
+    _LINES = TestMinPointSpacing._LINES
+
+    def test_none_keeps_every_branch(self):
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, crown_base_cut_m=None)
+        assert data["primitives"]["points"] == self._LINES
+
+    def test_below_the_lowest_attachment_keeps_every_branch(self):
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, crown_base_cut_m=0.5)
+        assert data["primitives"]["points"] == self._LINES
+
+    def test_a_branch_attached_below_the_cut_goes_with_its_subtree(self):
+        # The side branch attaches to the trunk at 1.0 m and carries the
+        # twig; a cut at 1.5 m removes both and leaves the trunk whole.
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, crown_base_cut_m=1.5)
+        prims = data["primitives"]["points"]
+        pos = data["points"]["positions"]
+        assert len(prims) == 1
+        assert [pos[i][1] for i in prims[0]] == [0.0, 0.5, 1.0, 1.5, 2.0, 2.5]
+        assert data["primitives"]["attributes"]["branchParentNumber"]["values"] == [0]
+        for attr in data["points"]["attributes"].values():
+            assert len(attr["values"]) == len(pos)
+
+    def test_the_trunk_survives_a_cut_above_the_tree(self):
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(skel, crown_base_cut_m=100.0)
+        assert len(data["primitives"]["points"]) == 1
+        assert len(data["points"]["positions"]) == 6
+
+    def test_cut_runs_before_resampling_so_a_dropped_attach_point_is_not_an_anchor(
+        self,
+    ):
+        # At 1.2 m spacing the trunk keeps 1.0 m only because a child hangs
+        # there (see TestMinPointSpacing); once the cut removes that child
+        # the plain spacing rule takes over, exactly as decimation does.
+        skel = _make_skeleton(points=self._POINTS, poly_lines=self._LINES)
+        data = build_growth_data_json(
+            skel, crown_base_cut_m=1.5, min_point_spacing=1.2
+        )
+        pos = data["points"]["positions"]
+        assert [pos[i][1] for i in data["primitives"]["points"][0]] == [
+            0.0,
+            1.5,
+            2.5,
+        ]

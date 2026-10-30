@@ -27,6 +27,7 @@ import logging
 import sys
 from pathlib import Path
 
+from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
 from growpy.io.unreal.pve_asset_script import (
     DEFAULT_MASTER_MATERIAL,
     PVEAssetPlan,
@@ -61,14 +62,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--content-root",
-        default="/Game/PVE",
-        help="UE package path to import under (default: /Game/PVE)",
+        default=TREES_ROOT,
+        help=f"UE package path to import under (default: {TREES_ROOT})",
     )
     parser.add_argument(
         "--master-material",
         default=DEFAULT_MASTER_MATERIAL,
-        help="material to parent bark instances to; the /Game/Templates copy "
+        help=f"material to parent bark instances to; the {SCHEMA_ROOT} copy "
         "of MA_Foliage_Trees is refused",
+    )
+    parser.add_argument(
+        "--bark-master-material",
+        default="",
+        help="material to parent bark instances to when it is not the master, "
+        "e.g. a project copy of MA_Foliage_Trees with a trunk-DBH offset "
+        "(XRFF_Twin: /Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH)",
     )
     parser.add_argument(
         "--lookup",
@@ -104,7 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     script = generate_pve_asset_script(
         args.output_dir,
         PVEAssetPlan(
-            species=tuple(specs), master_material=args.master_material
+            species=tuple(specs),
+            master_material=args.master_material,
+            bark_master_material=args.bark_master_material,
         ),
     )
 

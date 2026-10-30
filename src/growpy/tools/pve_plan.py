@@ -101,6 +101,7 @@ def main(argv: list[str] | None = None) -> int:
         calibration_path=args.calibration,
         species=args.species or None,
         max_assembly_instances=args.max_instances,
+        static_twins=config.unreal_pve_static_twins,
     )
     if plan.script is None:
         logger.error(
@@ -115,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
         plan.chain_count,
     )
     logger.info("manifest:      %s", plan.manifest)
+    for gallery in plan.gallery_scripts:
+        logger.info("gallery:       %s", gallery)
     for line in plan.skipped:
         logger.warning("skipped %s", line)
     return 0

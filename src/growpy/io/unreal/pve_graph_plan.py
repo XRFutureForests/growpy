@@ -28,12 +28,14 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from growpy.config.ue_layout import TREES_ROOT
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
@@ -107,7 +109,9 @@ class PVEGraphPlanResult:
     ``asset_script`` imports the twig palette and builds the bark material;
     ``script`` authors the graphs that name both by path. They must be run in
     that order, and the graph script's own preflight refuses to build anything
-    if they were not.
+    if they were not. ``gallery_scripts`` lay the exported meshes out in one
+    gallery level per species (split where the wind-bone budget needs it); they
+    are run after the Export, or by ``growpy-pve-gallery``.
     """
 
     graphs: tuple[PVEGraphSpec, ...] = ()
@@ -115,6 +119,7 @@ class PVEGraphPlanResult:
     script: Path | None = None
     manifest: Path | None = None
     retune_script: Path | None = None
+    gallery_scripts: tuple[Path, ...] = ()
     skipped: tuple[str, ...] = field(default=())
 
     @property
@@ -232,6 +237,66 @@ def mask_entries_for(mask_fraction: float, palette_size: int) -> tuple[int, int]
     )
 
 
+CROWN_FLOOR_SUFFIX = "_growth_data.floor.json"
+
+
+def apply_crown_floor(entry: GrowthJson, floor: float) -> tuple[GrowthJson, float]:
+    """The skeleton a floored tree's chain reads, and the floor in metres.
+
+    Writes ``<stem>_growth_data.floor.json`` beside the emitted growth JSON
+    with every side branch dropped whose whole subtree lies below ``floor``
+    x the tree's height (the emitted file is untouched, and the suffix keeps
+    the copy out of :func:`discover_growth_jsons`). Derived at plan time,
+    not at emit, so the floor lives in one place -- the species' calibration
+    -- beside the foliage gate that draws the same line on the palette.
+    """
+    from growpy.io.unreal.pve_growth_data_exporter import (
+        prune_subtrees_below_height,
+    )
+
+    data = json.loads(entry.path.read_text(encoding="utf-8"))
+    ys = [p[1] for p in data["points"]["positions"]]
+    if not ys:
+        return entry, 0.0
+    lo, hi = min(ys), max(ys)
+    cut_m = lo + floor * (hi - lo)
+    pruned = prune_subtrees_below_height(data, cut_m)
+    out = entry.path.with_name(
+        entry.path.name[: -len(GROWTH_JSON_SUFFIX)] + CROWN_FLOOR_SUFFIX
+    )
+    out.write_text(json.dumps(pruned, separators=(",", ":")), encoding="utf-8")
+    return dataclasses.replace(entry, path=out), cut_m
+
+
+def crown_floor_gate(
+    floor: float, palette: Sequence[PaletteEntry]
+) -> tuple[tuple[PaletteEntry, ...], ConditionSpec]:
+    """A palette and picker that spawn nothing below ``floor`` of the height.
+
+    The picker sums ``|entry.attr - (sample + offset)| * weight`` per active
+    condition and min-max normalises across entries, so with the real entries
+    (and any thinning masks) advertising Height 1.0 and one gate mask
+    advertising 0.0 there are exactly two weights: the nearer group
+    normalises to 0 and is the candidate set, the other to 1 and is cut. The
+    real group is nearer iff ``h + offset > 0.5``, so ``offset = 0.5 - floor``
+    puts the line at ``floor``. Above it the thinning masks are picked at
+    their usual share; below it only the gate mask is.
+    """
+    if not 0.0 < floor < 1.0:
+        raise ValueError(f"crown floor must be in (0, 1), got {floor}")
+    high = PaletteAttributes(height=1.0)
+    gate = PaletteEntry(
+        mesh=None, use_as_mask=True, attributes=PaletteAttributes(height=0.0)
+    )
+    gated = tuple(dataclasses.replace(e, attributes=high) for e in palette) + (gate,)
+    conditions = ConditionSpec(
+        cutoff_threshold=0.5,
+        minimum_candidates=1,
+        height=ConditionInfluence(weight=1.0, offset=0.5 - floor),
+    )
+    return gated, conditions
+
+
 def bark_aspect_y_scale(texture: Path | str) -> float | None:
     """``YScale`` that keeps a W x H bark texture's pixel aspect on a PVE trunk.
 
@@ -254,6 +319,73 @@ def bark_aspect_y_scale(texture: Path | str) -> float | None:
     if not width or not height:
         return None
     return width / height
+
+
+def bark_wraps_by_generation(
+    growth_json: Path | str, texture_repeat: int = 3
+) -> tuple[int, ...]:
+    """Bark repeats around the girth per branch generation, trunk first.
+
+    Grove wraps the bark ``texture_repeat`` times around the trunk and fewer
+    times around a thinner branch, in proportion to the circumference of its
+    first node (measured on a Grove h20 beech and spruce: the trunk ring spans
+    exactly 3.000 U). PVE wraps it once around the LOCAL circumference, so on
+    a trunk every texel is ``texture_repeat`` times larger than Grove drew it
+    -- bark that looks zoomed and blurry. PVE's X Range (0, k) restores k
+    wraps, but it is set per generation, not per branch, so each generation
+    gets Grove's count for its median branch-base radius:
+    ``max(1, round(texture_repeat * r_generation / r_trunk_base))``.
+
+    Generations are read the way PVE reads them (``_branch_generations``) and
+    the list is trimmed after the first 1: PVE gives every later generation
+    the last setup. A skeleton that cannot be read gets ``(texture_repeat, 1)``,
+    what every tree of the 2026-10 catalog measured.
+    """
+    import statistics
+
+    from growpy.io.unreal.pve_distributor_model import (
+        _branch_generations,
+        _load,
+        _walk_order,
+    )
+
+    fallback = (texture_repeat, 1) if texture_repeat > 1 else (1,)
+    try:
+        _, branch_points, parent, number, radii, gen_of_point = _load(growth_json)
+    except (OSError, KeyError, ValueError) as exc:
+        logger.warning(
+            "%s: no skeleton for bark wraps (%s), using %s", growth_json, exc, fallback
+        )
+        return fallback
+    if not radii or not branch_points or not branch_points[0]:
+        return fallback
+    order, roots = _walk_order(parent, number)
+    generations = _branch_generations(
+        branch_points, parent, number, order, gen_of_point
+    )
+    trunk = roots[0] if roots else 0
+    trunk_radius = radii[branch_points[trunk][0]]
+    if trunk_radius <= 0.0:
+        return fallback
+    # A side branch's first point is its attach point on the parent and carries
+    # the PARENT's radius (spruce h25: 10.8 cm there, 1.4 cm one node in), so
+    # the branch's own first node is its second point.
+    base_radii: dict[int, list[float]] = {}
+    for b, pts in enumerate(branch_points):
+        if len(pts) > 1 and b != trunk:
+            base_radii.setdefault(generations[b], []).append(radii[pts[1]])
+    wraps = [texture_repeat] * max(1, generations[trunk])
+    for g in range(generations[trunk] + 1, max(generations, default=1) + 1):
+        if wraps[-1] == 1:
+            break
+        if g in base_radii:
+            ratio = statistics.median(base_radii[g]) / trunk_radius
+            k = max(1, round(texture_repeat * ratio))
+        else:
+            k = wraps[-1]
+        # A child is never wrapped more often than its parent generation.
+        wraps.append(min(k, wraps[-1]))
+    return tuple(wraps)
 
 
 def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
@@ -309,17 +441,25 @@ def _pose_distributor(
     *,
     conditions: ConditionSpec | None = None,
     generation_band: tuple[int | None, int | None] | None = None,
+    relative_start: float | None = None,
+    base_scale: float = 1.0,
 ) -> DistributorSpec:
     """The species' measured twig pose at ``density`` (XRFF-438, 2026-09-14).
 
     Restated here so a change to the builder's defaults cannot silently change
     what a pipeline run emits. None of it changes instance counts -- but
     ``randomize_scale`` does change leaf AREA (as scale squared), which is why
-    the offline solve reads it off this same spec (XRFF-467).
+    the offline solve reads it off this same spec (XRFF-467). ``relative_start``
+    and ``base_scale`` are the per-tree values an offline build resolves from
+    the species' height ramps (XRFF-475 / XRFF-474); a measured row keeps the
+    species' flat start it was measured at.
     """
     return DistributorSpec(
         branch_density=density,
-        relative_start=calibration.relative_start,
+        relative_start=(
+            calibration.relative_start if relative_start is None else relative_start
+        ),
+        base_scale=base_scale,
         phyllotaxy_formation=calibration.phyllotaxy_formation,
         reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
         axil_angle=calibration.pose.axil_angle,
@@ -417,6 +557,7 @@ def _chain_for(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
         wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+        bone_reduction_strength=calibration.bone_reduction_strength,
         palette=palette,
         distributor=distributor,
         layers=layers,
@@ -472,6 +613,35 @@ def _tip_cap_layer(
     )
 
 
+def _leader_layer(
+    distributor: DistributorSpec,
+    ladder: LadderSpec,
+    names: Sequence[str],
+    palette_meshes: Sequence[str],
+    span,
+) -> FoliageLayer | None:
+    """Sprays along the leader, between its topmost branch and the tip (XRFF-524).
+
+    The apex layer puts one part at the tip and the main layer starts above the
+    trunk, so without this the leader above the top whorl is a bare pole with a
+    lonely spray. ``leader_tier`` (the ``tip_tier`` when unset) is placed on
+    generation 1 at about ``leader_spacing_m``; None when the leader is shorter
+    than one spacing.
+    """
+    from growpy.io.unreal.pve_offline_solve import (
+        leader_layer_distributor,
+        leader_tier_index,
+    )
+
+    spec = leader_layer_distributor(distributor, ladder, span)
+    tier = leader_tier_index(names, ladder)
+    if spec is None or tier is None:
+        return None
+    return FoliageLayer(
+        distributor=spec, palette=(PaletteEntry(mesh=palette_meshes[tier]),)
+    )
+
+
 @dataclass(frozen=True)
 class PlannedTree:
     """One chain plus what it was built from, for the manifest."""
@@ -494,17 +664,31 @@ def _offline_chain(
     from growpy.io.unreal.pve_offline_solve import (
         compound_layout,
         forrester_target,
+        leader_span,
+        leader_tier_index,
         solve_flat,
         solve_graded,
         tree_stats,
     )
 
+    crown_floor = calibration.crown_floor_for(entry.tree_id)
+    crown_floor_m = 0.0
+    if crown_floor > 0.0:
+        if calibration.palette != "twigs" or calibration.ladder is not None:
+            raise ValueError(
+                f"{entry.species} {entry.tree_id}: crown_floor needs a flat twig "
+                f"palette; a graded ladder or compound layout owns the picker"
+            )
+        entry, crown_floor_m = apply_crown_floor(entry, crown_floor)
     stats = tree_stats(entry.path, profile_mean)
     forrester_m2, model_id, extrapolated = forrester_target(entry.species, stats.dbh_cm)
     target_m2 = forrester_m2 * calibration.fullness
     meshes = assets.palette_meshes
     names = [p.name for p in assets.prototypes]
-    base = _pose_distributor(calibration, 1)
+    # Height-keyed per-tree start (XRFF-475): a fraction of each branch, so
+    # it rides on the base spec and the solve and the graph agree.
+    relative_start = calibration.relative_start_for(stats.height_m)
+    base = _pose_distributor(calibration, 1, relative_start=relative_start)
     detail = {
         "species": entry.species,
         "tree_id": entry.tree_id,
@@ -535,6 +719,7 @@ def _offline_chain(
             growth_json=entry.path,
             mesh_name=f"{mesh_prefix}_{entry.tree_id}",
             wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+            bone_reduction_strength=calibration.bone_reduction_strength,
             palette=layout.palette,
             distributor=layout.distributor,
             layers=layout.layers,
@@ -562,6 +747,14 @@ def _offline_chain(
                 names,
             )
             ladder = dataclasses.replace(ladder, tip_tier=None)
+        if ladder.leader_spacing_m > 0.0 and leader_tier_index(names, ladder) is None:
+            logger.warning(
+                "%s: leader_tier %s matches none of %s -- no leader layer",
+                entry.species,
+                list(ladder.leader_tier),
+                names,
+            )
+            ladder = dataclasses.replace(ladder, leader_spacing_m=0.0)
         solved = solve_graded(
             entry.path,
             base,
@@ -577,9 +770,9 @@ def _offline_chain(
             minimum_candidates=ladder.minimum_candidates,
             cutoff_threshold=ladder.cutoff_threshold,
         )
-        distributor = _pose_distributor(
-            calibration,
-            solved.density,
+        distributor = dataclasses.replace(
+            base,
+            branch_density=solved.density,
             conditions=conditions,
             generation_band=(
                 (ladder.main_generation_start, None) if ladder.apex else None
@@ -593,6 +786,14 @@ def _offline_chain(
             layers += (_tip_cap_layer(distributor, ladder, names, meshes),)
             detail["tip_cap_instances"] = solved.tip_cap_instances
             detail["tip_tier"] = ladder.tip_tier
+        if ladder.apex and ladder.leader_spacing_m > 0.0:
+            leader = _leader_layer(
+                distributor, ladder, names, meshes, leader_span(entry.path)
+            )
+            if leader is not None:
+                layers += (leader,)
+                detail["leader_instances"] = solved.leader_instances
+                detail["leader_spacing_m"] = ladder.leader_spacing_m
         detail["layout"] = "graded"
         detail["scale_targets"] = [round(t, 6) for t in solved.scale_targets]
     else:
@@ -607,6 +808,13 @@ def _offline_chain(
             repeats, masks = mask_entries_for(mask, len(meshes))
             palette = masked_palette(meshes, masks, repeats=repeats)
             mask = mask_fraction_of(palette)
+        conditions = None
+        if crown_floor > 0.0:
+            # The gate mask is picked by height, not uniformly, so the
+            # thinning share above is read before it joins the palette.
+            palette, conditions = crown_floor_gate(
+                crown_floor, palette or masked_palette(meshes, 0)
+            )
         solved = solve_flat(
             entry.path,
             base,
@@ -615,6 +823,7 @@ def _offline_chain(
             max_instances=(
                 None if max_instances is None else int(max_instances / (1.0 - mask))
             ),
+            height_floor=crown_floor,
         )
         if mask > 0.0:
             solved = dataclasses.replace(
@@ -622,9 +831,41 @@ def _offline_chain(
             )
             detail["mask_fraction"] = round(mask, 4)
             detail["placements"] = int(round(solved.instances / (1.0 - mask)))
-        distributor = _pose_distributor(calibration, solved.density)
+        if crown_floor > 0.0:
+            detail["crown_floor"] = crown_floor
+            detail["crown_floor_m"] = round(crown_floor_m, 2)
+            detail["growth_json_floored"] = str(entry.path)
+        distributor = dataclasses.replace(
+            base, branch_density=solved.density, conditions=conditions
+        )
         layers = ()
         detail["layout"] = "flat"
+    base_scale = 1.0
+    if solved.capped and calibration.max_base_scale > 1.0 and solved.area_m2 > 0:
+        # The cap bound before the target was reached: spend instance scale
+        # on the gap (XRFF-474). Area goes as scale squared and the density
+        # at the cap does not move, so the solve is rescaled, not re-run.
+        base_scale = min(
+            calibration.max_base_scale, math.sqrt(target_m2 / solved.area_m2)
+        )
+        scaled_area = solved.area_m2 * base_scale * base_scale
+        solved = dataclasses.replace(
+            solved,
+            area_m2=scaled_area,
+            instance_area_m2=(
+                scaled_area / solved.instances if solved.instances else None
+            ),
+        )
+        distributor = dataclasses.replace(distributor, base_scale=base_scale)
+        layers = tuple(
+            dataclasses.replace(
+                layer,
+                distributor=dataclasses.replace(
+                    layer.distributor, base_scale=base_scale
+                ),
+            )
+            for layer in layers
+        )
     detail.update(
         density=solved.density,
         predicted_instances=solved.instances,
@@ -642,6 +883,7 @@ def _offline_chain(
         growth_json=entry.path,
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
         wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
+        bone_reduction_strength=calibration.bone_reduction_strength,
         palette=palette,
         distributor=distributor,
         layers=layers,
@@ -694,8 +936,8 @@ def plan_pve_graphs(
     output_dir: Path,
     forest_root: Path,
     *,
-    content_root: str = "/Game/PVE",
-    graph_folder: str = "/Game/PVE/Graphs",
+    content_root: str = TREES_ROOT,
+    graph_folder: str = f"{TREES_ROOT}/Graphs",
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",
@@ -704,6 +946,7 @@ def plan_pve_graphs(
     species: Sequence[str] | None = None,
     max_assembly_instances: int = 60_000,
     tree_triangle_cap: float = 400e6,
+    static_twins: bool = False,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
 
@@ -749,6 +992,10 @@ def plan_pve_graphs(
             an ash r16_h25m solved to 806 M on 2026-09-15, which no click
             should carry. Divided by the species' mean triangles per instance
             it is the other bound on ``max_instances``.
+        static_twins: Also export every tree as a static Nanite mesh,
+            ``SM_<name>`` under ``<content_root>/CatalogStatic/<species>``, for
+            the surround forest (owner, 2026-10-21). Roughly doubles the export
+            time; oak static builds ran 16-18 min each.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
@@ -759,6 +1006,7 @@ def plan_pve_graphs(
         PALETTE_SOURCES,
         PVEAssetPlan,
         build_species_asset_spec,
+        camel_species,
         generate_pve_asset_script,
     )
     from growpy.io.unreal.pve_offline_solve import mean_triangles_per_prototype
@@ -820,7 +1068,9 @@ def plan_pve_graphs(
                     import_spec, prototypes=import_spec.prototypes + extra.prototypes
                 )
         asset_specs.append(import_spec)
-        mesh_prefix = f"SK_{assets.content_folder.rsplit('/', 1)[-1]}"
+        # From the species, not from the folder: folders are lowercase, exported
+        # ASSET names keep the UE-idiomatic spelling (SK_SilverFir_r05_h05m).
+        mesh_prefix = f"SK_{camel_species(species)}"
         triangles = species_cal.palette_flat_mean_triangles
         if triangles is None:
             triangles = mean_triangles_per_prototype(
@@ -862,6 +1112,14 @@ def plan_pve_graphs(
             except (KeyError, ValueError, FileNotFoundError) as err:
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue
+            # The chain's own skeleton: a crown-floored tree reads a copy.
+            wraps = bark_wraps_by_generation(
+                planned.chain.growth_json, species_cal.bark_texture_repeat
+            )
+            planned = dataclasses.replace(
+                planned, chain=dataclasses.replace(planned.chain, bark_wraps=wraps)
+            )
+            planned.detail["bark_wraps"] = list(wraps)
             chains.append(planned.chain)
             instances[planned.chain.mesh_name] = planned.instances
             details[planned.chain.mesh_name] = planned.detail
@@ -888,7 +1146,9 @@ def plan_pve_graphs(
             triangles,
             triangle_cap,
         )
-        label = assets.content_folder.rsplit("/", 1)[-1]
+        # Folders take the pipeline's lowercase species name; ASSET names keep
+        # the UE-idiomatic spelling (PVG_CommonAsh_1). See camel_species.
+        label = camel_species(species)
         # The calibration may pin the bark aspect; otherwise it follows the
         # texture's own W/H (the fir's hand-set 0.5 is exactly its 1024/2048).
         bark_y_scale = species_cal.bark_y_scale
@@ -909,11 +1169,16 @@ def plan_pve_graphs(
                     palette_meshes=assets.palette_meshes,
                     bark_material=assets.bark_material,
                     bark_y_scale=bark_y_scale,
-                    export_folder=f"{content_root}/Exported/{label}",
+                    export_folder=f"{content_root}/Catalog/{species}",
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,
                     nanite_shape_preservation=nanite_shape_preservation,
                     collision_generation=collision_generation,
+                    static_export_folder=(
+                        f"{content_root}/CatalogStatic/{species}"
+                        if static_twins
+                        else None
+                    ),
                 )
             )
 
@@ -930,11 +1195,28 @@ def plan_pve_graphs(
         output_dir, PVEAssetPlan(species=tuple(asset_specs))
     )
 
+    manifest = write_coverage_manifest(output_dir, graphs, details=details)
     return PVEGraphPlanResult(
         graphs=tuple(graphs),
         asset_script=asset_script,
         script=generate_pve_graph_builder_script(output_dir, graphs),
-        manifest=write_coverage_manifest(output_dir, graphs, details=details),
+        manifest=manifest,
         retune_script=generate_pve_retune_script(output_dir, graphs),
+        gallery_scripts=_write_gallery_scripts(manifest, output_dir),
         skipped=tuple(skipped),
     )
+
+
+def _write_gallery_scripts(manifest: Path, output_dir: Path) -> tuple[Path, ...]:
+    """The gallery scripts for this plan's meshes; none, with a warning, if the
+    manifest cannot be laid out (a gallery is a check, never a reason to fail)."""
+    from growpy.tools.pve_gallery import write_gallery_scripts
+
+    try:
+        written = write_gallery_scripts(
+            json.loads(manifest.read_text(encoding="utf-8")), output_dir
+        )
+    except ValueError as exc:
+        logger.warning("No PVE gallery scripts: %s", exc)
+        return ()
+    return tuple(script for _, script in written)

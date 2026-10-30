@@ -50,7 +50,7 @@ from growpy.io.usd.tree_export import (
 )
 from growpy.io.usd.tree_export import is_bone_limit_error as _is_bone_limit_error
 from growpy.pipelines.tree_export_context import TreeExportContext
-from growpy.utils.allometry import correction_weight, get_height_dbh_model
+from growpy.utils.allometry import correction_weight, get_height_dbh_model, nudge_radial_scale
 from growpy.utils.export_naming import (
     format_dbh_for_filename,
     format_density_for_filename,
@@ -116,6 +116,7 @@ def _warn_uncaptured_milestones(
     max_cycles: int,
     run_max_height: float = 0.0,
     tree_radius_labels: dict[str, list[float]] | None = None,
+    tree_export_flags: dict[str, list[bool]] | None = None,
 ) -> None:
     """Warn when a species failed to capture every milestone up to its ceiling.
 
@@ -170,7 +171,12 @@ def _warn_uncaptured_milestones(
             if radii
             else sorted(tree_idxs_by_species.get(species, set())) or [None]
         )
+        exported = tree_export_flags.get(species) if tree_export_flags else None
         for tree_idx in tree_ids:
+            # Real neighbours grow but are never exported; a shaded ring tree
+            # falling short is not a missing stage.
+            if exported and tree_idx is not None and not exported[tree_idx]:
+                continue
             reached = captured.get((species, tree_idx), set())
             missing = sorted(expected - reached)
             if not missing:
@@ -282,16 +288,23 @@ def resolve_target_dbh(
 def compute_radial_scale(ctx: TreeExportContext) -> None:
     """Post-hoc radial scaling toward the height-DBH allometry target.
 
+    A CSV DBH is a measured tree and is matched exactly (clamped to a sane
+    range); an allometric target only NUDGES Grove's own diameter, by
+    ``[export] dbh_nudge_weight`` (utils.allometry.nudge_radial_scale), so the
+    stem keeps Grove's response to the surround shell.
+
     Sets ctx.radial_scale and adjusts ctx.filename_dbh so the filename
-    reflects the actually-exported mesh after clamping.
+    reflects the actually-exported mesh.
     """
     radial_scale = 1.0
     if ctx.cfg.export_dbh_from_allometry and ctx.target_dbh_m and ctx.grove_dbh > 0.001:
-        radial_scale = ctx.target_dbh_m / ctx.grove_dbh
         if ctx.dbh_from_csv:
+            radial_scale = ctx.target_dbh_m / ctx.grove_dbh
             radial_scale = max(0.1, min(radial_scale, 5.0))
         else:
-            radial_scale = max(0.5, min(radial_scale, 2.0))
+            radial_scale = nudge_radial_scale(
+                ctx.grove_dbh, ctx.target_dbh_m, ctx.cfg.export_dbh_nudge_weight
+            )
             # Below the yield table's own height range the model is
             # extrapolating; fade the correction out and leave Grove's
             # pipe-model diameter alone for saplings.
@@ -529,6 +542,9 @@ def export_obj_direct(ctx: TreeExportContext) -> None:
         mat_prefix=mat_prefix,
         classification_codes=classification_codes,
         up_axis=cfg.helios_obj_up_axis,
+        # One file per stage: without the stage prefix every height stage of
+        # a tree wrote the same {species}_tree_{fid}_helios.obj.
+        name=ctx.file_prefix or None,
     )
 
     ctx.usd_path = obj_path
@@ -668,6 +684,61 @@ def _min_point_spacing_for(settings: dict, species: str) -> float:
     return _per_species_setting(settings, "min_point_spacing", species, 0.0)
 
 
+def _crown_base_cut_for(
+    settings: dict, species: str, twig_placements: dict
+) -> float | None:
+    """Height below which this tree's side branches are dropped (XRFF-476).
+
+    Only for a species listed in
+    ``[unreal.growth_data_json.crown_base_cut_margin_per_species]``: the value
+    is a margin in metres subtracted from the crown base, which is measured
+    off the tree's OWN living twig placements with the rule
+    ``growpy-crown-metrics`` applies to the USD assembly (p10 of twig height).
+    Grove's Surround shell self-prunes a conifer's lower crown but leaves the
+    dead stubs in the skeleton, and PVE foliates every branch it is given:
+    22-35 % of a spruce's or pine's instances sat on them. Per tree, not per
+    species, because the crown base moves with the surround radius.
+
+    None when the species is not listed or no living twigs were captured
+    (``growth_json_only`` runs no assembly, so it has none).
+    """
+    margins = settings.get("crown_base_cut_margin_per_species") or {}
+    if not margins:
+        return None
+    try:
+        from growpy.utils.naming import standardize_species_name
+
+        lookup = standardize_species_name(species)
+    except Exception:
+        lookup = species
+    if lookup not in margins:
+        return None
+    heights = [
+        p.position[2]
+        for twig_type, placements in (twig_placements or {}).items()
+        if twig_type != "twig_dead"
+        for p in placements
+    ]
+    if not heights:
+        logger.warning(
+            "%s: crown_base_cut configured but no living twig placements were "
+            "captured -- no branches dropped",
+            species,
+        )
+        return None
+    from growpy.tools.crown_metrics import crown_base_from_heights
+
+    cut = crown_base_from_heights(heights) - float(margins[lookup])
+    logger.info(
+        "%s: crown base %.2f m from %d twigs, cutting side branches below %.2f m",
+        species,
+        cut + float(margins[lookup]),
+        len(heights),
+        cut,
+    )
+    return cut
+
+
 def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
     """Write one tree's growth-data JSON. The single emit path, deliberately.
 
@@ -691,6 +762,9 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
     settings = _growth_data_json_settings()
     fraction = _min_branch_radius_fraction_for(settings, ctx.species_name)
     spacing = _min_point_spacing_for(settings, ctx.species_name)
+    crown_base_cut = _crown_base_cut_for(
+        settings, ctx.species_name, ctx.twig_placements
+    )
     out_path = ctx.tree_dir / f"{ctx.file_prefix}_growth_data.json"
     try:
         with ctx.timer.track("generate_growth_data_json"):
@@ -705,6 +779,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
                 min_branch_radius=float(settings["min_branch_radius"]),
                 min_branch_radius_fraction=fraction,
                 min_point_spacing=spacing,
+                crown_base_cut_m=crown_base_cut,
             )
     except Exception as err:
         logger.warning(
@@ -1267,6 +1342,8 @@ def generate_forest_stages(
                             export_obj_direct(ctx)
 
                         if ctx.export_success:
+                            if variant_idx == 0:
+                                exported_stage_count += 1
                             exported_files.append(str(ctx.usd_path))
                             logger.info("  Exported (OBJ): %s", ctx.usd_path.name)
                             write_tamf(ctx)
@@ -1366,6 +1443,31 @@ def generate_forest_stages(
                             cycle,
                             height,
                         )
+                        # The growth JSON is what PVE builds the production
+                        # tree from; the USD assembly beside it is QA. An
+                        # open-grown 25 m beech (82 cm DBH, 129k twigs) broke
+                        # the 3 GB ASCII stems file and took the JSON down
+                        # with it on 2026-09-18, so write the JSON anyway from
+                        # the skeleton + the model's own twig placements.
+                        if (
+                            variant_idx == 0
+                            and ctx.use_skeletal
+                            and _growth_data_json_settings().get("enabled")
+                        ):
+                            try:
+                                ctx.twig_placements = (
+                                    extract_twig_placements_from_model(ctx.model)
+                                )
+                            except Exception:
+                                ctx.twig_placements = {}
+                            if _emit_growth_data_json(ctx):
+                                exported_stage_count += 1
+                                write_tamf(ctx)
+                                logger.warning(
+                                    "  Growth JSON written without its USD "
+                                    "assembly: %s",
+                                    ctx.file_prefix,
+                                )
 
 
     # A species that never reaches its ceiling silently produces fewer stages,
@@ -1379,6 +1481,10 @@ def generate_forest_stages(
             species_tree_radii[sp_name] = [
                 float(r) if pd.notna(r) else 0.0 for r in group["surround_radius"]
             ]
+    species_tree_export: dict[str, list[bool]] = {}
+    if "export" in forest_data.columns:
+        for sp_name, group in forest_data.groupby("species", sort=False):
+            species_tree_export[sp_name] = [bool(e) for e in group["export"]]
 
     # Run simulation with height-threshold-based snapshots
     with timer.track("simulate_with_snapshots"):
@@ -1406,15 +1512,28 @@ def generate_forest_stages(
         global_max_cycles,
         run_max_height=effective_max_height,
         tree_radius_labels=species_tree_radii,
+        tree_export_flags=species_tree_export or None,
     )
 
     # Every milestone the simulation captured is a stage that MUST reach disk.
     # Anything short of that is a silent hole in the dataset, so count it and
-    # let the caller fail the run.
+    # let the caller fail the run. Trees outside the export filter (the real
+    # neighbours of a stand, or an --export-trees selection) are simulated
+    # for their shade only and never written, so their milestones do not count.
+    def _exported(species_name: str, tree_idx: int) -> bool:
+        if export_tree_ids is None:
+            return True
+        rows = forest_data[forest_data["species"] == species_name]
+        if tree_idx >= len(rows):
+            return True
+        return int(rows.iloc[tree_idx]["fid"]) in export_tree_ids
+
     captured_stage_count = sum(
-        len(trees)
+        1
         for per_species in milestone_map.values()
-        for trees in per_species.values()
+        for sp_name, trees in per_species.items()
+        for tree_idx in trees
+        if _exported(sp_name, tree_idx)
     )
     logger.info("\nExported %d tree stage files", len(exported_files))
 

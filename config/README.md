@@ -45,6 +45,7 @@ GROWPY_CONFIG=/path/to/custom/config python -m growpy.cli.generate_forest
 | `unreal.toml` | `[unreal]` | Unreal Engine import script generation |
 | `helios.toml` | `[helios]`, `[helios.simplification]` | Helios++ LiDAR export |
 | `pve_calibration.toml` | `[pve_calibration]` | PVE foliage graph authoring (read on its own, **not** via the merge -- see below) |
+| `twig_audit.toml` | `[twig_audit]` | pass/fail thresholds of `growpy-twig-audit` (read on its own, like `pve_calibration.toml`) |
 | `tree_asset_lookup.csv` | -- | species name/preset/twig/growth-model resolution |
 
 Regenerate a fresh starter set (without touching files that already exist)

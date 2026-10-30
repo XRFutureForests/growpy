@@ -18,6 +18,10 @@ Chain shape, one per tree::
     MeshBuilderBranchRadius->|BranchRadius                      ^
     MeshBuilderMaterialDetail->|MaterialDetails      FoliagePalette
 
+With ``bone_reduction_strength > 0`` a Bone Reduction node sits between
+MeshBuilder and FoliageDistributor (``MeshBuilder -> BoneReduction ->
+FoliageDistributor``), Epic's order on the MegaPlants pines.
+
 The profile loader, palette and bark material are shared by every chain in a
 graph; importer, mesher, distributor and export node are per tree.
 
@@ -104,6 +108,15 @@ establish. They are defaults here so no caller has to rediscover them.
   is activated on the distributor, and vice versa** -- ``ConditionSpec`` and
   ``PaletteAttributes`` are two halves of one setting.
 
+* **The static twin is a second Export node on the same distributor.**
+  ``PVEGraphSpec.static_export_folder`` gives every chain an Export node with
+  ``export_mesh_type = STATIC_MESH`` writing ``SM_<name>`` (``static_twin_name``)
+  beside the skinned one. The plot keeps the skinned tree for its wind; the
+  surround forest takes the static one, because skinned instances cost CPU per
+  component and per instance (XRFF_Twin, 2026-10-20: a 180 k-tree skinned ring
+  added 15-35 ms game thread, its static twin about 1 ms). One distributor
+  output feeds both, so the twins cannot drift apart, and one click exports both.
+
 Each Export node needs one manual click in the editor -- the export is modal --
 but a graph with N chains yields N meshes per click, so a whole species costs a
 handful of clicks rather than one per tree.
@@ -116,6 +129,8 @@ import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from growpy.config.ue_layout import TREES_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +151,7 @@ __all__ = [
     "generate_pve_retune_script",
     "split_by_triangles",
     "write_coverage_manifest",
+    "static_twin_name",
     "DEFAULT_TREE_WIND_SETTINGS",
     "DEFAULT_SAPLING_WIND_SETTINGS",
 ]
@@ -149,6 +165,16 @@ DEFAULT_TREE_WIND_SETTINGS = (
 DEFAULT_SAPLING_WIND_SETTINGS = (
     "/ProceduralVegetationEditor/SampleAssets/WindSettings/DefaultSaplingWindSettings"
 )
+
+
+def static_twin_name(mesh_name: str) -> str:
+    """The static twin's asset name: ``SK_X`` -> ``SM_X``.
+
+    The surround forest finds a plot tree's twin by this rule plus the folder
+    swap ``Catalog/`` -> ``CatalogStatic/`` (``PCG_ForestStatic`` derives the
+    path in the graph), so the two must stay in step.
+    """
+    return "SM_" + (mesh_name[3:] if mesh_name.startswith("SK_") else mesh_name)
 
 # The distributor's condition axes, as PVDistributionConditionParams spells
 # them; each pairs a bActivate<Name> flag with a <Name>=(Weight, Offset).
@@ -607,14 +633,32 @@ class TreeChainSpec:
     wind_settings: str = DEFAULT_TREE_WIND_SETTINGS
     palette: tuple[PaletteEntry, ...] | None = None
     layers: tuple[FoliageLayer, ...] = ()
+    # Bark wraps around the girth per branch generation, trunk first (one
+    # TrunkGenerationMaterialSetup each, X Range (0, k)); generations past the
+    # end take the last entry. Empty keeps PVE's native single wrap.
+    bark_wraps: tuple[int, ...] = ()
+    # PVE Bone Reduction strength between MeshBuilder and distributor; 0 wires
+    # no node. It thins the bones of the finished mesh only (geometry and
+    # foliage placement unchanged), see SpeciesCalibration.bone_reduction_strength.
+    bone_reduction_strength: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
             raise ValueError("mesh_name must not be empty")
+        if any(not isinstance(k, int) or k < 1 for k in self.bark_wraps):
+            raise ValueError(
+                f"chain {self.mesh_name!r} bark_wraps must be whole numbers >= 1 "
+                f"(a fractional wrap leaves a seam), got {self.bark_wraps}"
+            )
         if not self.wind_settings:
             raise ValueError(
                 f"chain {self.mesh_name!r} names no wind_settings asset; a null "
                 "WindSettings exports a tree with no simulation groups"
+            )
+        if not 0.0 <= self.bone_reduction_strength <= 1.0:
+            raise ValueError(
+                f"chain {self.mesh_name!r} bone_reduction_strength must be in "
+                f"[0, 1], got {self.bone_reduction_strength}"
             )
         if self.palette is not None and not any(
             not e.use_as_mask for e in self.palette
@@ -634,7 +678,7 @@ class PVEGraphSpec:
     palette_meshes: tuple[str, ...]
     bark_material: str
     export_folder: str
-    graph_folder: str = "/Game/PVE/Graphs"
+    graph_folder: str = f"{TREES_ROOT}/Graphs"
     profile_asset: str = (
         "/ProceduralVegetationEditor/SampleAssets/StarterContent"
         "/Trunk_Profiles/Trunk_Profiles_01"
@@ -649,6 +693,10 @@ class PVEGraphSpec:
     # to and under in VR, so trunk AND branches collide. NONE is the engine
     # default and what every probe before this shipped.
     collision_generation: str = "ALL_GENERATIONS"
+    # Folder for every chain's static twin (``static_twin_name``): a second
+    # Export node, STATIC_MESH, on the same distributor. None exports the
+    # skinned mesh only.
+    static_export_folder: str | None = None
 
     def __post_init__(self) -> None:
         if not self.chains:
@@ -793,11 +841,15 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
         "create_nanite_foliage": graph.create_nanite_foliage,
         "nanite_shape_preservation": graph.nanite_shape_preservation,
         "collision_generation": graph.collision_generation,
+        "static_export_folder": graph.static_export_folder,
         "chains": [
             {
                 "growth_json": str(Path(c.growth_json).resolve()).replace("\\", "/"),
                 "mesh_name": c.mesh_name,
+                "static_mesh_name": static_twin_name(c.mesh_name),
                 "wind_settings": c.wind_settings,
+                "bark_wraps": list(c.bark_wraps),
+                "bone_reduction_strength": c.bone_reduction_strength,
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1099,18 +1151,67 @@ def build(spec):
             unreal.PVMeshBuilderMaterialDetailSettings
         )
         material_node.set_node_position(0, row + 320)
-        setup = unreal.TrunkGenerationMaterialSetup()
-        setp(
-            setup,
-            ("derive_from_trunk_texture_setup", "b_derive_from_trunk_texture_setup"),
-            False,
-        )
-        setup.set_editor_property("material", bark)
-        if spec["bark_y_scale"] is not None:
-            setp(setup, "y_scale", float(spec["bark_y_scale"]))
+        # One setup per branch generation (Generation mode, Repeat: generation
+        # g reads setup g-1, later ones the last). All share the bark material,
+        # which the mesher merges into one section; only X Range differs. PVE
+        # multiplies V by the same range, so YScale = W/H still holds.
+        setups = []
+        for wraps in chain["bark_wraps"] or [None]:
+            setup = unreal.TrunkGenerationMaterialSetup()
+            setp(
+                setup,
+                (
+                    "derive_from_trunk_texture_setup",
+                    "b_derive_from_trunk_texture_setup",
+                ),
+                False,
+            )
+            setup.set_editor_property("material", bark)
+            if spec["bark_y_scale"] is not None:
+                setp(setup, "y_scale", float(spec["bark_y_scale"]))
+            if wraps is not None:
+                setup.import_text(
+                    "(URange=(LowerBound=(Type=Inclusive,Value=0.000000),"
+                    "UpperBound=(Type=Exclusive,Value=%f)))" % float(wraps)
+                )
+            setups.append(setup)
         material_params = material_settings.get_editor_property("params")
-        material_params.set_editor_property("material_setups", [setup])
+        material_params.set_editor_property("material_setups", setups)
         material_settings.set_editor_property("params", material_params)
+        written = material_settings.get_editor_property("params").get_editor_property(
+            "material_setups")
+        got = [
+            round(s.get_editor_property("u_range").get_editor_property(
+                "upper_bound").get_editor_property("value"), 3)
+            for s in written
+        ]
+        if got != [float(w) for w in (chain["bark_wraps"] or [1])]:
+            raise RuntimeError(
+                "%s: bark X Range read back %s, wanted %s"
+                % (chain["mesh_name"], got, chain["bark_wraps"])
+            )
+
+        # Bone Reduction (Epic's place for it, MeshBuilder -> BoneReduction ->
+        # distributor): rebuilds the mesh's bone data only, so the distributor
+        # and both Export nodes see the same geometry with fewer bones.
+        upstream = mesh_node
+        bone_edges = []
+        if chain["bone_reduction_strength"] > 0.0:
+            bone_node, bone_settings = graph.add_node_of_type(
+                unreal.PVBoneReductionSettings
+            )
+            bone_node.set_node_position(490, row + 120)
+            bone_settings.set_editor_property(
+                "strength", float(chain["bone_reduction_strength"])
+            )
+            got = bone_settings.get_editor_property("strength")
+            if abs(got - chain["bone_reduction_strength"]) > 1e-6:
+                raise RuntimeError(
+                    "%s: bone reduction strength read back as %s, wanted %s"
+                    % (chain["mesh_name"], got, chain["bone_reduction_strength"])
+                )
+            bone_edges.append((mesh_node, "Out", bone_node, "In"))
+            upstream = bone_node
 
         dist_node, dist_settings = graph.add_node_of_type(
             unreal.PVFoliageDistributorSettings
@@ -1192,15 +1293,51 @@ def build(spec):
                     % (chain["mesh_name"], prop, written.get_editor_property(prop), wanted)
                 )
 
+        # The static twin: a second Export node on the same distributor output,
+        # carrying the skinned node's Nanite and collision settings.
+        static_edges = []
+        if spec["static_export_folder"]:
+            static_node, static_settings = graph.add_node_of_type(
+                unreal.PVExportSettings
+            )
+            static_node.set_node_position(
+                1020 + 360 * len(chain["layers"]), row + 220
+            )
+            twin = static_settings.get_editor_property("export_settings")
+            folder = unreal.DirectoryPath()
+            folder.set_editor_property("path", spec["static_export_folder"])
+            twin.set_editor_property("content_browser_folder", folder)
+            twin.set_editor_property("mesh_name", chain["static_mesh_name"])
+            twin.set_editor_property(
+                "export_mesh_type", unreal.PVExportMeshType.STATIC_MESH
+            )
+            for prop in (
+                "create_nanite_foliage",
+                "collision_generation",
+                "nanite_shape_preservation",
+            ):
+                twin.set_editor_property(prop, written.get_editor_property(prop))
+            static_settings.set_editor_property("export_settings", twin)
+            got = static_settings.get_editor_property(
+                "export_settings").get_editor_property("export_mesh_type")
+            if got != unreal.PVExportMeshType.STATIC_MESH:
+                raise RuntimeError(
+                    "%s: export_mesh_type read back as %s, wanted STATIC_MESH"
+                    % (chain["static_mesh_name"], got)
+                )
+            static_edges.append((last_node, "Out", static_node, "In"))
+
         for src, src_pin, dst, dst_pin in (
             (import_node, "Out", mesh_node, "In"),
             (profile_node, profile_pin, mesh_node, "Profile"),
             (radius_node, "Out", mesh_node, "BranchRadius"),
             (material_node, "Out", mesh_node, "MaterialDetails"),
-            (mesh_node, "Out", dist_node, "In"),
+            *bone_edges,
+            (upstream, "Out", dist_node, "In"),
             (chain_palette, "Out", dist_node, "Foliage"),
             *layer_edges,
             (last_node, "Out", export_node, "In"),
+            *static_edges,
         ):
             graph.add_edge(src, src_pin, dst, dst_pin)
 
@@ -1213,6 +1350,8 @@ def build(spec):
                 pass
     expected = 7 * len(spec["chains"]) + 2 * sum(
         len(c["layers"]) for c in spec["chains"]
+    ) + (len(spec["chains"]) if spec["static_export_folder"] else 0) + sum(
+        1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0
     )
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
@@ -1499,13 +1638,25 @@ def write_coverage_manifest(
                 "palette_meshes": list(g.palette_meshes),
                 "nanite_shape_preservation": g.nanite_shape_preservation,
                 "collision_generation": g.collision_generation,
+                "static_export_folder": g.static_export_folder,
                 "meshes": [
                     {
                         "mesh_name": c.mesh_name,
                         "asset": f"{g.export_folder}/{c.mesh_name}",
+                        **(
+                            {
+                                "static_asset": (
+                                    f"{g.static_export_folder}/"
+                                    f"{static_twin_name(c.mesh_name)}"
+                                )
+                            }
+                            if g.static_export_folder
+                            else {}
+                        ),
                         "growth_json": str(Path(c.growth_json)).replace("\\", "/"),
                         "branch_density": c.distributor.branch_density,
                         "relative_start": c.distributor.relative_start,
+                        "base_scale": c.distributor.base_scale,
                         "randomize_scale": list(c.distributor.randomize_scale),
                         "randomize_axil_angle": list(
                             c.distributor.randomize_axil_angle

@@ -17,6 +17,7 @@ import pytest
 
 from growpy.io.unreal.pve_asset_script import (
     DEFAULT_MASTER_MATERIAL,
+    FOLIAGE_SAMPLES,
     PalettePrototype,
     PVEAssetPlan,
     SpeciesAssetSpec,
@@ -106,11 +107,65 @@ class TestSpecResolution:
 
     def test_folder_name_can_be_overridden(self):
         spec = build_species_asset_spec("european_beech", folder_name="Beech")
-        assert spec.content_folder == "/Game/PVE/Beech"
+        assert spec.content_folder == "/Game/Generated/Trees/Foliage/Beech"
+        assert spec.materials_folder == "/Game/Generated/Trees/Materials/Beech"
+
+    def test_the_palette_and_the_materials_are_sorted_by_type(self):
+        spec = build_species_asset_spec("european_beech")
+        assert spec.foliage_folder == "/Game/Generated/Trees/Foliage/european_beech"
+        assert spec.bark_folder == "/Game/Generated/Trees/Materials/european_beech"
 
     def test_content_root_can_be_overridden(self):
         spec = build_species_asset_spec("silver_fir", content_root="/Game/PVE_Test")
         assert spec.content_folder.startswith("/Game/PVE_Test/")
+
+    def test_foliage_maps_resolve_to_the_packed_files(self):
+        # The leaves' material needs the two maps growpy-pack-pve-textures
+        # writes; without them season and health never reach a leaf.
+        spec = build_species_asset_spec("silver_fir")
+        assert spec.foliage_color.name == "pacific_silver_fir_twig_pve_basecolor.png"
+        assert spec.foliage_normal.name == "pacific_silver_fir_twig_pve_normal.png"
+        assert spec.foliage_color.is_file() and spec.foliage_normal.is_file()
+
+    @pytest.mark.parametrize(
+        "species,habit",
+        [
+            ("silver_fir", "conifer"),
+            ("scots_pine", "conifer"),
+            ("european_beech", "broadleaf"),
+            ("common_ash", "broadleaf"),
+        ],
+    )
+    def test_the_growth_habit_picks_the_foliage_sample(self, species, habit):
+        assert build_species_asset_spec(species).habit == habit
+
+    @pytest.mark.parametrize(
+        "species,habit,seasons",
+        [
+            ("silver_fir", "conifer", False),
+            ("norway_spruce", "conifer", False),
+            ("european_larch", "conifer", True),
+            ("european_beech", "broadleaf", True),
+        ],
+    )
+    def test_evergreen_conifers_keep_out_of_the_season(self, species, habit, seasons):
+        # Broadleaves and larch colour in autumn; spruce, fir, pine and
+        # Douglas fir keep their needles green (decision 2026-10-25).
+        assert _spec(species=species, habit=habit).seasons is seasons
+
+    def test_missing_foliage_maps_are_named_not_silently_skipped(self, monkeypatch):
+        monkeypatch.setattr(
+            "pathlib.Path.is_file",
+            lambda p: not p.name.endswith("_pve_basecolor.png") and p.exists(),
+        )
+        with pytest.raises(FileNotFoundError, match="growpy-pack-pve-textures"):
+            build_species_asset_spec("european_beech")
+
+    def test_the_foliage_material_sits_with_the_bark(self):
+        spec = build_species_asset_spec("european_beech")
+        assert spec.foliage_material == (
+            "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_foliage"
+        )
 
 
 class TestPaletteLayout:
@@ -172,11 +227,15 @@ class TestRefusals:
         with pytest.raises(ValueError, match="UE package path"):
             _spec(content_folder="PVE/Beech")
 
-    def test_the_game_templates_master_is_refused(self):
-        # Parenting to the /Game/Templates copy of MA_Foliage_Trees has
+    def test_the_schema_folder_master_is_refused(self):
+        # Parenting to the schema-folder copy of MA_Foliage_Trees has
         # produced broken materials before.
-        with pytest.raises(ValueError, match="/Game/Templates"):
-            _plan(master_material="/Game/Templates/MA_Foliage_Trees")
+        with pytest.raises(ValueError, match="/Game/XRFF/Forest/Data"):
+            _plan(master_material="/Game/XRFF/Forest/Data/MA_Foliage_Trees")
+
+    def test_the_schema_folder_master_is_refused_for_the_bark_too(self):
+        with pytest.raises(ValueError, match="/Game/XRFF/Forest/Data"):
+            _plan(bark_master_material="/Game/XRFF/Forest/Data/MA_Foliage_Trees")
 
     def test_factory_creation_has_no_path_without_a_clone_source(self):
         with pytest.raises(ValueError, match="known-good instance"):
@@ -194,6 +253,15 @@ class TestRefusals:
     def test_an_empty_plan_is_refused(self):
         with pytest.raises(ValueError, match="no species"):
             _plan(species=())
+
+    def test_half_a_foliage_pair_is_refused(self):
+        # One map alone would leave the cloned sample's own map in the other.
+        with pytest.raises(ValueError, match="pair"):
+            _spec(foliage_color=Path("a_pve_basecolor.png"))
+
+    def test_an_unknown_habit_is_refused(self):
+        with pytest.raises(ValueError, match="habit"):
+            _spec(habit="palm")
 
 
 class TestGeneratedScript:
@@ -216,7 +284,7 @@ class TestGeneratedScript:
         # untextured beech trunk for a magenta one.
         loop = script.split("for spec in PLAN[", 1)[1]
         vt = loop.index("import_bark_texture(entry, is_normal)")
-        material = loop.index("build_bark_material(spec, master)")
+        material = loop.index("build_bark_material(spec, master, bark_master)")
         assert vt < material
 
     def test_it_clones_rather_than_factory_creating(self, script):
@@ -258,11 +326,85 @@ class TestGeneratedScript:
     def test_it_names_the_plugins_master_not_a_game_copy(self, script):
         assert DEFAULT_MASTER_MATERIAL in script
 
+    def test_the_leaves_get_a_material_the_foliage_actor_reaches(self, script):
+        # Season and health reach a leaf only through MA_Foliage_Trees; the USD
+        # import's UsdPreviewSurface cannot see MPC_GlobalFoliageActor.
+        assert "MI_european_beech_foliage" in script
+        assert "MI_silver_fir_foliage" in script
+        assert FOLIAGE_SAMPLES["broadleaf"] in script
+        assert FOLIAGE_SAMPLES["conifer"] in script
+        assert "def repoint_leaf_materials" in script
+        # The switch is set from the habit, not left as the cloned sample has it.
+        assert '"Seasons", fol["seasons"]' in script
+        assert "'seasons': False" in script and "'seasons': True" in script
+
+    def test_leaf_maps_come_before_the_leaf_material_and_the_leaves(self, script):
+        loop = script.split("for spec in PLAN[", 1)[1]
+        maps = loop.index("import_foliage_texture(entry, is_normal)")
+        material = loop.index("build_foliage_material(spec, master)")
+        leaves = loop.index("repoint_leaf_materials(spec)")
+        assert maps < material < leaves
+
+    def test_the_leaf_normal_keeps_its_translucency(self, script):
+        # The packed Normal carries translucency in B, and the plugin's own
+        # samples import it as Masks; TC_NORMALMAP keeps only R/G.
+        body = script.split("def import_foliage_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "TC_MASKS" in body
+        assert "TC_NORMALMAP" not in body
+
+    def test_the_bark_normal_keeps_its_ambient_occlusion(self, script):
+        # The trunk function reads AO from the Normal map's B (MegaPlants' _NAH
+        # bark); BC5 drops B, so TC_NORMALMAP rendered every trunk black in shade.
+        body = script.split("def import_bark_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "TC_MASKS" in body
+        assert "TC_NORMALMAP" not in body
+
+    def test_the_leaf_colour_keeps_its_coverage_at_distance(self, script):
+        # Without coverage-scaled mips the averaged alpha stays above the 0.333
+        # clip and distant leaf cards render as opaque squares.
+        body = script.split("def import_foliage_texture", 1)[1].split("\ndef ", 1)[0]
+        assert "do_scale_mips_for_alpha_coverage" in body
+        assert "0.3333" in body
+
+    def test_a_leaf_is_repaired_in_place_not_replaced(self, script):
+        # Exported trees reference the palette's leaf instances by path.
+        body = script.split("def repoint_leaf_materials", 1)[1].split("\ndef ", 1)[0]
+        assert "clear_all_material_instance_parameters" in body
+        assert "duplicate_asset" not in body
+        assert "delete_asset" not in body
+
+    def test_it_refuses_while_the_open_level_shows_trees(self, script):
+        # Re-parenting the leaves with a gallery open crashed the editor on the
+        # material save (2026-09-25): nothing may change before this check.
+        assert "def trees_in_open_level" in script
+        guard = script.index("trees = trees_in_open_level()")
+        assert guard < script.index("for spec in PLAN[")
+        assert "open an empty level" in script
+
     def test_every_prototype_reaches_the_script(self, script):
         for species, count in (("european_beech", 5), ("pacific_silver_fir", 9)):
             # once as the USD import, once as the re-framed part
             assert script.count(f"SM_{species}_foliage") == 2 * count
             assert len(re.findall(rf"SM_{species}_foliage\w*_ZUP", script)) == count
+
+    def test_the_bark_follows_the_master_unless_the_plan_names_another(self, script):
+        # Clone sources are checked against the master; the bark is parented to
+        # (and read back against) the bark master.
+        assert f"'bark_master_material': '{DEFAULT_MASTER_MATERIAL}'" in script
+        body = script.split("def build_bark_material", 1)[1].split("\ndef ", 1)[0]
+        assert "resolve_clone_source(master)" in body
+        assert "eal.load_asset(bark_master)" in body
+        assert "if parent != bark_master:" in body
+
+    def test_a_named_bark_master_reaches_the_script(self, tmp_path):
+        trunk = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
+        plan = PVEAssetPlan(
+            species=(build_species_asset_spec("european_beech"),),
+            bark_master_material=trunk,
+        )
+        script = generate_pve_asset_script(tmp_path, plan).read_text(encoding="utf-8")
+        assert f"'bark_master_material': '{trunk}'" in script
+        assert f"'master_material': '{DEFAULT_MASTER_MATERIAL}'" in script
 
     def test_redeploying_to_the_same_path_overwrites(self, tmp_path):
         plan = PVEAssetPlan(species=(build_species_asset_spec("european_beech"),))
@@ -305,4 +447,4 @@ class TestCli:
         main(["european_beech", "--output-dir", str(tmp_path),
               "--content-root", "/Game/PVE_Test"])
         text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
-        assert "/Game/PVE_Test/EuropeanBeech" in text
+        assert "/Game/PVE_Test/Foliage/european_beech" in text

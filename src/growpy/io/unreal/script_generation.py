@@ -118,6 +118,7 @@ def generate_unreal_scripts(
             content_root=config.unreal_pve_content_root,
             graph_folder=f"{config.unreal_pve_content_root}/Graphs",
             triangle_cap=config.unreal_pve_triangle_cap,
+            static_twins=config.unreal_pve_static_twins,
         )
         if plan.script is None:
             logger.warning(
@@ -140,6 +141,9 @@ def generate_unreal_scripts(
                 len(plan.graphs),
                 plan.chain_count,
             )
+            logger.info("  3. growpy-pve-export, then growpy-pve-catalog")
+            for gallery in plan.gallery_scripts:
+                logger.info("  4. %s   (gallery level, after the export)", gallery)
             logger.info("PVE coverage manifest: %s", plan.manifest)
             logger.info(
                 "PVE retune script (densities only, never re-authors): %s",

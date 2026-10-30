@@ -256,13 +256,66 @@ through Windows UI Automation) and saves the result. It needs no focus and works
 workstation locked:
 
 ```bash
-growpy-pve-export /Game/PVE/Graphs/PVG_SilverFir_1 /Game/PVE/Graphs/PVG_SilverFir_2
+growpy-pve-export /Game/Generated/Trees/Graphs/PVG_SilverFir_1 /Game/Generated/Trees/Graphs/PVG_SilverFir_2
 ```
 
 One `Mesh exported successfully` line per export node marks success; targets that already
 exist under `ReplacePolicy = Replace` are overwritten (the prompt is confirmed). If the
 driver reports `NODIALOG`, the toolbar button is not at the default window offset
 (`--toolbar X,Y`); the tool then retries with a UI Automation search.
+
+**Judge foliage placement without the editor.** `growpy-twig-audit <plan dir>` reads the plan's
+`growpy_pve_graphs.py` (the chain specs the graph builder will build), simulates every layer with
+the offline distributor model, and checks each cell against `config/twig_audit.toml` per growth
+habit: conifer shoots that left their branch sideways and ended up pointing up (`upturned`), sprays
+per metre on the leader (`leader_sprays_per_m`), and the top tenth's foliage density against the
+mid-crown. It exits 1 when a cell fails and writes `twig_audit.json` beside the plan. It cannot
+see spray *orientation*; that still needs a look in the editor. The leader layer it checks is
+`[ladder] leader_spacing_m` / `leader_tier` in `config/pve_calibration.toml` (conifers only):
+the plan puts one part at the tip (apex) and starts the main layer above the trunk, so without
+the leader layer the leader above the top whorl is a bare pole with one spray.
+
+**Look at the catalog in gallery levels.** After the export and `growpy-pve-catalog`, lay
+the exported trees out in `/Game/Developers/Max/TreeGallery/TreeGallery_<Species>`: one level per
+species, one row per stand radius, one column per stage, labelled, lit like ECOSENSE.
+Rerunning rebuilds them in place, so after a re-export the levels are current again. Walk
+them in the editor or in VR:
+
+```bash
+growpy-pve-gallery data/output/forest/unreal_scripts/pve_export_manifest.json
+growpy-pve-gallery <manifest> --shots data/tmp/gallery_shots   # plus one PNG per row half
+```
+
+The PVE plan (dataset step 4, or `growpy-pve-plan`) already writes one
+`growpy_pve_gallery_<level>.py` per gallery level beside the graph scripts, so a new
+production run brings its galleries with it; the full order is the asset script, the graph
+script, `growpy-pve-export`, `growpy-pve-catalog`, then the gallery scripts (via
+`growpy-ue-exec`, or `growpy-pve-gallery`, which rewrites and runs them). A re-plan
+replaces a species' old gallery scripts, and each script deletes that species' levels the
+plan no longer has (from an earlier split, or before a merge).
+
+The open level must have no unsaved changes (switching levels would open a save dialog and
+block the script). Meshes over the 32,767-bone cap are not placed; their cell carries a
+marker with the bone count. Trees are placed the way `PCG_Trees` spawns them (an instanced
+skinned mesh component with the PVE wind transform provider), so they move in the wind and
+take season and health from the global foliage actor.
+
+One level per species because the whole catalog does not fit one editor session on a
+64 GB machine: loading all 216 meshes reached 43 GB, and the first spawn then overflowed
+the GPUScene upload pool (2026-09-25). `--level <path>` puts a few chosen species into
+one level for a side-by-side. Memory still builds up across levels in one session (51 GB
+after ten species), so on a 64 GB machine run the species in two halves (`--species`)
+with an editor restart in between.
+
+A level also carries at most 250,000 bones of wind trees (`--wind-bone-budget`): Nanite
+skinning packs every instanced skinned mesh's bone-transform offset into 22 bits, and a
+Douglas fir level of ~350k bones killed the editor on its first frame
+(`TransformBufferOffset <= (1 << 22) - 1`, `SkinningSceneExtension.h:171`) while the
+ECOSENSE `PCG_Trees` spawn of ~220k renders. A species over the budget is split by stand
+rows (`TreeGallery_DouglasFir_r00`, `..._r07_r10`), and stale levels from an earlier split
+are deleted. A level that was ever saved over the limit kills the editor on every load,
+even the load the editor does to delete it: remove its `.umap` on disk with the editor
+closed.
 
 ---
 
@@ -292,6 +345,13 @@ $env:PYTHONPATH=".\src;.\src\the_grove_23\modules"       # PowerShell
 **`bpy` not found**
 `pip install bpy`, inside the activated environment.
 
+**A radius dropped from `[surround] radii` still shows up in the catalog**
+The PVE plan (`growpy-pve-plan`) builds its manifest by scanning `data/output/forest` for
+`*_growth_data.json`, not from the config, and `growpy-pve-catalog` turns that manifest into
+`DT_TreeCatalog` rows. A radius directory left on disk (`<species>/r00/`) therefore keeps
+entering the catalog. Move it out of the tree (r00 was parked in
+`data/tmp/r00_parked_2026-10-05/`) before regenerating the plan.
+
 **`growpy-…` is not on PATH**
 `pip install -e .` was not run in the active environment, or you are in the wrong one. The
 `python src/growpy/cli/<step>.py` form works either way.
@@ -307,6 +367,12 @@ Unreal caps at 32,767 bones. `--skeleton-reduce` is the effective lever:
 growpy-generate-forest --skeleton-reduce 0.5 --skeleton-length 2.5
 ```
 
+The PVE route does not check the cap: PVE exports and saves a mesh with more bones, and the
+editor then crashes the moment it is spawned (`Array index out of bounds: -32748 into an
+array of size 51120`, `Array.h:1339`). PVE makes about 1.05–1.13 bones per growth-JSON
+point, so keep a tree's growth JSON under ~29,000 points. As of 2026-09-25, 18
+open-grown (`r00`) catalog meshes are over the cap and wait for a re-export.
+
 **Generation is far slower than expected**
 Grove's `.faces` and `.points` properties rebuild the entire list on every access. Hoisting
 two in-loop reads once took dataset production from 44 min / 17 assemblies to 10 min / 99.
@@ -316,10 +382,80 @@ If you have added a loop over Grove geometry, hoist the property read out of it.
 Look for a dangling `bindJoint` token — a single one silently kills the whole assembly.
 
 **PVE materials render as shifting magenta/violet/neon**
-Either a clone got re-parented to the `/Game/Templates` copy of `MA_Foliage_Trees`, or the
+Either a clone got re-parented to the `/Game/XRFF/Forest/Data` copy of `MA_Foliage_Trees`, or the
 textures are non-virtual. Grep the log for `expects texture`.
+
+**Season and health do not change the leaves**
+The leaves are still on the USD importer's `UsdPreviewSurface`, which cannot see
+`MPC_GlobalFoliageActor`. Run `growpy-pack-pve-textures`, then `growpy-pve-assets` and the
+script it writes (the PVE plan writes the same script as `growpy_pve_assets.py`): it builds
+`MI_<species>_foliage` from the plugin's conifer or broadleaf foliage sample and re-parents
+every `*_leaf*` instance of the palette to it in place, so exported trees follow without a
+re-export. The script refuses to start while the open level shows trees of this content:
+a material update refreshes every tree using it in the open level, and a gallery's worth
+of trees overflowed the GPUScene upload pool (2026-09-25). Open an empty level first.
+
+**The editor start hangs on frame 0 after a catalog move or re-save**
+The log shows `Building Skeletal Mesh …` / `NaniteBuild` / `Waiting for skinned assets to
+be ready` for one tree after another. Re-saved catalog meshes no longer match their cached
+render data, and the startup map (ECOSENSE, through `PCG_Trees`) loads them while the
+editor opens: minutes per large tree, hours for the catalog. It is not stuck, and every
+finished mesh stays cached. Start the editor on an empty level instead
+(`UnrealEditor.exe <project> /Game/Levels/ShotStage`), and fill the cache headless with no
+editor open on the project — the command is in
+`src/growpy/tools/ue_scripts/warm_catalog_cache.py`. Never run two editors on the project
+while this happens: both rebuild the same meshes.
+
+**The editor dies when `PCG_Trees` regenerates the imported catalog**
+`Assertion failed: ScatterBufferSize >= ScatterBytes` (`UnifiedBuffer.cpp:845`): the GPUScene
+upload pool is too small for ~1,460 PVE trees at once. Add to the project's
+`Config/DefaultEngine.ini` and restart the editor:
+
+```ini
+[SystemSettings]
+r.GPUScene.MaxPooledUploadBufferSize=16000000
+```
+
+The startup log then shows `LogConfig: Set CVar [[r.GPUScene.MaxPooledUploadBufferSize:16000000]]`.
+Why, and which projects need it: knowledge hub, `05-PRESENTATION-TIER/tree-spawning-pipeline`.
+
+**`Ensure condition failed: EditableBoneVisibilityStates.Num() >= OutRequiredBones.Num()`**
+Names one PVE-exported `SK_*` mesh whose LOD requires 1–50 more bones than it has. It comes
+from PVE's skinned-mesh build, not from the growth JSON (checked 2026-09-25: skeleton and
+mesh bone counts agree, no zero-length segments to blame), and the tree renders. An ensure
+fires once per call site per session, so the mesh it names is the first one hit, not the
+only one; it cannot be used to count affected meshes.
 
 **Crown looks too sparse or too dense**
 That correction no longer lives here — it moved to the PVE side of the pipeline
 (2026-09-10). Fix the asset; LAI is the acceptance metric, and `crown_ratio` alone cannot see
 a hollow crown.
+
+**The editor crashes during the PVE palette import**
+`Assertion failed: ComponentsThatNeedEndOfFrameUpdate_OnGameThread[ArrayIndex] == Component`
+(`LevelTick.cpp:958`), about 60 s into a whole-plan import, after a long run of re-frames.
+`growpy-pve-assets` writes one script for every species; run it one species per remote
+call instead, with a garbage collection (`unreal.SystemLibrary.collect_garbage()`) between
+calls. The whole plan crashed twice; per species, all 11 went through (2026-09-15).
+
+**A grow stopped through a pipe leaves a half-written species**
+Killing `python … | grep` kills the `grep`, and the grow's next write raises
+`BrokenPipeError`. A second grow of the same species into the same output root then wipes
+`rNN/` mid-run, because stage generation clears the radius folder before writing. Never
+filter a long run through a pipe you may kill, and never run two grows of one species into
+one output root.
+
+**A check says no run is left, but one is**
+Git Bash `ps -W` truncates command lines. Match on `Get-CimInstance Win32_Process` and its
+`CommandLine`, and leave out the checking shell itself, which matches its own pattern.
+
+**Shots show some trees as voxel cubes**
+In distant framings Nanite sometimes never streams the full mesh, even for meshes that were
+not touched, so it is editor state, not the export; close framings are fine. Judge in the
+viewport. The editor also renders nothing while it is not the foreground window (the GPU
+drops to P8), so keep it in front for shots; RDP is fine. `r.Nanite.Streaming.StreamingPoolSize`
+must stay below 2048, or the editor asserts.
+
+**A watchdog kills a working Voxelize export**
+A Voxelize export can log nothing for more than five minutes (ash h20). Only treat an editor
+as hung after 20 minutes of log silence.

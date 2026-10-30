@@ -22,6 +22,7 @@ from growpy.io.unreal.pve_graph_builder import (
     generate_pve_graph_builder_script,
     mask_fraction_of,
     masked_palette,
+    static_twin_name,
 )
 
 
@@ -221,6 +222,40 @@ class TestTreeChainSpec:
                 wind_settings="",
             )
 
+    @pytest.mark.parametrize("wraps", [(0,), (3, 1.5)])
+    def test_bark_wraps_are_whole_numbers_of_one_or_more(self, wraps):
+        # A fractional X Range leaves a seam down the trunk.
+        with pytest.raises(ValueError, match="bark_wraps"):
+            TreeChainSpec(
+                growth_json=Path("t.json"),
+                mesh_name="SK_X",
+                distributor=DistributorSpec(branch_density=3),
+                bark_wraps=wraps,
+            )
+
+    def test_bark_wraps_become_one_material_setup_per_generation(self, tmp_path):
+        # 2026-10-07: PVE wrapped the bark once around the girth, Grove three
+        # times -- the trunk read ~3x magnified. Each wrap count is a setup
+        # with X Range (0, k), read back before the graph is saved.
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Bark",
+            distributor=DistributorSpec(branch_density=3),
+            bark_wraps=(3, 1),
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'bark_wraps': [3, 1]" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert 'for wraps in chain["bark_wraps"] or [None]:' in build
+        assert "UpperBound=(Type=Exclusive,Value=%f)" in build
+        assert "bark X Range read back" in build
+
+    def test_no_bark_wraps_keeps_the_native_single_setup(self, tmp_path):
+        path = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        assert "'bark_wraps': []" in path.read_text(encoding="utf-8")
+
 
 class TestPalette:
     def test_a_mask_needs_no_mesh_but_a_real_entry_does(self):
@@ -347,6 +382,39 @@ class TestFoliageLayers:
     def test_a_chain_without_layers_keeps_the_seven_edge_shape(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
         assert "'layers': []" in path.read_text(encoding="utf-8")
+
+
+class TestStaticTwin:
+    def test_the_twin_swaps_the_skinned_prefix(self):
+        # PCG_ForestStatic derives the twin's path by the same rule
+        # (Catalog/ -> CatalogStatic/, SK_ -> SM_), so it must not drift.
+        assert static_twin_name("SK_Beech_r07_h10m") == "SM_Beech_r07_h10m"
+        assert static_twin_name("Beech") == "SM_Beech"
+
+    def test_off_by_default(self, tmp_path):
+        assert _graph().static_export_folder is None
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()]).read_text(
+            encoding="utf-8"
+        )
+        assert "'static_export_folder': None" in body
+
+    def test_a_static_folder_adds_a_static_export_node_per_chain(self, tmp_path):
+        graph = _graph(
+            chains=(_chain("SK_A"), _chain("SK_B")),
+            static_export_folder="/Game/Static/beech",
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [graph])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'static_export_folder': '/Game/Static/beech'" in body
+        assert "'static_mesh_name': 'SM_A'" in body
+        assert "'static_mesh_name': 'SM_B'" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert "unreal.PVExportMeshType.STATIC_MESH" in build
+        # The twin hangs off the same distributor output as the skinned node,
+        # and the edge check counts it.
+        assert '(last_node, "Out", static_node, "In")' in build
+        assert 'if spec["static_export_folder"] else 0' in build
 
 
 class TestGenerateScript:
@@ -601,4 +669,36 @@ class TestPhyllotaxyArrangement:
         with pytest.raises(ValueError, match="node_buds"):
             DistributorSpec(
                 branch_density=5, phyllotaxy_type="WHORLED", node_buds=buds
+            )
+
+
+class TestBoneReduction:
+    def test_no_node_by_default(self, tmp_path):
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        body = body.read_text(encoding="utf-8")
+        assert "'bone_reduction_strength': 0.0" in body
+
+    def test_strength_reaches_the_script(self, tmp_path):
+        chain = TreeChainSpec(
+            Path("data/tmp/tree.json"),
+            "SK_Test",
+            DistributorSpec(branch_density=17),
+            bone_reduction_strength=0.6,
+        )
+        body = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = body.read_text(encoding="utf-8")
+        assert "'bone_reduction_strength': 0.6" in body
+        # The node sits between mesher and distributor, and its edge is counted.
+        assert "unreal.PVBoneReductionSettings" in body
+        assert '(upstream, "Out", dist_node, "In")' in body
+        assert 'c["bone_reduction_strength"] > 0.0' in body
+
+    @pytest.mark.parametrize("strength", [-0.2, 1.01])
+    def test_outside_zero_to_one_is_refused(self, strength):
+        with pytest.raises(ValueError, match="bone_reduction_strength"):
+            TreeChainSpec(
+                Path("data/tmp/tree.json"),
+                "SK_Test",
+                DistributorSpec(branch_density=17),
+                bone_reduction_strength=strength,
             )

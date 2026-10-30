@@ -67,7 +67,7 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     )
     from ..core.forest import build_density_variant_model_sets, split_bones_by_tree
     from ..core.tree import calculate_dbh_at_height, calculate_tree_height
-    from ..utils.allometry import correction_weight, get_height_dbh_model
+    from ..utils.allometry import correction_weight, get_height_dbh_model, nudge_radial_scale
     from ..utils.export_naming import (
         format_dbh_for_filename,
         format_density_for_filename,
@@ -304,11 +304,14 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 and target_dbh_m
                 and grove_dbh_m > 0.001
             ):
-                tree_radial_scale = target_dbh_m / grove_dbh_m
                 if dbh_from_csv:
+                    tree_radial_scale = target_dbh_m / grove_dbh_m
                     tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
                 else:
-                    tree_radial_scale = max(0.5, min(tree_radial_scale, 2.0))
+                    # Nudge only (forest_stages.compute_radial_scale has the rule).
+                    tree_radial_scale = nudge_radial_scale(
+                        grove_dbh_m, target_dbh_m, config.export_dbh_nudge_weight
+                    )
                     # Below the yield table's own height range the model is
                     # extrapolating; fade the correction out and leave Grove's
                     # pipe-model diameter alone for saplings.

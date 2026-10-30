@@ -10,25 +10,27 @@ coverage manifest ``plan_pve_graphs`` wrote, in the running editor:
 1. every expected mesh is loaded; a missing one is reported, never invented,
    and the bounds height is read back beside the stage it was grown to;
 2. ``DT_TreeCatalog`` is (re)built under the PVE content root by duplicating
-   the schema template in ``/Game/Templates`` and filling it from CSV, one row
-   per exported mesh;
+   the schema template in ``[unreal] db_path`` (default ``SCHEMA_ROOT``) and
+   filling it from CSV, one row per exported mesh;
 3. ``PCG_Trees``' ``TreeCatalogDataTable`` graph parameter is pointed at it
    (the parameter is a property bag, written through ``import_text`` and read
    back), so the join is live without a manual edit.
 
-THE JOIN, read off ``PCG_Trees`` (T3D, 2026-09-15): the catalog side builds
-``JoinKey = Species + Height + Competition``; the tree side builds
-``species_name + round(height_m / HeightIncrement) * HeightIncrement +
-(nn_distance_cm <= CompetitionThresholdCM)``. So ``Species`` must spell the
-twin database's display name exactly (``European Beech``, ``Small-leaved
-Linden``), ``Height`` is the STAGE height (5, 10, ... 25), and ``Competition``
-is a boolean. With the r08 / r16 matrix the tight shell is the competed tree
-(``true``) and the wide one the open tree (``false``).
+THE JOIN (``PCG_Trees``, XRFF-482, 2026-09-20): the catalog side builds
+``JoinKey = Species + Height + Radius``; the tree side builds
+``species_name + clamp(round(height_m / HeightIncrement) * HeightIncrement) +
+radius class of nn_distance_cm`` (<= DenseMaxCM -> 7, <= OpenMinCM -> 10,
+else 0). So ``Species`` must spell the twin database's display name exactly
+(``European Beech``, ``Small-leaved Linden``), ``Height`` is the STAGE height
+(5, 10, ... 25), and ``Radius`` is the integer neighbour distance of the stand
+ladder in metres (0 = open-grown, 7, 10 -- ``[surround] radii``), read off the
+``r<NN>`` tag of the tree id. The boolean ``Competition`` column it replaces
+collapsed r00 and r07 onto one key and called the open-grown tree competed.
 
 Usage::
 
     growpy-pve-catalog data/output/forest/unreal_scripts/pve_export_manifest.json
-    growpy-pve-catalog <manifest> --catalog /Game/PVE/DT_TreeCatalog --no-pcg
+    growpy-pve-catalog <manifest> --catalog /Game/Generated/Trees/DT_TreeCatalog --no-pcg
 """
 
 from __future__ import annotations
@@ -42,12 +44,16 @@ import re
 import sys
 from pathlib import Path
 
+from growpy.config.ue_layout import PCG_TREES_GRAPH, SCHEMA_ROOT, TREES_ROOT
+
 logger = logging.getLogger("growpy.pve_catalog")
 
-TEMPLATE_STRUCT = "/Game/Templates/ST_TreeCatalogEntry"
-TEMPLATE_TABLE = "/Game/Templates/DT_TreeCatalog"
-DEFAULT_CATALOG = "/Game/PVE/DT_TreeCatalog"
-DEFAULT_PCG_GRAPH = "/Game/PCG/PCG_Trees"
+# Names inside the schema folder; the folder itself is [unreal] db_path.
+TEMPLATE_STRUCT_NAME = "ST_TreeCatalogEntry"
+TEMPLATE_TABLE_NAME = "DT_TreeCatalogTemplate"
+CATALOG_NAME = "DT_TreeCatalog"
+DEFAULT_CATALOG = f"{TREES_ROOT}/{CATALOG_NAME}"
+DEFAULT_PCG_GRAPH = PCG_TREES_GRAPH
 PCG_PARAMETER = "TreeCatalogDataTable"
 
 # Species column = the twin database's display name (data/lookups/species.csv
@@ -55,9 +61,6 @@ PCG_PARAMETER = "TreeCatalogDataTable"
 # PCG join compares against. Title-casing the standardized name gives every
 # name but the hyphenated one.
 SPECIES_DISPLAY_OVERRIDES = {"small_leaved_linden": "Small-leaved Linden"}
-
-# Radius label of the competed variant: r08 is the tight shell, r16 the open one.
-COMPETED_RADIUS_MAX_M = 8.0
 
 _TREE_ID = re.compile(r"^r(\d+)_h(\d+)m$")
 
@@ -97,7 +100,7 @@ def catalog_rows(manifest: dict) -> list[dict]:
                     "Species": species_display_name(species),
                     "Height": height_m,
                     "DBH": round(float(mesh.get("dbh_cm") or 0.0), 2),
-                    "Competition": radius_m <= COMPETED_RADIUS_MAX_M,
+                    "Radius": int(radius_m),
                     # Not catalog columns; kept in the inventory beside it.
                     "species": species,
                     "tree_id": tree_id,
@@ -118,7 +121,7 @@ def rows_to_csv(rows: list[dict]) -> str:
     """UE DataTable CSV: ``---`` row-name header, the five struct columns."""
     out = io.StringIO()
     writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(["---", "SkeletalMesh", "Species", "Height", "DBH", "Competition"])
+    writer.writerow(["---", "SkeletalMesh", "Species", "Height", "DBH", "Radius"])
     for row in rows:
         writer.writerow(
             [
@@ -127,7 +130,7 @@ def rows_to_csv(rows: list[dict]) -> str:
                 row["Species"],
                 f"{row['Height']:g}",
                 f"{row['DBH']:g}",
-                "true" if row["Competition"] else "false",
+                str(row["Radius"]),
             ]
         )
     return out.getvalue()
@@ -146,6 +149,7 @@ TEMPLATE_STRUCT = {template_struct!r}
 PCG_GRAPH = {pcg_graph!r}
 PCG_PARAMETER = {pcg_parameter!r}
 SET_PCG = {set_pcg!r}
+LOAD_MESHES = {load_meshes!r}
 
 eal = unreal.EditorAssetLibrary
 report = {{"meshes": [], "missing": [], "catalog": CATALOG, "rows": 0, "pcg": None}}
@@ -157,6 +161,14 @@ for row in ROWS:
     if not eal.does_asset_exist(path):
         report["missing"].append(path)
         entry["exists"] = False
+        report["meshes"].append(entry)
+        continue
+    if not LOAD_MESHES:
+        # Existence only. Loading a mesh whose Nanite cache is cold BUILDS it
+        # (~5 min each, one at a time on the game thread: 144 meshes blocked the
+        # editor for hours, 2026-10-05), and the bounds read below is a report
+        # field, not something the catalog rows need.
+        entry["exists"] = True
         report["meshes"].append(entry)
         continue
     mesh = eal.load_asset(path)
@@ -260,6 +272,8 @@ def write_ue_script(
     catalog: str,
     set_pcg: bool,
     pcg_graph: str = DEFAULT_PCG_GRAPH,
+    load_meshes: bool = True,
+    schema_root: str = SCHEMA_ROOT,
 ) -> Path:
     script = manifest_path.parent / "growpy_pve_catalog.py"
     script.write_text(
@@ -267,11 +281,12 @@ def write_ue_script(
             rows=rows,
             csv=rows_to_csv(rows),
             catalog=catalog,
-            template_table=TEMPLATE_TABLE,
-            template_struct=TEMPLATE_STRUCT,
+            template_table=f"{schema_root}/{TEMPLATE_TABLE_NAME}",
+            template_struct=f"{schema_root}/{TEMPLATE_STRUCT_NAME}",
             pcg_graph=pcg_graph,
             pcg_parameter=PCG_PARAMETER,
             set_pcg=set_pcg,
+            load_meshes=load_meshes,
         ),
         encoding="utf-8",
     )
@@ -294,10 +309,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "manifest", type=Path, help="pve_export_manifest.json of the run"
     )
-    parser.add_argument("--catalog", default=DEFAULT_CATALOG)
-    parser.add_argument("--pcg-graph", default=DEFAULT_PCG_GRAPH)
+    parser.add_argument(
+        "--catalog",
+        help="catalog DataTable (default: <[unreal] pve_content_root>/DT_TreeCatalog)",
+    )
+    parser.add_argument(
+        "--pcg-graph", help="spawn graph to repoint (default: [unreal] pcg_trees_graph)"
+    )
     parser.add_argument(
         "--no-pcg", action="store_true", help="do not repoint PCG_Trees at the catalog"
+    )
+    parser.add_argument(
+        "--no-load",
+        action="store_true",
+        help="check that each mesh exists but do not load it to read its bounds: "
+        "a mesh with a cold Nanite cache builds on load (~5 min each)",
     )
     parser.add_argument(
         "--script-only", action="store_true", help="write the UE script, do not run it"
@@ -315,12 +341,19 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     json_path, csv_path = write_inventory(args.manifest, rows)
     logger.info("inventory: %s, %s (%d trees)", json_path, csv_path, len(rows))
+    from growpy.config.core import get_config
+
+    # The project's layout ([unreal] in config/unreal.toml), not ue_layout's
+    # defaults: the schema and the spawn graph sit elsewhere in XRFF_Twin.
+    config = get_config()
     script = write_ue_script(
         args.manifest,
         rows,
-        catalog=args.catalog,
+        catalog=args.catalog or f"{config.unreal_pve_content_root}/{CATALOG_NAME}",
         set_pcg=not args.no_pcg,
-        pcg_graph=args.pcg_graph,
+        pcg_graph=args.pcg_graph or config.unreal_pcg_trees_graph,
+        load_meshes=not args.no_load,
+        schema_root=config.unreal_db_path,
     )
     logger.info("UE script: %s", script)
     if args.script_only:

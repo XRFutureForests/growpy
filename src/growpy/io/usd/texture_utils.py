@@ -28,6 +28,24 @@ _ALPHA_INVERSION_THRESHOLD = 155
 _CORNER_PATCH_SIZE = 10
 
 
+def season_rank(name: str) -> int:
+    """0 for a summer or unmarked texture, 1 for fall/winter, 2 for spring.
+
+    Lower is preferred when several source files map to one standard name --
+    the rule classify_texture_from_name documents. Without it directory order
+    decided: PaperBirchFall* sorts before PaperBirchSummer*, and the birch
+    leaves shipped autumn-yellow in summer (2026-09-25).
+    """
+    name = name.lower()
+    if "summer" in name:
+        return 0
+    if "spring" in name:
+        return 2
+    if any(k in name for k in ("fall", "autumn", "winter")):
+        return 1
+    return 0
+
+
 def next_power_of_2(value: int) -> int:
     """Return the next power of 2 >= value.
 
@@ -241,64 +259,8 @@ def bump_to_normal(
         if invert:
             bump_array = 1.0 - bump_array
 
-        # Note: Don't apply strength to bump_array itself
-        # Strength is applied through inv_strength in the normal calculation
-
-        # Calculate gradients using Sobel kernels
-        # Following https://github.com/MircoWerner/BumpToNormalMap implementation
-
-        # Pad the array to handle edges (replicate border pixels)
-        padded = np.pad(bump_array, 1, mode="edge")
-
-        # Sobel X kernel (horizontal gradient)
-        # [-1  0  1]
-        # [-2  0  2]
-        # [-1  0  1]
-        grad_x = (
-            -1.0 * padded[:-2, :-2]
-            + 1.0 * padded[:-2, 2:]
-            - 2.0 * padded[1:-1, :-2]
-            + 2.0 * padded[1:-1, 2:]
-            - 1.0 * padded[2:, :-2]
-            + 1.0 * padded[2:, 2:]
-        ) / 8.0
-
-        # Sobel Y kernel (vertical gradient)
-        # [-1 -2 -1]
-        # [ 0  0  0]
-        # [ 1  2  1]
-        grad_y = (
-            -1.0 * padded[:-2, :-2]
-            - 2.0 * padded[:-2, 1:-1]
-            - 1.0 * padded[:-2, 2:]
-            + 1.0 * padded[2:, :-2]
-            + 2.0 * padded[2:, 1:-1]
-            + 1.0 * padded[2:, 2:]
-        ) / 8.0
-
-        # Create normal map following reference implementation
-        # Reference uses: normalize(vec3(inv_strength, dy, dx))
-        # But the channel mapping is: R=dx, G=dy, B=inv_strength
-        # This creates proper normal maps where Z (blue) is dominant for flat surfaces
-        inv_strength = 1.0 / strength
-        normal_x = grad_x  # R channel = horizontal gradient (X)
-        normal_y = grad_y  # G channel = vertical gradient (Y)
-        normal_z = np.full_like(grad_x, inv_strength)  # B channel = Z (surface normal)
-
-        # Normalize the vectors
-        magnitude = np.sqrt(normal_x**2 + normal_y**2 + normal_z**2)
-        normal_x /= magnitude
-        normal_y /= magnitude
-        normal_z /= magnitude
-
-        # Convert to 0-255 range (map -1..1 to 0..255)
-        # Following reference: colors = normals * 0.5 + 0.5
-        normal_map = np.stack([normal_x, normal_y, normal_z], axis=-1)
-        normal_map = (normal_map * 0.5 + 0.5) * 255.0
-        normal_map = normal_map.astype(np.uint8)
-
         # Convert to image
-        normal_img = Image.fromarray(normal_map, mode="RGB")
+        normal_img = Image.fromarray(height_to_normal(bump_array, strength), mode="RGB")
 
         # Determine output path
         if output_path is None:
@@ -315,6 +277,69 @@ def bump_to_normal(
     except Exception as e:
         logger.warning("bump_to_normal failed for %s: %s", bump_path, e)
         return None
+
+
+def height_to_normal(height: np.ndarray, strength: float = 40.0) -> np.ndarray:
+    """A tangent-space normal map (uint8 RGB) from a 0-1 height array.
+
+    The conversion :func:`bump_to_normal` applies, shared with the packer that
+    derives a leaf's relief from its colour.
+    """
+    # Note: Don't apply strength to the height itself
+    # Strength is applied through inv_strength in the normal calculation
+
+    # Calculate gradients using Sobel kernels
+    # Following https://github.com/MircoWerner/BumpToNormalMap implementation
+
+    # Pad the array to handle edges (replicate border pixels)
+    padded = np.pad(height, 1, mode="edge")
+
+    # Sobel X kernel (horizontal gradient)
+    # [-1  0  1]
+    # [-2  0  2]
+    # [-1  0  1]
+    grad_x = (
+        -1.0 * padded[:-2, :-2]
+        + 1.0 * padded[:-2, 2:]
+        - 2.0 * padded[1:-1, :-2]
+        + 2.0 * padded[1:-1, 2:]
+        - 1.0 * padded[2:, :-2]
+        + 1.0 * padded[2:, 2:]
+    ) / 8.0
+
+    # Sobel Y kernel (vertical gradient)
+    # [-1 -2 -1]
+    # [ 0  0  0]
+    # [ 1  2  1]
+    grad_y = (
+        -1.0 * padded[:-2, :-2]
+        - 2.0 * padded[:-2, 1:-1]
+        - 1.0 * padded[:-2, 2:]
+        + 1.0 * padded[2:, :-2]
+        + 2.0 * padded[2:, 1:-1]
+        + 1.0 * padded[2:, 2:]
+    ) / 8.0
+
+    # Create normal map following reference implementation
+    # Reference uses: normalize(vec3(inv_strength, dy, dx))
+    # But the channel mapping is: R=dx, G=dy, B=inv_strength
+    # This creates proper normal maps where Z (blue) is dominant for flat surfaces
+    inv_strength = 1.0 / strength
+    normal_x = grad_x  # R channel = horizontal gradient (X)
+    normal_y = grad_y  # G channel = vertical gradient (Y)
+    normal_z = np.full_like(grad_x, inv_strength)  # B channel = Z (surface normal)
+
+    # Normalize the vectors
+    magnitude = np.sqrt(normal_x**2 + normal_y**2 + normal_z**2)
+    normal_x /= magnitude
+    normal_y /= magnitude
+    normal_z /= magnitude
+
+    # Convert to 0-255 range (map -1..1 to 0..255)
+    # Following reference: colors = normals * 0.5 + 0.5
+    normal_map = np.stack([normal_x, normal_y, normal_z], axis=-1)
+    normal_map = (normal_map * 0.5 + 0.5) * 255.0
+    return normal_map.astype(np.uint8)
 
 
 def ensure_normal_map(
@@ -756,12 +781,18 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
         },
     }
 
-    # Collect all texture files
+    # Collect all texture files. Several can map to one standard name, and the
+    # last one processed wins, so the preferred season goes last. The packed
+    # PVE maps share this folder and are outputs: read as sources, the packed
+    # Normal became the twig's normal and the packed Base Color its diffuse
+    # (2026-09-25).
     texture_files = []
     if textures_dir.exists():
         for tex_file in textures_dir.iterdir():
             if tex_file.is_file() and tex_file.suffix.lower() in [".png", ".jpg", ".jpeg"]:
-                texture_files.append(tex_file)
+                if "_pve_" not in tex_file.name:
+                    texture_files.append(tex_file)
+    texture_files.sort(key=lambda p: season_rank(p.stem), reverse=True)
 
     # Process each texture file
     for tex_file in texture_files:
@@ -791,9 +822,12 @@ def standardize_twig_textures(twig_dir: Path) -> dict:
             # Check for modifier (top/bottom/bark) for diffuse
             if any(k in name_lower for k in ["bark"]):
                 modifier = "bark"
-            elif any(k in name_lower for k in ["top", "upper", "face", "summer", "spring", "green"]):
+            # Seasons are variants, not leaf sides: "summer" here made
+            # PaperBirchSummerBottom a top texture and "fall" made every autumn
+            # map an underside.
+            elif any(k in name_lower for k in ["top", "upper", "face"]):
                 modifier = "top"
-            elif any(k in name_lower for k in ["bottom", "lower", "back", "underside", "fall", "winter"]):
+            elif any(k in name_lower for k in ["bottom", "lower", "back", "underside"]):
                 modifier = "bottom"
 
         if not texture_type:

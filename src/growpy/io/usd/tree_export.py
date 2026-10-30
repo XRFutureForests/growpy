@@ -101,6 +101,232 @@ def _bark_uv_v_scale(species_name: str | None) -> float:
         return 1.0
 
 
+def radially_scaled_points(
+    model: Any, points: Any, bones_info: list | None, radial_scale: float
+) -> np.ndarray | None:
+    """Per-bone radial scaling of Grove mesh points toward the target DBH.
+
+    Each vertex moves only perpendicular to its own bone's axis (blended across
+    bone-to-bone junctions), so branch radii change and branch positions do not.
+    Full ``radial_scale`` at breast height, blending to 30 % of the correction in
+    the crown. Shared by the USD export (``build_tree_mesh``) and the helios OBJ
+    export so both write the same geometry.
+
+    Returns an ``(N, 3)`` float32 array in the points' own (Z-up) frame, or None
+    when there is nothing to do or no bone data (``radial_scale`` 1, no
+    ``bones_info``, no ``model.point_attribute_bone_id``): callers then use the
+    points unchanged.
+    """
+    if not (
+        radial_scale != 1.0
+        and bones_info
+        and getattr(model, "point_attribute_bone_id", None)
+    ):
+        return None
+    vertex_bone_ids = model.point_attribute_bone_id
+    tree_height = max((p.z for p in points), default=0.0)
+    breast_height = BREAST_HEIGHT_METERS
+    blend_start = breast_height
+    blend_end = max(breast_height + 1.0, tree_height * 0.85)
+    blend_range = blend_end - blend_start
+
+    # Crown retains 30% of the radial correction so the whole
+    # tree thickens/thins proportionally instead of only the base.
+    crown_ratio = 0.3
+    crown_scale = 1.0 + (radial_scale - 1.0) * crown_ratio
+
+    bone_id_offset = min(vertex_bone_ids)
+
+    # Build per-bone axis/start plus direct parent/child links.
+    # Every bone-to-bone connection (trunk-to-branch and
+    # branch-to-sub-branch alike) is handled the same way below —
+    # there is no special-casing of which branch order a bone
+    # belongs to.
+    bone_axes = []
+    bone_starts = []
+    bone_lengths = []
+    bone_parent: list[int | None] = []
+    for bone in bones_info:
+        sp, ep = bone[2], bone[3]
+        dx = ep.x - sp.x
+        dy = ep.y - sp.y
+        dz = ep.z - sp.z
+        length = math.sqrt(dx * dx + dy * dy + dz * dz)
+        bone_lengths.append(length)
+        if length > 1e-6:
+            inv = 1.0 / length
+            bone_axes.append((dx * inv, dy * inv, dz * inv))
+        else:
+            bone_axes.append((0.0, 0.0, 1.0))
+        bone_starts.append((sp.x, sp.y, sp.z))
+        parent_local = bone[1] - bone_id_offset
+        bone_parent.append(
+            parent_local if 0 <= parent_local < len(bones_info) else None
+        )
+
+    # Normalize bone_starts to local space.
+    min_z_idx = min(range(len(bone_starts)), key=lambda i: bone_starts[i][2])
+    origin_x = bone_starts[min_z_idx][0]
+    origin_y = bone_starts[min_z_idx][1]
+    origin_z = bone_starts[min_z_idx][2]
+    bone_starts = [
+        (bx - origin_x, by - origin_y, bz - origin_z)
+        for bx, by, bz in bone_starts
+    ]
+
+    # Invert parent links so each bone knows its direct children.
+    bone_children: dict[int, list[int]] = {}
+    for idx, parent_local in enumerate(bone_parent):
+        if parent_local is not None:
+            bone_children.setdefault(parent_local, []).append(idx)
+
+    # Distance (meters) over which the scaling axis transitions across a
+    # bone-to-bone junction, computed PER BONE. It must exceed a
+    # branch's own radius so surface vertices at the connection follow
+    # the wider parent's surface instead of collapsing toward the
+    # child's own centerline -- but a single fixed distance (previously
+    # 0.5 m) is longer than most bones. Over half of a mature tree's
+    # bones are shorter than that, so the parent-side and child-side
+    # blends overlapped across the whole bone and its own axis was never
+    # used, smearing the scaling direction on every short branch.
+    # Capping at 40% of each bone's length leaves at least the middle
+    # fifth of every bone scaling along its own axis.
+    AXIS_BLEND_MAX = 0.5
+    AXIS_BLEND_LENGTH_FRACTION = 0.4
+    bone_blend_dist = [
+        max(1e-4, min(AXIS_BLEND_MAX, AXIS_BLEND_LENGTH_FRACTION * length))
+        for length in bone_lengths
+    ]
+
+    def _lerp_frame(
+        ax: float,
+        ay: float,
+        az: float,
+        bx: float,
+        by: float,
+        bz: float,
+        target_idx: int,
+        weight: float,
+    ) -> tuple[float, float, float, float, float, float]:
+        """Blend (axis, origin) toward target_idx's own frame by `weight`."""
+        tax, tay, taz = bone_axes[target_idx]
+        tbx, tby, tbz = bone_starts[target_idx]
+        nax = ax + (tax - ax) * weight
+        nay = ay + (tay - ay) * weight
+        naz = az + (taz - az) * weight
+        ln = math.sqrt(nax * nax + nay * nay + naz * naz)
+        if ln > 1e-6:
+            inv_ln = 1.0 / ln
+            nax *= inv_ln
+            nay *= inv_ln
+            naz *= inv_ln
+        nbx = bx + (tbx - bx) * weight
+        nby = by + (tby - by) * weight
+        nbz = bz + (tbz - bz) * weight
+        return nax, nay, naz, nbx, nby, nbz
+
+    # Preallocated typed buffer, filled by index: the scaled path runs
+    # over every vertex (7M+ on an h15 open-grown conifer), and a
+    # Python list of that many Gf.Vec3f is memory this export cannot
+    # afford. Same output, one array instead of N objects.
+    pts_out = np.empty((len(points), 3), dtype=np.float32)
+    for i, p in enumerate(points):
+        local_idx = vertex_bone_ids[i] - bone_id_offset
+        local_idx = max(0, min(local_idx, len(bone_axes) - 1))
+
+        # Height-based scale: radial_scale at breast height,
+        # blending to crown_scale at blend_end. crown_scale
+        # keeps partial correction so branches don't appear
+        # under/oversized relative to the trunk.
+        if p.z <= blend_start:
+            s = radial_scale
+        elif p.z >= blend_end:
+            s = crown_scale
+        else:
+            t = (p.z - blend_start) / blend_range
+            t = t * t * (3.0 - 2.0 * t)
+            s = radial_scale + (crown_scale - radial_scale) * t
+
+        if abs(s - 1.0) < 1e-6:
+            pts_out[i, 0] = p.x
+            pts_out[i, 1] = p.y
+            pts_out[i, 2] = p.z
+            continue
+
+        # Start from this vertex's own bone frame.
+        ax, ay, az = bone_axes[local_idx]
+        bx, by, bz = bone_starts[local_idx]
+
+        # Near this bone's own start: blend toward the parent bone
+        # so vertices right at the connection move with the wider
+        # parent surface instead of snapping to this bone's own
+        # direction.
+        parent_local = bone_parent[local_idx]
+        if parent_local is not None:
+            blend_self = bone_blend_dist[local_idx]
+            vx0, vy0, vz0 = p.x - bx, p.y - by, p.z - bz
+            along = max(0.0, vx0 * ax + vy0 * ay + vz0 * az)
+            if along < blend_self:
+                w = 1.0 - along / blend_self
+                w = w * w * (3.0 - 2.0 * w)
+                ax, ay, az, bx, by, bz = _lerp_frame(
+                    ax, ay, az, bx, by, bz, parent_local, w
+                )
+
+        # Near where a child bone begins: blend toward that child
+        # so the parent surface matches the child's own blended
+        # axis at the same connection. This applies regardless of
+        # whether Grove happened to weight this specific vertex to
+        # the parent or to the child bone — otherwise the two
+        # halves of the same seam scale along different axes and
+        # tear apart once radial_scale != 1.0.
+        children = bone_children.get(local_idx)
+        if children:
+            best_along = None
+            best_child = None
+            best_blend = None
+            for child_idx in children:
+                child_blend = bone_blend_dist[child_idx]
+                cax, cay, caz = bone_axes[child_idx]
+                csx, csy, csz = bone_starts[child_idx]
+                cvx, cvy, cvz = p.x - csx, p.y - csy, p.z - csz
+                cdot = cvx * cax + cvy * cay + cvz * caz
+                along = max(0.0, cdot)
+                if along >= child_blend:
+                    continue
+                perp_x = cvx - cdot * cax
+                perp_y = cvy - cdot * cay
+                perp_z = cvz - cdot * caz
+                perp_dist = math.sqrt(
+                    perp_x * perp_x + perp_y * perp_y + perp_z * perp_z
+                )
+                child_bone = bones_info[child_idx]
+                child_radius = (
+                    child_bone[4] if len(child_bone) >= 5 else child_blend
+                )
+                if perp_dist > child_radius * 2.0:
+                    continue
+                if best_along is None or along < best_along:
+                    best_along = along
+                    best_child = child_idx
+                    best_blend = child_blend
+            if best_child is not None:
+                w = best_along / best_blend
+                w = w * w * (3.0 - 2.0 * w)
+                ax, ay, az, bx, by, bz = _lerp_frame(
+                    ax, ay, az, bx, by, bz, best_child, w
+                )
+
+        vx, vy, vz = p.x - bx, p.y - by, p.z - bz
+        dot = vx * ax + vy * ay + vz * az
+        px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
+        pts_out[i, 0] = p.x + (s - 1.0) * px
+        pts_out[i, 1] = p.y + (s - 1.0) * py
+        pts_out[i, 2] = p.z + (s - 1.0) * pz
+
+    return pts_out
+
+
 def build_tree_mesh(
     model: Any,
     skeleton: Any | None,
@@ -231,212 +457,8 @@ def build_tree_mesh(
         # happened to weight a given seam vertex to.
         #
         # Requires bones_info + vertex bone IDs; skipped otherwise.
-        if (
-            radial_scale != 1.0
-            and bones_info
-            and getattr(model, "point_attribute_bone_id", None)
-        ):
-            vertex_bone_ids = model.point_attribute_bone_id
-            tree_height = max((p.z for p in points), default=0.0)
-            breast_height = BREAST_HEIGHT_METERS
-            blend_start = breast_height
-            blend_end = max(breast_height + 1.0, tree_height * 0.85)
-            blend_range = blend_end - blend_start
-
-            # Crown retains 30% of the radial correction so the whole
-            # tree thickens/thins proportionally instead of only the base.
-            crown_ratio = 0.3
-            crown_scale = 1.0 + (radial_scale - 1.0) * crown_ratio
-
-            bone_id_offset = min(vertex_bone_ids)
-
-            # Build per-bone axis/start plus direct parent/child links.
-            # Every bone-to-bone connection (trunk-to-branch and
-            # branch-to-sub-branch alike) is handled the same way below —
-            # there is no special-casing of which branch order a bone
-            # belongs to.
-            bone_axes = []
-            bone_starts = []
-            bone_lengths = []
-            bone_parent: list[int | None] = []
-            for bone in bones_info:
-                sp, ep = bone[2], bone[3]
-                dx = ep.x - sp.x
-                dy = ep.y - sp.y
-                dz = ep.z - sp.z
-                length = math.sqrt(dx * dx + dy * dy + dz * dz)
-                bone_lengths.append(length)
-                if length > 1e-6:
-                    inv = 1.0 / length
-                    bone_axes.append((dx * inv, dy * inv, dz * inv))
-                else:
-                    bone_axes.append((0.0, 0.0, 1.0))
-                bone_starts.append((sp.x, sp.y, sp.z))
-                parent_local = bone[1] - bone_id_offset
-                bone_parent.append(
-                    parent_local if 0 <= parent_local < len(bones_info) else None
-                )
-
-            # Normalize bone_starts to local space.
-            min_z_idx = min(range(len(bone_starts)), key=lambda i: bone_starts[i][2])
-            origin_x = bone_starts[min_z_idx][0]
-            origin_y = bone_starts[min_z_idx][1]
-            origin_z = bone_starts[min_z_idx][2]
-            bone_starts = [
-                (bx - origin_x, by - origin_y, bz - origin_z)
-                for bx, by, bz in bone_starts
-            ]
-
-            # Invert parent links so each bone knows its direct children.
-            bone_children: dict[int, list[int]] = {}
-            for idx, parent_local in enumerate(bone_parent):
-                if parent_local is not None:
-                    bone_children.setdefault(parent_local, []).append(idx)
-
-            # Distance (meters) over which the scaling axis transitions across a
-            # bone-to-bone junction, computed PER BONE. It must exceed a
-            # branch's own radius so surface vertices at the connection follow
-            # the wider parent's surface instead of collapsing toward the
-            # child's own centerline -- but a single fixed distance (previously
-            # 0.5 m) is longer than most bones. Over half of a mature tree's
-            # bones are shorter than that, so the parent-side and child-side
-            # blends overlapped across the whole bone and its own axis was never
-            # used, smearing the scaling direction on every short branch.
-            # Capping at 40% of each bone's length leaves at least the middle
-            # fifth of every bone scaling along its own axis.
-            AXIS_BLEND_MAX = 0.5
-            AXIS_BLEND_LENGTH_FRACTION = 0.4
-            bone_blend_dist = [
-                max(1e-4, min(AXIS_BLEND_MAX, AXIS_BLEND_LENGTH_FRACTION * length))
-                for length in bone_lengths
-            ]
-
-            def _lerp_frame(
-                ax: float,
-                ay: float,
-                az: float,
-                bx: float,
-                by: float,
-                bz: float,
-                target_idx: int,
-                weight: float,
-            ) -> tuple[float, float, float, float, float, float]:
-                """Blend (axis, origin) toward target_idx's own frame by `weight`."""
-                tax, tay, taz = bone_axes[target_idx]
-                tbx, tby, tbz = bone_starts[target_idx]
-                nax = ax + (tax - ax) * weight
-                nay = ay + (tay - ay) * weight
-                naz = az + (taz - az) * weight
-                ln = math.sqrt(nax * nax + nay * nay + naz * naz)
-                if ln > 1e-6:
-                    inv_ln = 1.0 / ln
-                    nax *= inv_ln
-                    nay *= inv_ln
-                    naz *= inv_ln
-                nbx = bx + (tbx - bx) * weight
-                nby = by + (tby - by) * weight
-                nbz = bz + (tbz - bz) * weight
-                return nax, nay, naz, nbx, nby, nbz
-
-            # Preallocated typed buffer, filled by index: the scaled path runs
-            # over every vertex (7M+ on an h15 open-grown conifer), and a
-            # Python list of that many Gf.Vec3f is memory this export cannot
-            # afford. Same output, one array instead of N objects.
-            pts_out = np.empty((len(points), 3), dtype=np.float32)
-            for i, p in enumerate(points):
-                local_idx = vertex_bone_ids[i] - bone_id_offset
-                local_idx = max(0, min(local_idx, len(bone_axes) - 1))
-
-                # Height-based scale: radial_scale at breast height,
-                # blending to crown_scale at blend_end. crown_scale
-                # keeps partial correction so branches don't appear
-                # under/oversized relative to the trunk.
-                if p.z <= blend_start:
-                    s = radial_scale
-                elif p.z >= blend_end:
-                    s = crown_scale
-                else:
-                    t = (p.z - blend_start) / blend_range
-                    t = t * t * (3.0 - 2.0 * t)
-                    s = radial_scale + (crown_scale - radial_scale) * t
-
-                if abs(s - 1.0) < 1e-6:
-                    pts_out[i, 0] = p.x
-                    pts_out[i, 1] = p.y
-                    pts_out[i, 2] = p.z
-                    continue
-
-                # Start from this vertex's own bone frame.
-                ax, ay, az = bone_axes[local_idx]
-                bx, by, bz = bone_starts[local_idx]
-
-                # Near this bone's own start: blend toward the parent bone
-                # so vertices right at the connection move with the wider
-                # parent surface instead of snapping to this bone's own
-                # direction.
-                parent_local = bone_parent[local_idx]
-                if parent_local is not None:
-                    blend_self = bone_blend_dist[local_idx]
-                    vx0, vy0, vz0 = p.x - bx, p.y - by, p.z - bz
-                    along = max(0.0, vx0 * ax + vy0 * ay + vz0 * az)
-                    if along < blend_self:
-                        w = 1.0 - along / blend_self
-                        w = w * w * (3.0 - 2.0 * w)
-                        ax, ay, az, bx, by, bz = _lerp_frame(
-                            ax, ay, az, bx, by, bz, parent_local, w
-                        )
-
-                # Near where a child bone begins: blend toward that child
-                # so the parent surface matches the child's own blended
-                # axis at the same connection. This applies regardless of
-                # whether Grove happened to weight this specific vertex to
-                # the parent or to the child bone — otherwise the two
-                # halves of the same seam scale along different axes and
-                # tear apart once radial_scale != 1.0.
-                children = bone_children.get(local_idx)
-                if children:
-                    best_along = None
-                    best_child = None
-                    best_blend = None
-                    for child_idx in children:
-                        child_blend = bone_blend_dist[child_idx]
-                        cax, cay, caz = bone_axes[child_idx]
-                        csx, csy, csz = bone_starts[child_idx]
-                        cvx, cvy, cvz = p.x - csx, p.y - csy, p.z - csz
-                        cdot = cvx * cax + cvy * cay + cvz * caz
-                        along = max(0.0, cdot)
-                        if along >= child_blend:
-                            continue
-                        perp_x = cvx - cdot * cax
-                        perp_y = cvy - cdot * cay
-                        perp_z = cvz - cdot * caz
-                        perp_dist = math.sqrt(
-                            perp_x * perp_x + perp_y * perp_y + perp_z * perp_z
-                        )
-                        child_bone = bones_info[child_idx]
-                        child_radius = (
-                            child_bone[4] if len(child_bone) >= 5 else child_blend
-                        )
-                        if perp_dist > child_radius * 2.0:
-                            continue
-                        if best_along is None or along < best_along:
-                            best_along = along
-                            best_child = child_idx
-                            best_blend = child_blend
-                    if best_child is not None:
-                        w = best_along / best_blend
-                        w = w * w * (3.0 - 2.0 * w)
-                        ax, ay, az, bx, by, bz = _lerp_frame(
-                            ax, ay, az, bx, by, bz, best_child, w
-                        )
-
-                vx, vy, vz = p.x - bx, p.y - by, p.z - bz
-                dot = vx * ax + vy * ay + vz * az
-                px, py, pz = vx - dot * ax, vy - dot * ay, vz - dot * az
-                pts_out[i, 0] = p.x + (s - 1.0) * px
-                pts_out[i, 1] = p.y + (s - 1.0) * py
-                pts_out[i, 2] = p.z + (s - 1.0) * pz
-
+        pts_out = radially_scaled_points(model, points, bones_info, radial_scale)
+        if pts_out is not None:
             usd_points = Vt.Vec3fArray.FromNumpy(pts_out)
             del pts_out
         else:

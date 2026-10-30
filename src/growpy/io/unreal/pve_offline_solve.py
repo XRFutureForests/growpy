@@ -54,10 +54,14 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CompoundLayout",
+    "LeaderSpan",
     "SolvedDensity",
     "TreeStats",
     "compound_layout",
     "forrester_target",
+    "leader_layer_distributor",
+    "leader_span",
+    "leader_tier_index",
     "quantile_targets",
     "solve_flat",
     "solve_graded",
@@ -96,6 +100,9 @@ class SolvedDensity:
     # Instances a graded ladder's tip-cap layer adds (LadderSpec.tip_tier):
     # one per branch of the main layer's generations, at the branch end.
     tip_cap_instances: int = 0
+    # Instances the leader layer adds (LadderSpec.leader_spacing_m): sprays
+    # along the trunk between its topmost first-order branch and the tip.
+    leader_instances: int = 0
 
     @property
     def error(self) -> float:
@@ -154,6 +161,98 @@ def tree_stats(growth_json: Path | str, profile_mean: float) -> TreeStats:
         points=len(positions),
         height_m=float(max(q[1] for q in positions) - base),
         longest_branch_m=max(lengths) if lengths else 0.0,
+    )
+
+
+@dataclass(frozen=True)
+class LeaderSpan:
+    """The leader: the trunk above the attachment of its topmost first-order branch.
+
+    ``start_along`` is that attachment as a fraction of the trunk's length, the
+    unit ``DistributorSpec.relative_start`` is in; ``length_m`` runs from it to
+    the trunk tip along the trunk, and ``trunk_m`` is the trunk's whole length.
+    """
+
+    start_along: float
+    length_m: float
+    trunk_m: float
+
+
+def leader_span(growth_json: Path | str) -> LeaderSpan | None:
+    """Where the leader starts and how long it is; ``None`` for a trunk with no branches.
+
+    The trunk is the first primitive and a first-order branch is any branch whose
+    parent is the trunk, so this needs only the topology every growth JSON
+    carries. A branch attaches at the trunk point nearest its first point (Grove
+    attaches at trunk nodes), measured along the trunk.
+    """
+    data = json.loads(Path(growth_json).read_text(encoding="utf-8"))
+    positions = data["points"]["positions"]
+    primitives = data["primitives"]["points"]
+    attrs = data["primitives"]["attributes"]
+    numbers = attrs["branchNumber"]["values"]
+    parents = attrs["branchParentNumber"]["values"]
+    trunk = primitives[0]
+    along = [0.0]
+    for a, b in zip(trunk, trunk[1:], strict=False):
+        along.append(along[-1] + math.dist(positions[a], positions[b]))
+    trunk_m = along[-1]
+    if trunk_m <= 1e-6:
+        return None
+    attach = None
+    for i, points in enumerate(primitives):
+        if i == 0 or not points or parents[i] != numbers[0]:
+            continue
+        nearest = min(
+            range(len(trunk)),
+            key=lambda k: math.dist(positions[trunk[k]], positions[points[0]]),
+        )
+        attach = along[nearest] if attach is None else max(attach, along[nearest])
+    if attach is None:
+        return None
+    return LeaderSpan(
+        start_along=attach / trunk_m,
+        length_m=trunk_m - attach,
+        trunk_m=trunk_m,
+    )
+
+
+def leader_tier_index(names: Sequence[str], ladder: LadderSpec) -> int | None:
+    """The prototype the leader layer places: the first ``leader_tier`` suffix the
+    palette has exactly once, or ``None`` when it has none of them."""
+    for suffix in ladder.leader_tier:
+        matches = [i for i, n in enumerate(names) if n.endswith(suffix)]
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def leader_layer_distributor(
+    base: DistributorSpec, ladder: LadderSpec, span: LeaderSpan | None
+) -> DistributorSpec | None:
+    """The leader layer's distributor, or ``None`` when the leader gets no sprays.
+
+    ``n`` samples, evenly spaced, each in the middle of its own stretch of the
+    leader: the first half a step above the topmost branch and the last half a
+    step below the tip, where the apex layer already puts its part. ``n`` is the
+    leader's length over ``leader_spacing_m``, at least two (one sample at
+    density 1 would land on the tip, under the apex); a leader shorter than one
+    spacing gets none. Generation 1 only, ungraded, and its own random seed so it
+    does not draw the apex part's randoms at the same loop index.
+    """
+    spacing = ladder.leader_spacing_m
+    if spacing <= 0.0 or span is None or span.length_m < spacing:
+        return None
+    n = max(2, round(span.length_m / spacing))
+    half = span.length_m / (2.0 * n)
+    return dataclasses.replace(
+        base,
+        branch_density=n,
+        relative_start=(span.trunk_m - span.length_m + half) / span.trunk_m,
+        relative_end=(span.trunk_m - half) / span.trunk_m,
+        generation_band=(1, 1),
+        conditions=None,
+        random_seed=base.random_seed + 1,
     )
 
 
@@ -222,31 +321,37 @@ def solve_flat(
     mean_prototype_area_m2: float,
     target_m2: float,
     max_instances: int | None = None,
+    height_floor: float = 0.0,
 ) -> SolvedDensity:
     """Density for a flat palette: every instance carries the palette's mean area.
 
     ``max_instances`` caps the solve below the target when the target would
     need more instances than one Nanite assembly (or one click) can carry;
     the result then says ``capped`` and lands short of the target.
+
+    ``height_floor`` is a species' crown floor as a fraction of the tree's
+    height: a placement below it picks the graph's gate mask and spawns
+    nothing, so it is neither counted nor paid for here. The sample is the
+    Height condition's, min-max normalised over the plant's points, which is
+    what the gate in the graph reads.
     """
     from growpy.io.unreal.pve_distributor_model import (
-        expected_scale_squared_factor,
+        expected_area_factor,
         simulate_placements,
     )
 
     # A randomised instance scale multiplies leaf area by E[scale^2], not by
     # its mean; 1.0 at the identity range, so this is inert for every graph
     # solved before XRFF-467.
-    area_per_instance = mean_prototype_area_m2 * expected_scale_squared_factor(base)
+    area_per_instance = mean_prototype_area_m2 * expected_area_factor(base)
     cache: dict[int, int] = {}
 
     def instances_at(density: int) -> int:
         if density not in cache:
-            cache[density] = len(
-                simulate_placements(
-                    growth_json, dataclasses.replace(base, branch_density=density)
-                )
+            placements = simulate_placements(
+                growth_json, dataclasses.replace(base, branch_density=density)
             )
+            cache[density] = sum(1 for p in placements if p.height >= height_floor)
         return cache[density]
 
     density = _bisect_density(
@@ -290,8 +395,8 @@ def solve_graded(
     and is required for a tip cap.
     """
     from growpy.io.unreal.pve_distributor_model import (
+        expected_area_factor,
         expected_palette_mix,
-        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -303,7 +408,7 @@ def solve_graded(
     )
     # Randomised instance scale: leaf area goes as E[scale^2], 1.0 at the
     # identity range (XRFF-467).
-    scale_sq = expected_scale_squared_factor(base)
+    scale_sq = expected_area_factor(base)
     largest = max(range(len(areas)), key=lambda i: areas[i])
     apex_area = areas[largest] * scale_sq if ladder.apex else 0.0
     cap_instances = 0
@@ -322,8 +427,24 @@ def solve_graded(
         )
         cap_instances = len(simulate_placements(growth_json, cap))
         cap_area = cap_instances * areas[cap_idx] * scale_sq
-    fixed_instances = cap_instances + (1 if ladder.apex else 0)
-    fixed_area = apex_area + cap_area
+    leader_instances = 0
+    leader_area = 0.0
+    leader = (
+        leader_layer_distributor(base, ladder, leader_span(growth_json))
+        if ladder.apex
+        else None
+    )
+    if leader is not None:
+        leader_idx = None if names is None else leader_tier_index(names, ladder)
+        if leader_idx is None:
+            raise ValueError(
+                "leader_spacing_m needs the prototype names and a leader_tier "
+                f"the palette has, got {ladder.leader_tier!r}"
+            )
+        leader_instances = len(simulate_placements(growth_json, leader))
+        leader_area = leader_instances * areas[leader_idx] * scale_sq
+    fixed_instances = cap_instances + leader_instances + (1 if ladder.apex else 0)
+    fixed_area = apex_area + cap_area + leader_area
     cache: dict[int, tuple[int, tuple[float, ...], float]] = {}
 
     def evaluate(density: int) -> tuple[int, tuple[float, ...], float]:
@@ -368,6 +489,7 @@ def solve_graded(
         instance_area_m2=area / instances if instances else None,
         capped=capped,
         tip_cap_instances=cap_instances,
+        leader_instances=leader_instances,
     )
 
 
@@ -400,8 +522,8 @@ def compound_layout(
     area from the expected mix; neither is solved to a target.
     """
     from growpy.io.unreal.pve_distributor_model import (
+        expected_area_factor,
         expected_palette_mix,
-        expected_scale_squared_factor,
         simulate_placements,
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
@@ -433,7 +555,7 @@ def compound_layout(
     fill = dataclasses.replace(fill_probe, conditions=conditions)
     mix = expected_palette_mix(fill_placements, palette, conditions)
     # Randomised instance scale: area goes as E[scale^2] (XRFF-467).
-    scale_sq = expected_scale_squared_factor(base)
+    scale_sq = expected_area_factor(base)
     area = sum(m * a for m, a in zip(mix, fill_areas, strict=True)) * scale_sq
 
     layers: list[FoliageLayer] = []

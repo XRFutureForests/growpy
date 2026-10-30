@@ -12,6 +12,8 @@ import json
 import logging
 from typing import Any
 
+from .pve_asset_script import DEFAULT_MASTER_MATERIAL
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +44,7 @@ def _build_material_script(
     """
     if parent_material_path is None:
         # Fallback only. Callers should pass the configured [unreal] db_path
-        # (the reusable-template dir, e.g. /Game/Templates) -- see
+        # (the reusable-template dir, e.g. /Game/XRFF/Forest/Data) -- see
         # generate_unreal_import_script. This default expects the master
         # material duplicated into the project because the plugin's own content
         # path is fragile across UE versions/mount state
@@ -92,6 +94,10 @@ print("=" * 60)
 IMPORT_PATH = "{project_path}"
 MATERIALS_PATH = IMPORT_PATH + "/Materials"
 PARENT_MATERIAL_PATH = "{parent_material_path}"
+# The plugin's own master, which every cloned reference instance is parented
+# to. Used when the project keeps no copy at PARENT_MATERIAL_PATH (XRFF_Twin
+# has none), instead of aborting the batch.
+PLUGIN_MATERIAL_PATH = "{DEFAULT_MASTER_MATERIAL}"
 
 # Species color data sourced from config/tree_asset_lookup.csv (linear RGBA).
 SPECIES_COLORS = {colors_json}
@@ -140,7 +146,13 @@ asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 editor_asset_lib = unreal.EditorAssetLibrary
 mel = unreal.MaterialEditingLibrary
 
-parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
+parent_mat = None
+if editor_asset_lib.does_asset_exist(PARENT_MATERIAL_PATH):
+    parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
+elif editor_asset_lib.does_asset_exist(PLUGIN_MATERIAL_PATH):
+    print(f"No MA_Foliage_Trees at {{PARENT_MATERIAL_PATH}}; using the plugin's")
+    PARENT_MATERIAL_PATH = PLUGIN_MATERIAL_PATH
+    parent_mat = editor_asset_lib.load_asset(PARENT_MATERIAL_PATH)
 if parent_mat is None:
     unreal.log_error(
         f"Parent material not found: {{PARENT_MATERIAL_PATH}} -- aborting."
@@ -253,7 +265,7 @@ def _create_mic(name, parent, sub_path="", role=None):
         # Only a factory-built instance needs its parent assigned. A clone
         # already points at the master its reference used -- the PVE plugin's
         # /ProceduralVegetationEditor/.../MA_Foliage_Trees. Re-pointing it at
-        # the project's same-named copy under /Game/Templates silently swaps
+        # the project's same-named copy in the schema folder silently swaps
         # the graph underneath: every parameter name still resolves, so the
         # instances compare identical, but the tree renders violet.
         try:
@@ -426,18 +438,22 @@ for ad in all_assets:
         continue
     mesh_assets.append((ad, pkg, cls))
 
-    # Derive species standardized-name from path
+    # Derive the species standardized-name from the path. The layout is sorted
+    # by TYPE, so the species is not the first segment any more:
+    #   Catalog/<species>/...   one finished tree
+    #   Foliage/<asset>/...     shared twig or spray -- species is in the NAME,
+    #                           because one twig can serve several species
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Instances":
+    if parts and parts[0] == "Foliage":
         name = str(ad.asset_name)
         for token in ("_foliage_", "_twigs_combined_", "_foliage"):
             idx = name.find(token)
             if idx > 0:
                 species_found.add(name[:idx])
                 break
-    elif parts:
-        species_found.add(parts[0])
+    elif len(parts) > 1 and parts[0] == "Catalog":
+        species_found.add(parts[1])
 
 print(f"Found {{len(mesh_assets)}} mesh assets covering {{len(species_found)}} species")
 
@@ -463,12 +479,12 @@ for ad in all_assets:
 
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Instances":
+    if parts and parts[0] == "Foliage":
         # One twig serves several species, so a leaf texture belongs to all of
         # them, not one.
         owners = _species_from_instances_name(str(ad.asset_name))
-    elif parts:
-        owners = [parts[0]]
+    elif len(parts) > 1 and parts[0] == "Catalog":
+        owners = [parts[1]]
     else:
         owners = []
     owners = [sp for sp in owners if sp in species_found]
@@ -513,7 +529,9 @@ if parent_mat is not None:
         bark_rgba = colors.get("bark")
         tex_bucket = species_textures.get(species, {{}})
         if leaf_rgba is not None:
-            mic_l = _create_mic(f"MI_{{species}}_Leaves", parent_mat, role="leaves")
+            mic_l = _create_mic(
+                f"MI_{{species}}_Leaves", parent_mat, sub_path=species, role="leaves"
+            )
             if mic_l is not None:
                 # A cloned instance already carries a rendering configuration
                 # that works; overriding tints and scalars on top of it is what
@@ -541,7 +559,9 @@ if parent_mat is not None:
                 editor_asset_lib.save_loaded_asset(mic_l)
                 entry["leaves"] = mic_l
         if bark_rgba is not None:
-            mic_t = _create_mic(f"MI_{{species}}_Trunk", parent_mat, role="trunk")
+            mic_t = _create_mic(
+                f"MI_{{species}}_Trunk", parent_mat, sub_path=species, role="trunk"
+            )
             if mic_t is not None:
                 if not _is_cloned(mic_t):
                     _set_static_switch(mic_t, "DefaultLit Trunk", True)

@@ -14,7 +14,7 @@ module wires into every generated graph is deprecated in UE 5.8 and
 the old ``hasattr`` guard does not catch it. The generated script now
 aborts with a clear error on UE >= 5.8 instead of silently building
 non-functional graphs. See XRFF-250 and
-docs/05-PRESENTATION-TIER/pve-node-reference.md for the retargeting
+docs/90-DEEP-DIVES/05-PRESENTATION-TIER/pve-node-reference.md for the retargeting
 options (Growth Data JSON Importer / Grower Presets).
 
 Creates one ProceduralVegetation graph per species+scene directory. Each
@@ -58,6 +58,8 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+
+from growpy.config.ue_layout import TREES_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -612,7 +614,7 @@ main()
 def generate_pve_graph_script(
     output_dir: Path,
     forest_root: Path,
-    import_base: str = "/Game/Assets/TheGrove",
+    import_base: str = TREES_ROOT,
     species_twig_map: dict | None = None,
 ) -> Path:
     """Write a UE Python script that creates combined PVE presets and graphs.

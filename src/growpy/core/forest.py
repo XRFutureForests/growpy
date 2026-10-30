@@ -563,8 +563,15 @@ def _simulate_height_threshold_mode(
 
     # Build set of target milestones per tree (for early-stop check), bounded by
     # each species' own ceiling.  Species without a ceiling run to plateau/cap.
+    # Only the exported trees count: with real neighbours ([surround]
+    # neighbours > 0) the ring trees are shaded and reach a milestone long
+    # after the centre -- oak's r10 centre captured h25 at cycle 101 and the
+    # run still went to the 160-cycle cap waiting for its neighbours
+    # (2026-09-18). Nothing of theirs is exported, so they never gate the
+    # stop; capture-at-crossing keeps the exported stages identical.
+    export_tree_ids = quality_params.get("export_tree_ids")
     target_milestones: dict[tuple[str, int], set] = {}
-    for grove_idx, (_grove, species_name, tree_count, _fids, *_r) in enumerate(forest):
+    for grove_idx, (_grove, species_name, tree_count, fids, *_r) in enumerate(forest):
         ceiling = species_ceiling.get(species_name, 0.0)
         if ceiling <= 0:
             continue
@@ -575,6 +582,8 @@ def _simulate_height_threshold_mode(
             milestones.add(m)
             m += height_interval
         for tree_idx in range(tree_count):
+            if export_tree_ids is not None and fids[tree_idx] not in export_tree_ids:
+                continue
             target_milestones[(species_name, offset + tree_idx)] = milestones
 
     # Count total milestone captures for progress reporting
@@ -584,12 +593,16 @@ def _simulate_height_threshold_mode(
     prev_max_heights: dict[tuple[str, int], float] = {}
     cycles_without_growth = 0
 
-    # Shell freeze heights per species ([surround] freeze_height and its
-    # per-species table), and the groves whose shell has already been fixed.
+    # Shell freeze heights per grove ([surround] freeze_height, its per-species
+    # table and the per-species-per-radius one), and the groves whose shell
+    # has already been fixed. A forest entry is (grove, species, count, fids,
+    # radius); the radius is what the per-radius table keys on.
     cfg = get_config()
     freeze_heights = {
-        species_name: cfg.get_surround_freeze_height(species_name)
-        for _g, species_name, *_rest in forest
+        grove_idx: cfg.get_surround_freeze_height(
+            species_name, _rest[2] if len(_rest) > 2 and _rest[2] else None
+        )
+        for grove_idx, (_g, species_name, *_rest) in enumerate(forest)
     }
     shell_frozen: set[int] = set()
 
@@ -667,7 +680,7 @@ def _simulate_height_threshold_mode(
                 # shell folds every conifer between 15 and 20 m (three seeds,
                 # identical outcome, 2026-09-15); with the wall low enough to
                 # be overtopped the static shell runs the full ladder (A92).
-                freeze = freeze_heights.get(species_name, 0.0)
+                freeze = freeze_heights.get(grove_idx, 0.0)
                 if (
                     freeze > 0
                     and grove_idx not in shell_frozen

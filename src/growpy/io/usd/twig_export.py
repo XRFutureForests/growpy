@@ -656,6 +656,10 @@ def _gather_texture_candidates(blend_dir, standardized_name, species, metadata):
         if Path(d).exists():
             for ext in texture_extensions:
                 files.extend(Path(d).glob(f"*{ext}"))
+    # The packed PVE maps (growpy-pack-pve-textures) share the folder and are
+    # outputs: the packer once took its own previous _pve_normal for the twig's
+    # normal map (2026-09-25).
+    files = [f for f in files if "_pve_" not in f.name]
 
     # Build base name up to 'twig'
     parts = []

@@ -5,6 +5,139 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-30
+
+### 2026-10-30 — pylometree pinned to its release
+
+#### Changed
+
+- **pylometree is pinned to the `v0.4.0` release tag** instead of commit `d67e8bf` on its `dev`
+  branch. v0.4.0 is the first release carrying the Forrester leaf-area equations.
+
+### 2026-10-28 — Structure evaluation and the survey move to their own repos
+
+#### Removed
+
+- **`growpy.structure` and the 16 structure tools moved to the internal repo tree-structure**
+  (owner decision, history kept). They are QSM standardisation, descriptors, the reference
+  store `data/input/structure_reference/`, score, gate, adequacy, point-cloud metrics,
+  synthetic scans, prototypes, the branching model and the gallery. Their commands are now
+  `tree-structure-*` (for example `growpy-qsm-gate` → `tree-structure-gate`) and run in the
+  `tree-structure` conda env. No released version contained them (v0.5.0 predates them).
+- **`web/expert-survey/` moved to the internal repo tree-survey.**
+
+#### Changed
+
+- **`growpy-structure-regrow` grows only.** Arms go to `data/output/regrow/<species>/<arm>/`.
+  Score them with `tree-structure-score-arm <arm dir>` in the tree-structure env. `--score-only`
+  and `--reference` are gone.
+
+### 2026-10-28 — Tree look survey
+
+#### Added
+
+- **`web/expert-survey/`: a one-tree rating app with a growing item set (XRFF-593).** One
+  card at a time shows a leaf-off skeleton, its species and height, and a 1.75 m person drawn to scale.
+  The rater answers one question on a 1–5 scale: does it look right for that species grown
+  in a stand? The tree's source (scanned or generated, and which) is shown right after the
+  vote, with optional "what looked off" flags. There are no accounts: a device id stays in the
+  browser, and invitation keys are set with `SURVEY_KEYS`.
+  - `add_items.py` draws trees into an item store that is not in git. Real and generated
+    trees are balanced per species and height class. Real trees whose stem would look broken
+    on the card are skipped. Rerunning adds only what is missing, and the server picks up new
+    trees without a restart.
+  - `analyse.py` centres ratings per rater. It reports the real-vs-generated AUC per species
+    and per source group, and gives each tree a verdict: reference, implausible or open.
+- **`tree_icon(..., figure_m=...)`** adds a person of that height at the tree's scale and
+  draws line widths true to the frame. Catalog icons and galleries are unchanged.
+
+### 2026-10-26 — PVE Bone Reduction per species
+
+#### Added
+
+- **PVE Bone Reduction in the catalog graphs.** `[pve_calibration]
+  bone_reduction_strength_per_species` (0-1) sets it per species, for species with a block and
+  for those built from the defaults alike; a block or the defaults can also carry
+  `bone_reduction_strength`. Above 0 the graph builder wires a Bone Reduction node between
+  MeshBuilder and the foliage distributor, Epic's order on the MegaPlants pines (strength
+  0.55-0.70 there). The node rebuilds only the bone data of the finished mesh, so geometry and
+  twig placement stay as they are; the wind deformation gets coarser. Shipped (owner decision):
+  0.7 for European oak, silver fir, Norway spruce and Douglas fir, 0.6 for European beech;
+  estimated from the catalog growth JSONs that keeps about 56 % of an oak's bones, 51 % of a
+  fir's or spruce's, 40 % of a Douglas fir's and 78 % of a beech's. Why: a scene's distinct
+  wind-skinned meshes share one transform buffer (16 entries per bone, 2^22 in all), and the
+  ECOSENSE plot used 85-101 % of it; meshes past it render in their rest pose. A re-export
+  applies it. `SpeciesCalibration.bone_reduction_strength`,
+  `TreeChainSpec.bone_reduction_strength`.
+
+### 2026-10-26 — bark instances can follow a separate master
+
+#### Added
+
+- **`growpy-pve-assets --bark-master-material`.** The bark instances are parented to (and read
+  back against) this material when it is given; the leaf materials and the clone-source check
+  stay on `--master-material`. XRFF_Twin parents the bark to its copy of `MA_Foliage_Trees` that
+  thins or thickens the trunk to the database DBH, and a re-run without the flag would put the
+  bark back on the plugin master. `PVEAssetPlan.bark_master_material`; empty = the master.
+
+### 2026-10-25 — evergreen conifers keep out of the season
+
+#### Changed
+
+- **`growpy-pve-assets`: the leaf material's `Seasons` switch follows the habit.** Broadleaves
+  and larch keep it on, evergreen conifers (spruce, fir, pine, Douglas fir) get it off, so the
+  foliage actor's autumn colouring no longer turns their needles yellow and brown. The
+  generated script sets the switch instead of keeping the cloned sample's, and its read-back
+  check expects the habit's value. `SpeciesAssetSpec.seasons` gives it per species.
+
+### 2026-10-23 — Unreal layout per project (XRFF_Twin)
+
+#### Added
+
+- **`[unreal] pcg_trees_graph`**: the PCG graph `growpy-pve-catalog` points at `DT_TreeCatalog`.
+  Its path differs per project, so it is config like `db_path`; the default stays the old
+  XRFFL_Dev path. `growpy-pve-catalog` now takes the schema folder, the catalog and the graph
+  from config (`db_path`, `pve_content_root`, `pcg_trees_graph`); `--catalog` and `--pcg-graph`
+  still win. The repository's `config/unreal.toml` points at the reference project XRFF_Twin
+  (`/Game/00_XRFF/20_DigitalTwinDatabase`, `/Game/00_XRFF/30_Forest/PCG/Trees/PCG_Trees`).
+
+#### Fixed
+
+- **USD-route material batch without `MA_Foliage_Trees`.** When the project keeps no copy at
+  `db_path` (XRFF_Twin has none), the batch parents to the PVE plugin's master instead of
+  aborting; it reports "Parent material not found" only when neither exists.
+
+### 2026-10-21 — static twins for the surround forest
+
+#### Added
+
+- **`[unreal] pve_static_twins`** (on in `config/unreal.toml`). Every PVE chain gets a second
+  Export node on the same distributor, `export_mesh_type = STATIC_MESH`, writing `SM_<name>`
+  (`static_twin_name`: `SK_` → `SM_`) to `<pve_content_root>/CatalogStatic/<species>`. One
+  click exports both meshes, and the two cannot drift apart. The plot trees stay skinned for
+  wind. The UE surround forest spawns the static twins, because skinned instances cost CPU per
+  component and per instance: in XRFF_Twin a 180 k-tree skinned ring added 15–35 ms game
+  thread and its static twin about 1 ms. The coverage manifest records each twin as
+  `static_asset`; `expected_mesh_count` still counts the skinned meshes. Oak static builds run
+  16–18 min each, so allow for the doubled export work.
+
+#### Fixed
+
+- **Bark normal maps import as `TC_MASKS`, not `TC_NORMALMAP`.** `MA_Foliage_Trees`' trunk
+  function reads ambient occlusion from the Normal map's B channel (MegaPlants ships its bark as
+  `_NAH`: normal, AO, height). BC5 normal-map compression keeps only R/G, so B read 0, the bark
+  received no indirect light and every shaded trunk rendered black. Both import paths
+  (`unreal_texture_script`, `pve_asset_script.import_bark_texture`) now use Masks; the Grove
+  normal's B (the normal's Z, mean 0.96–0.99) acts as near-neutral AO. Existing projects: re-run
+  the PVE asset step, which re-applies the setting and then recompiles each bark instance. A
+  compression change alone is not enough: until the instance is recompiled
+  (`update_material_instance`), its trunks render the grey placeholder checker.
+- **Leaf colour maps keep their coverage in every mip.** The packed twig Base Color now imports
+  with `do_scale_mips_for_alpha_coverage` at the master's 0.333 opacity clip. Without it the
+  averaged alpha of a large leaf stayed above the clip in the lower mips, and from about 8 m
+  every leaf card rendered as an opaque square, so the canopy read as blocks. Re-running the PVE
+  asset step re-imports the maps and recompiles the foliage instances.
+
 ## [0.5.0] - 2026-09-17
 
 ### 2026-09-16 — every exported asset carries a TAMF record
@@ -91,7 +224,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 No entries were written during this period; this block summarises it by theme. Commit
 subjects on `dev` carry the detail; the measurements are in the XR Future Forests Lab
-knowledge hub (`04-LOGIC-TIER/growpy-surround-density-calibration`,
+knowledge hub (`90-DEEP-DIVES/04-LOGIC-TIER/growpy-surround-density-calibration`,
 `growpy-crown-density-ratchet`) and on Linear XRFF-320 / XRFF-356 / XRFF-390.
 
 #### Changed — the dataset matrix

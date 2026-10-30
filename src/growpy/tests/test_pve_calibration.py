@@ -150,9 +150,12 @@ class TestShippedCalibration:
         assert conifer.fullness == 4.0 and broadleaf.fullness == 6.0
         assert conifer.relative_start == 0.0 and broadleaf.relative_start == 0.85
         assert broadleaf.pose.axil_angle == 70.0
-        # Beech keeps its own x2 / 0.4 block beside the R4 defaults.
+        # Beech keeps its own block beside the R4 defaults: x1.5 since the
+        # 2026-09-21 thinning (x2 before), start 0.4, floored at r07/r10.
         beech = shipped.for_species("european_beech")
-        assert beech.fullness == 2.0 and beech.relative_start == 0.4
+        assert beech.fullness == 1.5 and beech.relative_start == 0.4
+        assert beech.crown_floor == {"r07": 0.4, "r10": 0.3}
+        assert broadleaf.crown_floor == {}
         assert conifer.ladder is not None and broadleaf.ladder is not None
         assert broadleaf.pose.jitter and not conifer.pose.jitter
         assert conifer.fraction == 0.06
@@ -367,9 +370,38 @@ class TestShippedCalibration:
             main_generation_start=2,
             # the three-fingered spray on every branch end (2026-09-16)
             tip_tier="_h",
+            # sprays along the leader (2026-10-05, XRFF-524)
+            leader_spacing_m=0.3,
+            leader_tier=("_h", "lateral_c"),
         )
         assert shipped.for_species("european_beech").ladder is None
         assert _species().ladder is None
+
+    def test_the_conifers_foliate_the_leader_and_a_broadleaf_does_not(self, shipped):
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        pine = shipped.for_species("scots_pine", habit="conifer")
+        oak = shipped.for_species("european_oak", habit="broadleaf")
+        # the fir family has `_h`, the pine its lateral spray: first match wins
+        for conifer in (spruce, pine):
+            assert conifer.ladder.leader_spacing_m == 0.3
+            assert conifer.ladder.leader_tier == ("_h", "lateral_c")
+        assert oak.ladder.leader_spacing_m == 0.0
+        assert oak.ladder.leader_tier == ()
+
+    def test_leader_tier_takes_one_suffix_or_a_list(self):
+        from growpy.config.pve_calibration import _ladder
+
+        assert _ladder({"leader_tier": "_h"}).leader_tier == ("_h",)
+        assert _ladder({"leader_tier": ["_h", "lateral_c"]}).leader_tier == (
+            "_h",
+            "lateral_c",
+        )
+        assert _ladder({"leader_tier": ""}).leader_tier == ()
+        assert _ladder({}).leader_tier == ()
+
+    def test_a_negative_leader_spacing_is_refused(self):
+        with pytest.raises(ValueError, match="leader_spacing_m"):
+            LadderSpec(leader_spacing_m=-0.1)
 
     def test_conifer_defaults_carry_the_tip_tier_and_broadleaf_do_not(self, shipped):
         # Spruce and douglas share the fir twig, so they inherit the cap via
@@ -383,6 +415,44 @@ class TestShippedCalibration:
         assert _ladder({"tip_tier": ""}).tip_tier is None
         assert _ladder({}).tip_tier is None
         assert _ladder({"tip_tier": "_h"}).tip_tier == "_h"
+
+
+class TestHeightKeyedOverrides:
+    """XRFF-475 / XRFF-474: per-tree start and the base-scale ceiling."""
+
+    def test_broadleaf_defaults_ramp_the_start_and_cap_the_scale(self, shipped):
+        oak = shipped.for_species("european_oak", habit="broadleaf")
+        assert oak.relative_start_by_height == ((11.0, 0.85), (25.0, 0.35))
+        assert oak.max_base_scale == 1.5
+        # h05-h10 keep what they were judged right at; h25 spreads.
+        assert oak.relative_start_for(5.0) == 0.85
+        assert oak.relative_start_for(10.0) == 0.85
+        assert oak.relative_start_for(18.0) == pytest.approx(0.6)
+        assert oak.relative_start_for(25.0) == 0.35
+        assert oak.relative_start_for(30.0) == 0.35
+        # Conifers and beech are untouched.
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        beech = shipped.for_species("european_beech")
+        for cal in (spruce, beech):
+            assert cal.relative_start_by_height is None
+            assert cal.max_base_scale == 1.0
+            assert cal.relative_start_for(25.0) == cal.relative_start
+
+    def test_no_ramp_means_the_flat_start(self):
+        assert _species(relative_start=0.3).relative_start_for(25.0) == 0.3
+
+    def test_a_ramp_needs_two_ascending_keys_in_range(self):
+        with pytest.raises(ValueError, match="strictly ascending"):
+            _species(relative_start_by_height=((25.0, 0.5), (10.0, 0.85)))
+        with pytest.raises(ValueError, match=">= 2 keys"):
+            _species(relative_start_by_height=((10.0, 0.85),))
+        with pytest.raises(ValueError, match=r"\[0, 1\)"):
+            _species(relative_start_by_height=((10.0, 0.85), (25.0, 1.0)))
+
+    def test_max_base_scale_is_a_ceiling_at_or_above_one(self):
+        assert _species(max_base_scale=2.0).max_base_scale == 2.0
+        with pytest.raises(ValueError, match="max_base_scale"):
+            _species(max_base_scale=0.9)
 
 
 class TestDensityResolution:
@@ -570,6 +640,48 @@ class TestWindPresets:
         with pytest.raises(ValueError, match="package path"):
             WindPresets(sapling="WS_Sapling")
 
+class TestBoneReduction:
+    def test_off_unless_configured(self):
+        # 0 wires no Bone Reduction node.
+        assert _species().bone_reduction_strength == 0.0
+
+    def test_the_shipped_per_species_table(self, shipped):
+        # Owner decision 2026-10-26. The table reaches the species with a block
+        # (beech, fir) and those built from the defaults (oak, spruce, Douglas).
+        assert shipped.for_species("european_beech").bone_reduction_strength == 0.6
+        assert shipped.for_species("silver_fir").bone_reduction_strength == 0.7
+        for name, habit in (
+            ("european_oak", "broadleaf"),
+            ("norway_spruce", "conifer"),
+            ("douglas_fir", "conifer"),
+        ):
+            derived = shipped.for_species(name, habit)
+            assert derived.derived, name
+            assert derived.bone_reduction_strength == 0.7, name
+        pine = shipped.for_species("scots_pine", "conifer")
+        assert pine.bone_reduction_strength == 0.0
+
+    def test_read_from_the_defaults(self, tmp_path):
+        path = tmp_path / "pve_calibration.toml"
+        text = CALIBRATION_TOML.read_text(encoding="utf-8")
+        assert "[pve_calibration.defaults]\n" in text
+        path.write_text(
+            text.replace(
+                "[pve_calibration.defaults]\n",
+                "[pve_calibration.defaults]\nbone_reduction_strength = 0.6\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        derived = load_pve_calibration(path).for_species("not_a_listed_species")
+        assert derived.derived
+        assert derived.bone_reduction_strength == 0.6
+
+    @pytest.mark.parametrize("strength", [-0.1, 1.5])
+    def test_outside_zero_to_one_is_refused(self, strength):
+        with pytest.raises(ValueError, match="bone_reduction_strength"):
+            _species(bone_reduction_strength=strength)
+
 
 class TestRoundTripToGeneratedScript:
     """config -> graph spec -> generated UE script, densities intact."""
@@ -648,8 +760,18 @@ class TestPerInstanceVariance:
     def test_the_shipped_defaults_carry_a_spread_per_habit(self, shipped):
         conifer = shipped.for_species("norway_spruce", habit="conifer").pose
         broadleaf = shipped.for_species("european_oak", habit="broadleaf").pose
-        assert broadleaf.randomize_scale == (0.7, 1.3)
-        assert broadleaf.randomize_axil_angle == (-20.0, 20.0)
+        # Widened 2026-09-17 with the golden-angle phyllotaxy and the tip-heavy
+        # spacing gradient (owner: still a caterpillar on the 1.5x ash ladder).
+        assert broadleaf.randomize_scale == (0.6, 1.4)
+        assert broadleaf.randomize_axil_angle == (-30.0, 30.0)
+        assert broadleaf.phyllotaxy_additional_angle == 137.5
+        assert broadleaf.spacing_ramp == (
+            (0.0, 0.0), (0.25, 0.366), (0.5, 0.618), (0.75, 0.823), (1.0, 1.0)
+        )
+        graded = shipped.for_species("european_oak", habit="broadleaf")
+        assert graded.phyllotaxy_formation == "PARASTICHOUS"
+        assert shipped.for_species("european_beech").phyllotaxy_formation != "PARASTICHOUS"
+        assert shipped.for_species("european_beech").pose.spacing_ramp is None
         # A pectinate spray is a flat, regular structure: half the spread.
         assert conifer.randomize_scale == (0.8, 1.2)
         assert conifer.randomize_axil_angle == (-12.0, 12.0)
@@ -662,16 +784,23 @@ class TestPerInstanceVariance:
         assert fir.randomize_scale == (0.8, 1.2)
         assert fir.randomize_axil_angle == (-12.0, 12.0)
 
-    def test_the_spacing_ramp_ships_off(self, shipped):
-        # Wired but deliberately unused: the ramp is shared by every branch,
-        # so it is a repeated motif rather than variance.
+    def test_the_spacing_ramp_ships_only_as_the_broadleaf_gradient(self, shipped):
+        # The ramp is shared by every branch, so it is a repeated motif rather
+        # than variance -- which is why it stays off everywhere except the
+        # graded broadleaves, where it is the inboard-to-tip density GRADIENT
+        # the owner asked for on 2026-09-17 (not a randomiser).
         for name, habit in (
-            ("european_oak", "broadleaf"),
             ("norway_spruce", "conifer"),
             ("european_beech", None),
             ("silver_fir", None),
         ):
             assert shipped.for_species(name, habit=habit).pose.spacing_ramp is None
+        ramp = shipped.for_species("european_oak", habit="broadleaf").pose.spacing_ramp
+        assert ramp is not None and ramp[0] == (0.0, 0.0) and ramp[-1] == (1.0, 1.0)
+        # Monotonic and concave: every quarter of the samples covers less
+        # branch than the one before it, so the tip end is the dense one.
+        spans = [b[1] - a[1] for a, b in zip(ramp, ramp[1:], strict=False)]
+        assert all(s > 0 for s in spans) and spans == sorted(spans, reverse=True)
 
     def test_a_pose_without_the_keys_is_the_engine_identity(self):
         pose = _pose({"axil_angle": 25.0})
@@ -684,5 +813,8 @@ class TestPerInstanceVariance:
 
         cal = shipped.for_species("european_oak", habit="broadleaf")
         spec = _pose_distributor(cal, 12)
-        assert spec.randomize_scale == (0.7, 1.3)
-        assert spec.randomize_axil_angle == (-20.0, 20.0)
+        assert spec.randomize_scale == (0.6, 1.4)
+        assert spec.randomize_axil_angle == (-30.0, 30.0)
+        assert spec.spacing_ramp == cal.pose.spacing_ramp
+        assert spec.phyllotaxy_formation == "PARASTICHOUS"
+        assert spec.phyllotaxy_additional_angle == 137.5

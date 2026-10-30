@@ -74,9 +74,3 @@ tests/manual/results/
 # Deprecated: repo-root scratch. The workspace standard is data/tmp/ - fold this
 # in once no session is writing to tmp/.
 /tmp/
-
-# AI agent tooling (dev branch only - kept off main for a clean public tree)
-.claude/
-AGENTS.md
-CLAUDE.md
-.github/copilot-instructions.md

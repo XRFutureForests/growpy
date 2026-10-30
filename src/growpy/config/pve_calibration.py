@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -280,7 +280,7 @@ class WindPresets:
             if value is not None and not value.startswith("/"):
                 raise ValueError(
                     f"wind.{tier} must be a package path such as "
-                    f"/Game/PVE/Wind/WS_x, got {value!r}"
+                    f"/Game/Generated/Trees/Wind/WS_x, got {value!r}"
                 )
 
 
@@ -317,6 +317,16 @@ class LadderSpec:
     at density 1 places at ``along = 1.0`` on every branch, both included.
     The solve counts its area, so the main density lands the total on target.
     None keeps the ladder as it was.
+
+    ``leader_spacing_m`` (2026-10-05, XRFF-524) foliates the leader. The main
+    layer starts above the trunk and the apex layer puts ONE part at its tip, so
+    the metre or two of trunk above the topmost first-order branch read as a
+    bare pole with a lonely spray. A leader layer places one ``leader_tier`` part
+    at about this spacing between that branch and the tip, on generation 1 only.
+    ``leader_tier`` is an ordered list of prototype-name suffixes and the first
+    one the species' palette has is used (the fir family has ``_h``, the pine
+    ``lateral_c``). 0.0 keeps the ladder as it was; a leader shorter than one
+    spacing gets none.
     """
 
     scale_weight: float = 1.0
@@ -325,8 +335,14 @@ class LadderSpec:
     apex: bool = True
     main_generation_start: int = 2
     tip_tier: str | None = None
+    leader_spacing_m: float = 0.0
+    leader_tier: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.leader_spacing_m < 0.0:
+            raise ValueError(
+                f"leader_spacing_m must be >= 0, got {self.leader_spacing_m}"
+            )
         if not 0.0 < self.scale_weight <= 1.0:
             raise ValueError(f"scale_weight must be in (0, 1], got {self.scale_weight}")
         if not 1 <= self.minimum_candidates <= 10:
@@ -444,8 +460,57 @@ class SpeciesCalibration:
     # True when synthesised from [pve_calibration.defaults] rather than read
     # from a species block of its own.
     derived: bool = False
+    # Per-tree start keyed on TREE HEIGHT (XRFF-475, 2026-09-17): a piecewise-
+    # linear ramp of ``[[height_m, relative_start], ...]`` evaluated at the
+    # tree's own height and held flat outside the keys. ``relative_start`` is
+    # a fraction of EACH branch's length, so one value cannot be right for a
+    # 0.7 m h10 twig and a 2 m h25 limb. None keeps the flat value. Only the
+    # offline-built trees read it; a measured row was measured at one start
+    # and stays valid only there.
+    relative_start_by_height: tuple[tuple[float, float], ...] | None = None
+    # Ceiling on the instance base scale the plan may spend to close a leaf-
+    # area gap the instance cap leaves (XRFF-474): a capped tree gets
+    # ``min(max_base_scale, sqrt(target / area_at_cap))``, an uncapped one
+    # stays at 1.0. Area goes as scale squared; leaves grow with it.
+    max_base_scale: float = 1.0
+    # Crown floor by stand radius label (2026-09-21): the fraction of the
+    # tree's height below which no foliage is placed and side branches lying
+    # wholly under the line are dropped from the skeleton the chain reads.
+    # ``{"r07": 0.4, "r10": 0.3}``; a radius not listed (r00, open-grown)
+    # keeps its full crown. Exists because PVE foliates every branch it is
+    # given: Grove grew the r07 beech with a 16 m crown base at h20, and 40-52 %
+    # of the placed instances still sat below it on the stubs the stand had
+    # shed. Flat palettes only -- the gate is a Height-conditioned mask entry
+    # and a graded ladder already owns the picker's conditions.
+    crown_floor: dict[str, float] = field(default_factory=dict)
+    # Bark repeats around the trunk's girth: Grove's ``texture_repeat`` (its
+    # build default, 3, is what every growpy tree is built at). PVE wraps the
+    # bark ONCE around the local circumference, which on an h20 trunk showed
+    # it ~3x magnified and blurry (2026-10-07); the plan ports Grove's rule
+    # onto PVE's per-generation X Range. See ``bark_wraps_by_generation``.
+    bark_texture_repeat: int = 3
+    # Strength of a PVE Bone Reduction node between the MeshBuilder and the
+    # foliage distributor (0 = no node). It rebuilds only the bone data of the
+    # finished mesh (``PVBoneFacade::CreateBoneData``: per run between two
+    # child attachments it keeps ``lerp(n, 1, strength)`` bones), so geometry
+    # and twig placement are unchanged and only the wind deformation gets
+    # coarser. Epic runs it at 0.55-0.70 on the MegaPlants pines. Exists
+    # because a scene's distinct wind-skinned meshes share one transform
+    # buffer of 2^22 entries (16 per bone): the ECOSENSE plot sat at 95-97 %
+    # in 2026-10, and meshes past it render in their rest pose.
+    bone_reduction_strength: float = 0.0
 
     def __post_init__(self) -> None:
+        if self.bark_texture_repeat < 1:
+            raise ValueError(
+                f"species {self.species!r} bark_texture_repeat must be >= 1, "
+                f"got {self.bark_texture_repeat}"
+            )
+        if not 0.0 <= self.bone_reduction_strength <= 1.0:
+            raise ValueError(
+                f"species {self.species!r} bone_reduction_strength must be in "
+                f"[0, 1], got {self.bone_reduction_strength}"
+            )
         if not 0.0 <= self.relative_start < 1.0:
             raise ValueError(
                 f"species {self.species!r} relative_start must be in [0, 1), "
@@ -479,6 +544,43 @@ class SpeciesCalibration:
             )
         if self.palette == "compound" and self.compound is None:
             object.__setattr__(self, "compound", CompoundSpec())
+        ramp = self.relative_start_by_height
+        if ramp is not None:
+            if len(ramp) < 2 or any(
+                b[0] <= a[0] for a, b in zip(ramp, ramp[1:], strict=False)
+            ):
+                raise ValueError(
+                    f"species {self.species!r} relative_start_by_height needs >= 2 "
+                    f"keys with strictly ascending heights, got {ramp}"
+                )
+            if any(not 0.0 <= v < 1.0 for _, v in ramp):
+                raise ValueError(
+                    f"species {self.species!r} relative_start_by_height values "
+                    f"must be in [0, 1), got {ramp}"
+                )
+        if self.max_base_scale < 1.0:
+            raise ValueError(
+                f"species {self.species!r} max_base_scale must be >= 1.0, "
+                f"got {self.max_base_scale}"
+            )
+        for label, floor in self.crown_floor.items():
+            if not 0.0 <= floor < 1.0:
+                raise ValueError(
+                    f"species {self.species!r} crown_floor[{label!r}] must be in "
+                    f"[0, 1), got {floor}"
+                )
+
+    def relative_start_for(self, height_m: float) -> float:
+        """``relative_start`` for a tree of ``height_m`` (the species' flat
+        value when no height ramp is configured)."""
+        if self.relative_start_by_height is None:
+            return self.relative_start
+        return _interp(self.relative_start_by_height, height_m)
+
+    def crown_floor_for(self, tree_id: str) -> float:
+        """Crown floor (fraction of height) for a tree, 0.0 when its radius
+        label (``r07`` of ``r07_h20m``) is not listed."""
+        return float(self.crown_floor.get(tree_id.split("_", 1)[0], 0.0))
 
     def builds_from_row(self, tree_id: str) -> bool:
         """Whether ``tree_id`` builds from its measured row rather than offline."""
@@ -545,6 +647,11 @@ class PVECalibration:
     profile_pin: str
     species: dict[str, SpeciesCalibration]
     defaults: dict[str, Any] = field(default_factory=dict)
+    # ``[pve_calibration] bone_reduction_strength_per_species``: species ->
+    # PVE Bone Reduction strength. Wins over a species block or the defaults,
+    # and reaches the species built from the defaults too, which have no
+    # block to carry it.
+    bone_reduction_per_species: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -585,7 +692,9 @@ class PVECalibration:
                 f"calibration for {species!r} cannot record what decimation its "
                 f"growth JSONs carry"
             )
-        return _species(species, data, derived=True)
+        return _with_bone_reduction(
+            _species(species, data, derived=True), self.bone_reduction_per_species
+        )
 
 
 _HABITS = ("conifer", "broadleaf")
@@ -647,6 +756,25 @@ def _pair(value: Any, default: tuple[float, float]) -> tuple[float, float]:
     return (float(lo), float(hi))
 
 
+def _ramp(value: Any) -> tuple[tuple[float, float], ...] | None:
+    """A ``[[x, y], ...]`` ramp from TOML, or None when absent."""
+    if value is None:
+        return None
+    return tuple((float(x), float(y)) for x, y in value)
+
+
+def _interp(keys: tuple[tuple[float, float], ...], x: float) -> float:
+    """Piecewise-linear ``y`` at ``x``, held flat outside the first/last key."""
+    if x <= keys[0][0]:
+        return keys[0][1]
+    if x >= keys[-1][0]:
+        return keys[-1][1]
+    for (x0, y0), (x1, y1) in zip(keys, keys[1:], strict=False):
+        if x0 <= x <= x1:
+            return y0 + (y1 - y0) * (x - x0) / (x1 - x0)
+    return keys[-1][1]
+
+
 def _pose(data: dict[str, Any] | None) -> TwigPose:
     if not data:
         return TwigPose()
@@ -703,7 +831,18 @@ def _ladder(data: dict[str, Any] | None) -> LadderSpec | None:
         tip_tier=(
             None if data.get("tip_tier") in ("", None) else str(data["tip_tier"])
         ),
+        leader_spacing_m=float(data.get("leader_spacing_m", 0.0)),
+        leader_tier=_suffixes(data.get("leader_tier")),
     )
+
+
+def _suffixes(value: Any) -> tuple[str, ...]:
+    """A name suffix or a list of them, as an ordered tuple; ``""``/None -> ()."""
+    if value in ("", None):
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    return tuple(str(v) for v in value if v not in ("", None))
 
 
 def _compound(data: dict[str, Any] | None) -> CompoundSpec | None:
@@ -753,6 +892,8 @@ def _species(
         trees=trees,
         phyllotaxy_formation=str(data.get("phyllotaxy_formation", "OCTASTICHOUS")),
         bark_y_scale=_opt_float(data.get("bark_y_scale")),
+        bark_texture_repeat=int(data.get("bark_texture_repeat", 3)),
+        bone_reduction_strength=float(data.get("bone_reduction_strength", 0.0)),
         prototype_area_per_triangle_m2=_opt_float(
             data.get("prototype_area_per_triangle_m2")
         ),
@@ -765,9 +906,23 @@ def _species(
         fullness=float(data.get("fullness", 1.0)),
         mask_fraction=float(data.get("mask_fraction", 0.0)),
         compound=_compound(data.get("compound")),
+        relative_start_by_height=_ramp(data.get("relative_start_by_height")),
+        max_base_scale=float(data.get("max_base_scale", 1.0)),
+        crown_floor={
+            str(k): float(v) for k, v in (data.get("crown_floor") or {}).items()
+        },
         build_from=str(data.get("build_from", "measured")),
         derived=derived,
     )
+
+
+def _with_bone_reduction(
+    species: SpeciesCalibration, per_species: dict[str, float]
+) -> SpeciesCalibration:
+    """The species with its ``bone_reduction_strength_per_species`` entry."""
+    if species.species not in per_species:
+        return species
+    return replace(species, bone_reduction_strength=per_species[species.species])
 
 
 def _merge_defaults(defaults: dict[str, Any], habit: str | None) -> dict[str, Any]:
@@ -814,15 +969,20 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
     defaults = data.get("defaults") or {}
     if not isinstance(defaults, dict):
         raise ValueError(f"{toml_path}: [pve_calibration.defaults] must be a table")
+    per_species = {
+        str(k): float(v)
+        for k, v in (data.get("bone_reduction_strength_per_species") or {}).items()
+    }
     calibration = PVECalibration(
         schema_version=int(data.get("schema_version", 0)),
         profile_mean=float(data["profile_mean"]),
         profile_pin=str(data["profile_pin"]),
         species={
-            name: _species(name, species_data)
+            name: _with_bone_reduction(_species(name, species_data), per_species)
             for name, species_data in sorted(data.get("species", {}).items())
         },
         defaults=defaults,
+        bone_reduction_per_species=per_species,
     )
     logger.debug(
         "loaded PVE calibration from %s: %d species, %d trees",
