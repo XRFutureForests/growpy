@@ -138,6 +138,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   every leaf card rendered as an opaque square, so the canopy read as blocks. Re-running the PVE
   asset step re-imports the maps and recompiles the foliage instances.
 
+### 2026-09-17 → 2026-10-20, condensed (`dev` commits not itemised above)
+
+#### Added
+
+- **Competition from real neighbours** for the stand ladder, with DBH nudged toward an envelope
+  allometry. The ladder reaches the tall trees (h05..h45) with a database-derived maximum
+  height and stops early on exported trees only.
+- **`growpy-pve-gallery`**: the PVE catalog in gallery levels, one per species, trees in the
+  wind. The PVE plan writes the gallery scripts.
+- **`growpy-twig-audit`** judges where the PVE plan places foliage, offline, per catalog cell
+  (XRFF-525). Its config lives under `[twig_audit]`.
+- **Leader layer** in the PVE plan: sprays along the conifer leader, not just one at the tip
+  (XRFF-524).
+- **`growpy-pve-catalog --no-load`** checks that meshes exist without loading them (XRFF-522).
+
+#### Changed
+
+- **PVE crowns:** height-keyed twig start, need-based `base_scale`, conifer crown-base cut, a
+  crown floor per stand radius, beech fullness 1.5.
+- **Stand radii:** `pve_catalog` joins on radius (0/7/10) instead of a boolean competition flag;
+  r00 is dropped from the ladder, so the radii are r07/r10 (XRFF-522).
+- **Conifer presets:** no upturned shade tips, `turn_to_horizon` 0.1 for Douglas fir, spruce and
+  silver fir (XRFF-523); Norway spruce (C14), silver fir (F1) and Douglas fir (T) tuned toward
+  real structure. Ash picks its seed per radius.
+- **PVE leaves** use `MA_Foliage_Trees`, carry translucency in the Normal map's blue channel and
+  take their relief from the colour.
+- **Unreal paths** follow the agreed project layout and the merged XRFF content layout
+  (XRFF-505, XRFF-553); the content is sorted by asset type under `/Game/Assets/Trees`. The
+  asset script refuses a level that already holds trees.
+
+#### Fixed
+
+- **PVE bark** wraps around the trunk as often as Grove does.
+
 ## [0.5.0] - 2026-09-17
 
 ### 2026-09-16 — every exported asset carries a TAMF record
