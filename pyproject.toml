@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "growpy"
-version = "0.5.0"
+version = "0.6.0"
 description = "Grove API Integration for Unreal Engine 5 Nanite"
 license = "AGPL-3.0-or-later"
 readme = "README.md"
@@ -21,12 +21,12 @@ dependencies = [
     "scipy>=1.7.0",
     "matplotlib>=3.4.0",
     "Pillow>=9.0.0",
-    # Pinned to a commit, not the default branch. Unpinned this resolved to
-    # `main`, which sits at 0.1.2 while the work happens on `dev` (0.3.0) --
-    # so the pipeline was silently running 14 commits behind, without the
-    # Forrester leaf-area equations the crown-density calibration needs.
-    # Repin when pylometree next merges dev to main for a Zenodo release.
-    "pylometree @ git+https://github.com/XRFutureForests/pylometree.git@d67e8bf53f04b5aadc3509cc52b059d1f0c9f767",
+    # Pinned to a release tag, not the default branch. Unpinned this resolved
+    # to `main`, which lagged `dev` between releases -- so the pipeline once
+    # ran 14 commits behind, without the Forrester leaf-area equations the
+    # crown-density calibration needs. v0.4.0 is the first release carrying
+    # them. Repin when pylometree next releases.
+    "pylometree @ git+https://github.com/XRFutureForests/pylometree.git@v0.4.0",
 ]
 
 [project.optional-dependencies]
