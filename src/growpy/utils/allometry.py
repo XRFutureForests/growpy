@@ -32,6 +32,7 @@ They are deliberately kept out of the per-species ``seed.json`` files, whose
 
 import json
 import logging
+import math
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -295,6 +296,65 @@ def nudge_radial_scale(grove_dbh_m: float, target_dbh_m: float, weight: float) -
     if grove_dbh_m <= 0.0 or target_dbh_m <= 0.0:
         return 1.0
     return (target_dbh_m / grove_dbh_m) ** weight
+
+
+# Measured DBH targets (XRFF-673, owner 2026-11-12): the real median DBH per species
+# x catalog height, copied from tree-structure's target sheet into config/. Where a
+# species has rows there, its export DBH follows them instead of the yield-table
+# allometry.
+_dbh_target_cache: dict[str, dict[str, list[tuple[float, float]]]] = {}
+
+
+def load_dbh_targets(path: str | Path) -> dict[str, list[tuple[float, float]]]:
+    """``{standardized species: [(height_m, dbh_m), ...]}`` sorted by height; ``{}`` if
+    the file is missing. A relative path resolves against the config directory. Lines
+    starting with ``#`` are comments."""
+    import csv
+
+    from growpy.config.core import _find_config_dir
+    from growpy.utils.naming import standardize_species_name
+
+    key = str(path)
+    if key not in _dbh_target_cache:
+        table: dict[str, list[tuple[float, float]]] = {}
+        p = Path(path)
+        if not p.is_absolute() and (cfg_dir := _find_config_dir()) is not None:
+            p = cfg_dir / p
+        if p.is_file():
+            with p.open(encoding="utf-8") as f:
+                rows = csv.DictReader(line for line in f if not line.startswith("#"))
+                for r in rows:
+                    sp = standardize_species_name(r["species"])
+                    table.setdefault(sp, []).append(
+                        (float(r["height_m"]), float(r["dbh_m"]))
+                    )
+        else:
+            logger.warning(
+                "DBH target table %s not found; yield-table allometry only", p
+            )
+        _dbh_target_cache[key] = {sp: sorted(v) for sp, v in table.items()}
+    return _dbh_target_cache[key]
+
+
+def measured_dbh_target(
+    species: str, height_m: float, path: str | Path
+) -> float | None:
+    """Target DBH (m) for *species* at *height_m* from the measured table, or None when
+    the species has no rows. Interpolated log-log between rows; beyond the first or last
+    row the end segment's slope continues, so no height gets a step."""
+    from growpy.utils.naming import standardize_species_name
+
+    rows = load_dbh_targets(path).get(standardize_species_name(species))
+    if not rows or height_m <= 0:
+        return None
+    if len(rows) == 1:
+        return rows[0][1]
+    i = next((k for k in range(1, len(rows)) if height_m <= rows[k][0]), len(rows) - 1)
+    (h0, d0), (h1, d1) = rows[i - 1], rows[i]
+    if h0 <= 0 or h1 <= h0:
+        return d1
+    slope = (math.log(d1) - math.log(d0)) / (math.log(h1) - math.log(h0))
+    return d0 * (height_m / h0) ** slope
 
 
 def write_species_allometry(record: dict) -> Path:

@@ -204,6 +204,8 @@ class GrowPyConfig:
         "export_max_assembly_instances": "internal tuning, no CLI need identified",
         "export_dbh_from_allometry": "internal tuning, no CLI need identified",
         "export_dbh_nudge_weight": "scenario-level setting (owner decision), config-only",
+        "export_dbh_target_table": "data file path, config-only",
+        "export_dbh_measured_weight": "scenario-level setting (owner decision), config-only",
         "export_twig_density": "internal tuning, no CLI need identified",
         "export_twig_density_per_species": "nested dict structure, config-only by design",
         "quality_build_cutoff_thickness_per_species": (
@@ -677,6 +679,12 @@ class GrowPyConfig:
     # scale = (target / grove) ** weight (utils.allometry.nudge_radial_scale).
     # 1.0 = the full correction, 0.0 = Grove's pipe model untouched.
     export_dbh_nudge_weight: float = 0.5
+    # Measured DBH targets per species x height (XRFF-673): species with rows
+    # here are scaled toward them by export_dbh_measured_weight instead of the
+    # yield-table nudge. Relative paths resolve against the config directory;
+    # "" switches the table off.
+    export_dbh_target_table: str = "dbh_targets.csv"
+    export_dbh_measured_weight: float = 1.0
     calibration_plot: bool = True
     # Per-species overrides: {species_name: {site_index, flushes_per_year, ...}}
     calibration_species: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -931,6 +939,15 @@ class GrowPyConfig:
                     f"[export] dbh_nudge_weight must be in [0, 1], got {w}"
                 )
             kwargs["export_dbh_nudge_weight"] = w
+        if "dbh_target_table" in export:
+            kwargs["export_dbh_target_table"] = str(export["dbh_target_table"])
+        if "dbh_measured_weight" in export:
+            w = float(export["dbh_measured_weight"])
+            if not 0.0 <= w <= 1.0:
+                raise ValueError(
+                    f"[export] dbh_measured_weight must be in [0, 1], got {w}"
+                )
+            kwargs["export_dbh_measured_weight"] = w
         if "twig_density" in export:
             kwargs["export_twig_density"] = float(export["twig_density"])
         if "build_cutoff_thickness_per_species" in export:

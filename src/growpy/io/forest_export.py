@@ -67,7 +67,12 @@ def _export_single_tree_from_forest(args: tuple) -> list:
     )
     from ..core.forest import build_density_variant_model_sets, split_bones_by_tree
     from ..core.tree import calculate_dbh_at_height, calculate_tree_height
-    from ..utils.allometry import correction_weight, get_height_dbh_model, nudge_radial_scale
+    from ..utils.allometry import (
+        correction_weight,
+        get_height_dbh_model,
+        measured_dbh_target,
+        nudge_radial_scale,
+    )
     from ..utils.export_naming import (
         format_dbh_for_filename,
         format_density_for_filename,
@@ -278,6 +283,18 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                     target_dbh_m = target_dbh_curve[cycle_idx]
                     filename_dbh = target_dbh_m
 
+            # Measured target (XRFF-673): where the species has rows in the DBH
+            # target table, the real median replaces the yield-table value
+            dbh_from_table = False
+            if config.export_dbh_target_table and tree_height_m > 0:
+                table_dbh = measured_dbh_target(
+                    species, tree_height_m, config.export_dbh_target_table
+                )
+                if table_dbh:
+                    target_dbh_m = table_dbh
+                    filename_dbh = table_dbh
+                    dbh_from_table = True
+
             # CSV DBH override: when the input CSV specifies a non-zero DBH,
             # use that as the target instead of the yield table value
             csv_dbh_for_tree = csv_dbh_map.get(tree_fid)
@@ -307,6 +324,11 @@ def _export_single_tree_from_forest(args: tuple) -> list:
                 if dbh_from_csv:
                     tree_radial_scale = target_dbh_m / grove_dbh_m
                     tree_radial_scale = max(0.1, min(tree_radial_scale, 5.0))
+                elif dbh_from_table:
+                    # A measured median at every catalog height: no sapling fade-out.
+                    tree_radial_scale = nudge_radial_scale(
+                        grove_dbh_m, target_dbh_m, config.export_dbh_measured_weight
+                    )
                 else:
                     # Nudge only (forest_stages.compute_radial_scale has the rule).
                     tree_radial_scale = nudge_radial_scale(

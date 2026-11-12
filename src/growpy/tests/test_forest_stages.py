@@ -56,7 +56,8 @@ class TestForestStagesConstants:
 def _make_ctx(**overrides) -> TreeExportContext:
     """A stub TreeExportContext with sensible defaults, no bpy/Grove required."""
     defaults = {
-        "cfg": GrowPyConfig(),
+        # the yield-table path; the measured DBH table has its own tests below
+        "cfg": GrowPyConfig(export_dbh_target_table=""),
         "species_name": "European beech",
         "species_clean": "european_beech",
         "fid": 1,
@@ -889,3 +890,57 @@ class TestGrowthDataJsonSettingsFollowTheConfigDir:
         assert settings["min_branch_radius_fraction"] == 0.02
         # Keys the probe file does not name keep their defaults.
         assert settings["profile_mean"] == 0.8215
+
+
+class TestMeasuredDbhTable:
+    """XRFF-673: species with rows in the measured DBH table export at its median."""
+
+    @pytest.fixture
+    def table(self, tmp_path):
+        f = tmp_path / "dbh_targets.csv"
+        f.write_text(
+            "# comment\n"
+            "species,height_m,dbh_m,source,note\n"
+            "european_beech,10,0.10,measured,n 20\n"
+            "european_beech,20,0.20,measured,n 24\n",
+            encoding="utf-8",
+        )
+        return str(f)
+
+    def test_lookup_interpolates_log_log_and_extends_the_end_slope(self, table):
+        from growpy.utils.allometry import measured_dbh_target as lookup
+
+        assert lookup("European beech", 10.0, table) == pytest.approx(0.10)
+        assert lookup("European beech", 14.142, table) == pytest.approx(0.14142, 1e-3)
+        assert lookup("European beech", 40.0, table) == pytest.approx(0.40)
+        assert lookup("Norway spruce", 10.0, table) is None
+
+    def test_table_target_replaces_the_yield_table_and_scales_fully(self, table):
+        ctx = _make_ctx(height=20.0, grove_dbh=0.29)
+        ctx.cfg.export_dbh_target_table = table
+        ctx.cfg.export_dbh_from_allometry = True
+        resolve_target_dbh(
+            ctx,
+            cycle=1,
+            h_dbh_model_cache={"European beech": {"a": 0.01, "b": 1.0}},
+            target_dbh_cache={},
+            csv_dbh_map={},
+        )
+        assert ctx.dbh_from_table and ctx.target_dbh_m == pytest.approx(0.20)
+        fade = "growpy.pipelines.forest_stages.correction_weight"
+        with patch(fade, return_value=0.0):
+            compute_radial_scale(ctx)  # no sapling fade-out for a measured target
+        assert ctx.radial_scale == pytest.approx(0.20 / 0.29)
+        assert ctx.filename_dbh == pytest.approx(0.20)
+
+    def test_csv_dbh_still_wins(self, table):
+        ctx = _make_ctx(height=20.0, grove_dbh=0.29)
+        ctx.cfg.export_dbh_target_table = table
+        resolve_target_dbh(
+            ctx,
+            cycle=1,
+            h_dbh_model_cache={"European beech": None},
+            target_dbh_cache={},
+            csv_dbh_map={1: 0.33},
+        )
+        assert ctx.dbh_from_csv and not ctx.dbh_from_table and ctx.target_dbh_m == 0.33

@@ -24,6 +24,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   carry per-generation U ranges (`u_ranges`), without which the atlas's cut-end strip shows
   as a yellow stripe.
 
+### 2026-11-12 — Exported DBH follows measured stand trees
+
+#### Changed
+
+- **Beech, Norway spruce and silver fir export at the measured median DBH** of
+  stand-grown trees of their height (`config/dbh_targets.csv`, beech from canopy trees),
+  at full weight (`[export] dbh_measured_weight = 1.0`) and with no sapling fade-out.
+  At 20 m a beech now exports at 17 cm instead of 29 cm. Other species keep the
+  yield-table nudge (`dbh_nudge_weight = 0.5`); a DBH from the input CSV still wins.
+  `dbh_target_table = ""` restores the old behaviour.
+
 ## [0.6.0] - 2026-10-30
 
 ### 2026-10-30 — pylometree pinned to its release

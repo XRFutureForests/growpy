@@ -51,6 +51,7 @@ class TreeExportContext:
     # variants of this tree.
     target_dbh_m: float | None = None
     dbh_from_csv: bool = False
+    dbh_from_table: bool = False  # target from the measured DBH table (XRFF-673)
     filename_dbh: float = 0.0
     radial_scale: float = 1.0
     dims_suffix: str = ""

@@ -1,0 +1,31 @@
+# Measured DBH target per species x catalog height (XRFF-673), copied from tree-structure
+# data/input/target_sheet (beech: canopy trees; spruce, silver fir: all trees) by
+# tree-structure data/output/scripts_2026-11-12/dbh_targets/make_dbh_targets.py.
+species,height_m,dbh_m,source,note
+european_beech,5,0.0695,allometry,measured row is broken stems (E55); n 10 measured; slope b 0.511 through h10
+european_beech,10,0.0991,measured,n 20
+european_beech,15,0.1287,measured,n 28
+european_beech,20,0.1716,measured,n 24
+european_beech,25,0.2865,measured,n 87
+european_beech,30,0.3922,measured,n 222
+european_beech,35,0.4244,allometry,fewer than 10 trees; n 4 measured; slope b 0.511 through h30
+european_beech,40,0.4544,allometry,fewer than 10 trees; n 0 measured; slope b 0.511 through h30
+european_beech,45,0.4826,allometry,fewer than 10 trees; n 0 measured; slope b 0.511 through h30
+norway_spruce,5,0.0806,allometry,fewer than 10 trees; n 0 measured; slope b 1.226 through h10
+norway_spruce,10,0.1886,measured,n 19; pooled with a neighbour (median 0.208)
+norway_spruce,15,0.1886,measured,n 57; pooled with a neighbour (median 0.182)
+norway_spruce,20,0.2482,measured,n 215
+norway_spruce,25,0.3058,measured,n 299
+norway_spruce,30,0.3991,measured,n 161
+norway_spruce,35,0.4722,measured,n 88
+norway_spruce,40,0.5482,measured,n 16
+norway_spruce,45,0.6334,allometry,fewer than 10 trees; n 0 measured; slope b 1.226 through h40
+silver_fir,5,0.0928,measured,n 66
+silver_fir,10,0.1252,measured,n 138
+silver_fir,15,0.2082,measured,n 119
+silver_fir,20,0.2907,measured,n 64
+silver_fir,25,0.3894,measured,n 42
+silver_fir,30,0.4064,measured,n 22
+silver_fir,35,0.4684,allometry,fewer than 10 trees; n 4 measured; slope b 0.921 through h30
+silver_fir,40,0.5297,allometry,fewer than 10 trees; n 0 measured; slope b 0.921 through h30
+silver_fir,45,0.5904,allometry,fewer than 10 trees; n 0 measured; slope b 0.921 through h30

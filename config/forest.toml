@@ -103,6 +103,15 @@ dbh_from_allometry = true
 # 0.5 ash r08 h25 lands at 43 cm (h/d 58) and spruce at 32 cm, and half of
 # Grove's r-dense/r-open difference survives.
 dbh_nudge_weight = 0.5
+# Measured DBH targets (XRFF-673, owner 2026-11-12): species with rows in this
+# table (beech, Norway spruce, silver fir) export at the real median DBH of
+# stand-grown trees of their height, copied from tree-structure's target sheet
+# (data/input/target_sheet; beech: canopy trees). They are scaled by
+# dbh_measured_weight (1.0 = exactly the median) with no sapling fade-out;
+# every other species keeps the yield-table nudge above. A CSV DBH still wins.
+# Relative to this config directory; "" switches the table off.
+dbh_target_table = "dbh_targets.csv"
+dbh_measured_weight = 1.0
 # USD file format: "usda" (ASCII, human-readable) or "usdc" (binary, smaller/faster)
 # Binary USDC files are ~50% smaller on disk and faster for UE to parse,
 # significantly reducing memory pressure during import.

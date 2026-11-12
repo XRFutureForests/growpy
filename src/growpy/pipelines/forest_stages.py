@@ -50,7 +50,12 @@ from growpy.io.usd.tree_export import (
 )
 from growpy.io.usd.tree_export import is_bone_limit_error as _is_bone_limit_error
 from growpy.pipelines.tree_export_context import TreeExportContext
-from growpy.utils.allometry import correction_weight, get_height_dbh_model, nudge_radial_scale
+from growpy.utils.allometry import (
+    correction_weight,
+    get_height_dbh_model,
+    measured_dbh_target,
+    nudge_radial_scale,
+)
 from growpy.utils.export_naming import (
     format_dbh_for_filename,
     format_density_for_filename,
@@ -271,6 +276,18 @@ def resolve_target_dbh(
             target_dbh_m = target_dbh_cache[ctx.species_name][cidx]
             filename_dbh = target_dbh_m
 
+    # Measured target (XRFF-673): where the species has rows in the DBH target
+    # table, the real median replaces the yield-table value.
+    dbh_from_table = False
+    if ctx.cfg.export_dbh_target_table and ctx.height > 0:
+        table_dbh = measured_dbh_target(
+            ctx.species_name, ctx.height, ctx.cfg.export_dbh_target_table
+        )
+        if table_dbh:
+            target_dbh_m = table_dbh
+            filename_dbh = table_dbh
+            dbh_from_table = True
+
     # CSV DBH override: when the input CSV specifies a non-zero DBH, use that
     # as the target instead of the yield table value.
     csv_dbh_for_tree = csv_dbh_map.get(ctx.fid)
@@ -282,6 +299,7 @@ def resolve_target_dbh(
 
     ctx.target_dbh_m = target_dbh_m
     ctx.dbh_from_csv = dbh_from_csv
+    ctx.dbh_from_table = dbh_from_table and not dbh_from_csv
     ctx.filename_dbh = filename_dbh
 
 
@@ -289,7 +307,9 @@ def compute_radial_scale(ctx: TreeExportContext) -> None:
     """Post-hoc radial scaling toward the height-DBH allometry target.
 
     A CSV DBH is a measured tree and is matched exactly (clamped to a sane
-    range); an allometric target only NUDGES Grove's own diameter, by
+    range); a measured-table target (XRFF-673) is applied by
+    ``[export] dbh_measured_weight`` with no fade-out; an allometric target only
+    NUDGES Grove's own diameter, by
     ``[export] dbh_nudge_weight`` (utils.allometry.nudge_radial_scale), so the
     stem keeps Grove's response to the surround shell.
 
@@ -301,6 +321,11 @@ def compute_radial_scale(ctx: TreeExportContext) -> None:
         if ctx.dbh_from_csv:
             radial_scale = ctx.target_dbh_m / ctx.grove_dbh
             radial_scale = max(0.1, min(radial_scale, 5.0))
+        elif ctx.dbh_from_table:
+            # A measured median at every catalog height: no sapling fade-out.
+            radial_scale = nudge_radial_scale(
+                ctx.grove_dbh, ctx.target_dbh_m, ctx.cfg.export_dbh_measured_weight
+            )
         else:
             radial_scale = nudge_radial_scale(
                 ctx.grove_dbh, ctx.target_dbh_m, ctx.cfg.export_dbh_nudge_weight
