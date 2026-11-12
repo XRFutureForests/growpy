@@ -1041,7 +1041,11 @@ def plan_pve_graphs(
             continue
         try:
             assets = build_species_asset_spec(
-                species, content_root=content_root, palette=species_cal.palette
+                species,
+                content_root=content_root,
+                palette=species_cal.palette,
+                bark_source_material=species_cal.bark_material_source or "",
+                bark_source_textures=species_cal.bark_source_textures,
             )
             palette_areas = prototype_leaf_areas(assets)
         except FileNotFoundError as err:
@@ -1169,6 +1173,7 @@ def plan_pve_graphs(
                     palette_meshes=assets.palette_meshes,
                     bark_material=assets.bark_material,
                     bark_y_scale=bark_y_scale,
+                    bark_u_ranges=species_cal.bark_u_ranges,
                     export_folder=f"{content_root}/Catalog/{species}",
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,

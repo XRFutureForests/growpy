@@ -143,3 +143,39 @@ class TestRelief:
         normal = np.asarray(relief_from_colour(diffuse, alpha), dtype=int)
         assert abs(normal[30, 8, 0] - 128) <= 1
         assert abs(normal[8, 30, 1] - 128) <= 1
+
+
+class TestBarkNAH:
+    """Grove bark normals packed into MegaPlants' _NAH layout (2026-11-11)."""
+
+    @staticmethod
+    def _opengl_normal(size=256):
+        # Ridges running down the texture plus a row bump: a periodic height
+        # whose normal, green pointing UP the image, is written as 8-bit RGB.
+        r, c = np.mgrid[0:size, 0:size] * (2 * np.pi / size)
+        height = np.sin(8 * c) + 0.5 * np.sin(3 * r)
+        dh_dcol = 8 * np.cos(8 * c) * 0.02
+        dh_drow = 1.5 * np.cos(3 * r) * 0.02
+        n = np.stack([-dh_dcol, dh_drow, np.ones_like(height)], -1)  # +row = down
+        n /= np.linalg.norm(n, axis=-1, keepdims=True)
+        rgb = np.clip((n + 1) * 127.5, 0, 255).round().astype(np.uint8)
+        return height, Image.fromarray(rgb, "RGB")
+
+    def test_height_is_recovered_with_the_opengl_sign(self):
+        from growpy.tools.pack_pve_textures import bark_height
+
+        height, image = self._opengl_normal()
+        xy = np.asarray(image, dtype=np.float32)[..., :2] / 127.5 - 1.0
+        got = bark_height(xy)
+        assert np.corrcoef(got.ravel(), height.ravel())[0, 1] > 0.9
+
+    def test_packed_map_keeps_xy_and_adds_ao_and_height(self):
+        from growpy.tools.pack_pve_textures import BARK_AO_MEAN, pack_bark_normal
+
+        _, image = self._opengl_normal()
+        packed = np.asarray(pack_bark_normal(image), dtype=np.float32)
+        source = np.asarray(image, dtype=np.float32)
+        assert packed.shape[-1] == 4
+        assert np.array_equal(packed[..., :2], source[..., :2])
+        assert abs(packed[..., 2].mean() / 255 - BARK_AO_MEAN) < 0.02
+        assert 0.4 < packed[..., 3].mean() / 255 < 0.6

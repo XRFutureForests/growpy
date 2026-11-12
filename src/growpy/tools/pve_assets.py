@@ -93,11 +93,22 @@ def main(argv: list[str] | None = None) -> int:
         logger.error("no species to import")
         return 1
 
+    from growpy.config.paths import get_species_growth_habit
+    from growpy.config.pve_calibration import load_pve_calibration
+
+    calibration = load_pve_calibration()
     specs, skipped = [], []
     for name in names:
         try:
+            habit = get_species_growth_habit(name)
+            species_cal = calibration.for_species(name, habit)
             specs.append(
-                build_species_asset_spec(name, content_root=args.content_root)
+                build_species_asset_spec(
+                    name,
+                    content_root=args.content_root,
+                    bark_source_material=species_cal.bark_material_source or "",
+                    bark_source_textures=species_cal.bark_source_textures,
+                )
             )
         except FileNotFoundError as err:
             skipped.append((name, str(err)))

@@ -248,13 +248,24 @@ class TestTreeChainSpec:
         compile(body, str(path), "exec")
         assert "'bark_wraps': [3, 1]" in body
         build = body.split("def build(spec):", 1)[1]
-        assert 'for wraps in chain["bark_wraps"] or [None]:' in build
+        assert '[0.0, float(w)] for w in chain["bark_wraps"]] or [None]' in build
         assert "UpperBound=(Type=Exclusive,Value=%f)" in build
         assert "bark X Range read back" in build
 
     def test_no_bark_wraps_keeps_the_native_single_setup(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
         assert "'bark_wraps': []" in path.read_text(encoding="utf-8")
+
+    def test_an_atlas_bark_takes_its_strip_ranges_over_the_wraps(self, tmp_path):
+        # 2026-11-11: a MegaPlants bark is an atlas of strips; wrapping its
+        # whole width put the cut-end strip on the oak trunk as a yellow line.
+        ranges = ((0.003785, 0.503907), (0.511722, 0.761783))
+        path = generate_pve_graph_builder_script(
+            tmp_path, [_graph(bark_u_ranges=ranges)]
+        )
+        body = path.read_text(encoding="utf-8")
+        assert "'bark_u_ranges': [[0.003785, 0.503907], [0.511722, 0.761783]]" in body
+        assert 'ranges = spec["bark_u_ranges"] or [' in body
 
 
 class TestPalette:
@@ -375,11 +386,13 @@ class TestFoliageLayers:
         build = body.split("def build(spec):", 1)[1]
         assert "configure_distributor(layer_settings, layer)" in build
         assert '(last_node, "Out", export_node, "In")' in build
-        # 7 edges per chain plus 2 per layer (In from the previous distributor,
+        # 8 edges per chain plus 2 per layer (In from the previous distributor,
         # Foliage from the layer's own palette) is what the edge check expects.
-        assert 'expected = 7 * len(spec["chains"]) + 2 * sum(' in build
+        assert 'expected = 8 * len(spec["chains"]) + 2 * sum(' in build
+        assert '(detail_node, "Out", mesh_node, "MeshDetails")' in build
+        assert "'ring_divisions': [12, 64]" in body
 
-    def test_a_chain_without_layers_keeps_the_seven_edge_shape(self, tmp_path):
+    def test_a_chain_without_layers_keeps_the_eight_edge_shape(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
         assert "'layers': []" in path.read_text(encoding="utf-8")
 

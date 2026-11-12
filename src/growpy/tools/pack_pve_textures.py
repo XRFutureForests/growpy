@@ -375,6 +375,82 @@ def pack_asset(twig_dir: Path, dry_run: bool = False) -> dict[str, object]:
     return result
 
 
+BARK_NAH_SUFFIX = "_bark_pve_nah.png"
+# Levels of the derived AO (B) and height (A) channels, read off the MegaPlants
+# bark _NAH maps the master was built for (English oak / hornbeam, 2026-11-11:
+# AO mean 0.78 / 0.96, height std 0.095 / 0.043). The cavity scale w/256 is
+# where derived AO correlated best with the oak's real one (r = -0.61).
+# shortcut: one fixed level for every bark, rough or smooth; a Grove normal map
+# carries no absolute depth (a raw-height fit gave gains of 1156 vs 149). Tune
+# per species if the look check asks for it.
+BARK_AO_MEAN = 0.9
+BARK_HEIGHT_STD = 0.07
+
+
+def bark_height(normal_xy):
+    """Height from a tangent-space normal's X/Y in [-1, 1], OpenGL green (up).
+
+    Frankot-Chellappa: the least-squares integrable surface, periodic like the
+    tiling texture. Low frequencies are dropped (w/16) -- they are integration
+    drift, not relief. Returned z-scored.
+    """
+    import numpy as np
+    from scipy.ndimage import gaussian_filter
+
+    x, y = normal_xy[..., 0], normal_xy[..., 1]
+    z = np.sqrt(np.clip(1.0 - x * x - y * y, 0.04, 1.0))
+    p, q = -x / z, y / z  # dh/dcol, dh/drow (rows run down, green points up)
+    h, w = p.shape
+    u = np.fft.fftfreq(w)[None, :] * 2 * np.pi
+    v = np.fft.fftfreq(h)[:, None] * 2 * np.pi
+    d = u * u + v * v
+    d[0, 0] = 1.0
+    spectrum = (-1j * u * np.fft.fft2(p) - 1j * v * np.fft.fft2(q)) / d
+    spectrum[0, 0] = 0.0
+    height = np.real(np.fft.ifft2(spectrum))
+    height -= gaussian_filter(height, w / 16, mode="wrap")
+    return (height - height.mean()) / max(float(height.std()), 1e-6)
+
+
+def pack_bark_normal(normal):
+    """The MegaPlants ``_NAH`` layout from a Grove bark normal map.
+
+    R/G keep the normal's X/Y as authored (OpenGL; the importer flips green,
+    as it does for MegaPlants' own maps). B is ambient occlusion from the
+    height's cavities, A the height. The trunk function reads B as AO; a plain
+    RGB normal put normal Z (~1) there, i.e. no occlusion at all.
+    """
+    import numpy as np
+    from PIL import Image
+    from scipy.ndimage import gaussian_filter
+
+    rgb = np.asarray(normal.convert("RGB"), dtype=np.float32)
+    height = bark_height(rgb[..., :2] / 127.5 - 1.0)
+    w = height.shape[1]
+    cavity = np.clip(gaussian_filter(height, w / 256, mode="wrap") - height, 0.0, None)
+    cavity = gaussian_filter(cavity, w / 1024, mode="wrap")  # speckle off
+    ao = 1.0 - cavity * (1.0 - BARK_AO_MEAN) / max(float(cavity.mean()), 1e-6)
+    channels = [
+        rgb[..., 0],
+        rgb[..., 1],
+        np.clip(ao, 0.0, 1.0) * 255.0,
+        np.clip(0.5 + BARK_HEIGHT_STD * height, 0.0, 1.0) * 255.0,
+    ]
+    return Image.fromarray(np.stack(channels, -1).round().astype(np.uint8), "RGBA")
+
+
+def pack_bark_textures(textures_dir: Path, dry_run: bool = False) -> list[str]:
+    """Write ``<bark>_bark_pve_nah.png`` beside every ``*_bark_normal`` map."""
+    written = []
+    for path in sorted(textures_dir.glob("*_bark_normal.*")):
+        stem = path.stem.removesuffix("_bark_normal")
+        target = path.with_name(stem + BARK_NAH_SUFFIX)
+        if not dry_run:
+            pack_bark_normal(_load(path)).save(target)
+        written.append(target.name)
+    return written
+
+
 def pack_twig_assets(
     twigs_root: Path, species: str | None = None, dry_run: bool = False
 ) -> list[dict[str, object]]:
@@ -411,9 +487,25 @@ def main(argv: list[str] | None = None) -> int:
         help="only this twig asset directory (substring match on its name)",
     )
     parser.add_argument("--dry-run", action="store_true", help="report without writing")
+    parser.add_argument(
+        "--bark",
+        type=Path,
+        nargs="?",
+        const=Path("data/assets/textures"),
+        help="pack the bark normal maps in this folder into _bark_pve_nah.png "
+        "instead of the twigs (default: data/assets/textures)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if args.bark is not None:
+        written = pack_bark_textures(args.bark, args.dry_run)
+        for name in written:
+            logger.info("bark: %s", name)
+        if not written:
+            logger.error("no *_bark_normal maps in %s", args.bark)
+        return 0 if written else 1
 
     if not args.twigs_root.is_dir():
         logger.error("no such twigs root: %s", args.twigs_root)

@@ -22,6 +22,7 @@ from growpy.config.pve_calibration import (
     WindPresets,
     _ladder,
     _pose,
+    _with_bark_source,
     load_pve_calibration,
 )
 from growpy.io.unreal.pve_graph_builder import (
@@ -818,3 +819,29 @@ class TestPerInstanceVariance:
         assert spec.spacing_ramp == cal.pose.spacing_ramp
         assert spec.phyllotaxy_formation == "PARASTICHOUS"
         assert spec.phyllotaxy_additional_angle == 137.5
+
+
+class TestBarkSource:
+    """bark_source_per_species: MegaPlants bark as textures or as a template."""
+
+    @staticmethod
+    def _source(shipped, **entry):
+        beech = shipped.for_species("european_beech", "broadleaf")
+        return beech, _with_bark_source(
+            beech, {"european_beech": {"material": "/Game/MI", **entry}}
+        )
+
+    def test_source_textures_need_the_atlas_strips(self, shipped):
+        with pytest.raises(ValueError, match="u_ranges"):
+            self._source(shipped, y_scale=1.0)
+
+    def test_a_template_keeps_the_grove_tiling(self, shipped):
+        beech, got = self._source(shipped, textures="grove")
+        assert got.bark_material_source == "/Game/MI"
+        assert got.bark_source_textures is False
+        assert got.bark_u_ranges == ()
+        assert got.bark_y_scale == beech.bark_y_scale
+
+    def test_an_unknown_texture_mode_is_refused(self, shipped):
+        with pytest.raises(ValueError, match="textures"):
+            self._source(shipped, textures="x")

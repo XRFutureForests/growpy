@@ -188,6 +188,13 @@ class SpeciesAssetSpec:
     foliage_normal: Path | None = None
     foliage_params: Path | None = None
     habit: str = "broadleaf"
+    # A MegaPlants bark instance whose textures and values the bark material
+    # copies instead of the Grove pair (``bark_source_per_species``). Empty:
+    # the Grove bark, imported from ``bark_color`` / ``bark_normal``.
+    bark_source_material: str = ""
+    # False: the source is a template only -- its values and switches, minus
+    # the colour tint, onto the Grove pair above (``textures = "grove"``).
+    bark_source_textures: bool = True
 
     def __post_init__(self) -> None:
         if not self.prototypes:
@@ -355,6 +362,8 @@ def build_species_asset_spec(
     content_root: str = TREES_ROOT,
     folder_name: str | None = None,
     palette: str = "twigs",
+    bark_source_material: str = "",
+    bark_source_textures: bool = True,
 ) -> SpeciesAssetSpec:
     """Resolve one species' palette and bark sources from disk.
 
@@ -407,6 +416,14 @@ def build_species_asset_spec(
             f"MA_Foliage_Trees needs both, and a material with either unset "
             f"renders untextured"
         )
+    # The packed _NAH map (growpy-pack-pve-textures --bark) when there is one:
+    # same normal, plus the AO and height the master reads from B and A.
+    from growpy.tools.pack_pve_textures import BARK_NAH_SUFFIX
+
+    stem = normal.stem.removesuffix("_bark_normal")
+    packed = normal.with_name(stem + BARK_NAH_SUFFIX)
+    if packed.is_file():
+        normal = packed
 
     foliage_color, foliage_normal, foliage_params = _foliage_textures(species)
 
@@ -421,6 +438,8 @@ def build_species_asset_spec(
         foliage_normal=foliage_normal,
         foliage_params=foliage_params,
         habit=get_species_growth_habit(species) or "broadleaf",
+        bark_source_material=bark_source_material,
+        bark_source_textures=bark_source_textures,
     )
 
 
@@ -487,6 +506,8 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                     "name": Path(s.bark_normal).stem,
                     "asset": f"{s.bark_folder}/{Path(s.bark_normal).stem}",
                 },
+                "bark_source_material": s.bark_source_material,
+                "bark_source_textures": s.bark_source_textures,
                 "foliage": _foliage_payload(s),
             }
             for s in plan.species
@@ -670,6 +691,9 @@ def import_bark_texture(entry, is_normal):
         tex.set_editor_property(
             "compression_settings", unreal.TextureCompressionSettings.TC_MASKS)
         tex.set_editor_property("srgb", False)
+        # Grove bark normals are OpenGL (green up), like MegaPlants' sources,
+        # which import flipped; unflipped, the relief was lit upside down.
+        tex.set_editor_property("flip_green_channel", True)
     if not tex.get_editor_property("virtual_texture_streaming"):
         tex.set_editor_property("virtual_texture_streaming", True)
         print("   VT enabled: %s" % entry["name"])
@@ -695,6 +719,43 @@ def resolve_clone_source(master):
         if parent == master:
             return path
         print("   clone candidate %s has parent %s, skipping" % (path, parent))
+    return None
+
+
+def copy_bark_source(mi, source_path, template=False):
+    """Give ``mi`` the values and switches of a MegaPlants bark instance.
+
+    Overrides are cleared first: the instance was cloned from a reference whose
+    values belong to another bark. Only parameters ``mi``'s own master exposes
+    are copied; switches are copied as the source's effective value. As a
+    ``template`` (Grove textures stay) the colour tint is left out: vectors and
+    the Tint BaseColor switch are tuned to MegaPlants' dark colour maps (mean
+    0.13 on hornbeam against ~0.5 for a Grove bark).
+    """
+    source = eal.load_asset(source_path)
+    if source is None:
+        return "bark source material missing: %s" % source_path
+    mel.clear_all_material_instance_parameters(mi)
+    scalars = set(str(n) for n in mel.get_scalar_parameter_names(mi))
+    vectors = set(str(n) for n in mel.get_vector_parameter_names(mi))
+    for value in source.get_editor_property("scalar_parameter_values"):
+        name = str(value.parameter_info.name)
+        if name in scalars:
+            mel.set_material_instance_scalar_parameter_value(
+                mi, name, value.parameter_value)
+    for value in source.get_editor_property("vector_parameter_values"):
+        name = str(value.parameter_info.name)
+        if name in vectors and not template:
+            mel.set_material_instance_vector_parameter_value(
+                mi, name, value.parameter_value)
+    source_switches = mel.get_static_switch_parameter_names(source)
+    for name in mel.get_static_switch_parameter_names(mi):
+        if template and str(name) == "Tint BaseColor":
+            continue
+        if name in source_switches:
+            on = mel.get_material_instance_static_switch_parameter_value(source, name)
+            mel.set_material_instance_static_switch_parameter_value(mi, name, on)
+    print("   bark values copied from %s" % source_path)
     return None
 
 
@@ -728,6 +789,17 @@ def build_bark_material(spec, master, bark_master):
         print("   reparenting %s (was %s)" % (spec["species"], before))
         mi.set_editor_property("parent", master_asset)
 
+    if spec["bark_source_material"]:
+        problem = copy_bark_source(
+            mi, spec["bark_source_material"],
+            template=not spec["bark_source_textures"])
+        if problem:
+            return [problem]
+    if spec["bark_source_material"] and spec["bark_source_textures"]:
+        source = eal.load_asset(spec["bark_source_material"])
+        color, normal = (
+            _path_of(mel.get_material_instance_texture_parameter_value(source, p))
+            for p in ("Base Color", "Normal"))
     mel.set_material_instance_texture_parameter_value(
         mi, "Base Color", eal.load_asset(color))
     mel.set_material_instance_texture_parameter_value(
@@ -948,9 +1020,11 @@ for spec in PLAN["species"]:
     failures.extend(import_palette(spec))
 
     # Textures first, materials second: VT must be on before the material
-    # points at the texture.
+    # points at the texture. A MegaPlants bark brings its own (VT, flipped).
     for entry, is_normal in (
             (spec["bark_color"], False), (spec["bark_normal"], True)):
+        if spec["bark_source_material"] and spec["bark_source_textures"]:
+            break
         problem = import_bark_texture(entry, is_normal)
         if problem:
             failures.append(problem)

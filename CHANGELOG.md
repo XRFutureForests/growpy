@@ -5,6 +5,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Round stems and bark with depth
+
+#### Changed
+
+- **PVE graphs set the stem ring divisions** (MeshDetails node, 12/64 by default, Epic's
+  MegaPlants oak values). The PVE default 6/12 left trunks visibly faceted.
+- **Bark normal maps import with the green channel flipped.** Grove and MegaPlants bark
+  normals are OpenGL; Unreal expects DirectX.
+
+#### Added
+
+- **`growpy-pack-pve-textures --bark`** packs each Grove bark normal into the `_NAH` layout
+  the trunk material reads (normal R/G, derived AO in B, height in A), so Grove barks get
+  AO and height instead of rendering flat.
+- **`bark_source_per_species`** in `config/pve_calibration.toml` takes bark from a
+  MegaPlants material instance (oak, maple) or uses one as a template (beech). Atlas barks
+  carry per-generation U ranges (`u_ranges`), without which the atlas's cut-end strip shows
+  as a yellow stripe.
+
 ## [0.6.0] - 2026-10-30
 
 ### 2026-10-30 — pylometree pinned to its release

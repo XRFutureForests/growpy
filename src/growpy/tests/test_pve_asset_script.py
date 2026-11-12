@@ -66,7 +66,8 @@ class TestSpecResolution:
         spec = build_species_asset_spec("european_beech")
         assert spec.bark_color.is_file()
         assert spec.bark_normal.is_file()
-        assert spec.bark_normal.stem.endswith("_normal")
+        # The packed _NAH map (pack-pve-textures --bark) wins over the raw one.
+        assert spec.bark_normal.stem.endswith(("_bark_normal", "_bark_pve_nah"))
 
     def test_a_species_with_no_twigs_is_refused(self):
         with pytest.raises(FileNotFoundError, match="convert-twigs"):
@@ -321,7 +322,10 @@ class TestGeneratedScript:
     def test_it_carries_absolute_forward_slash_sources(self, script):
         assert "\\\\" not in script
         assert "_static.usda" in script
-        assert "beech_60_bark_normal.jpg" in script
+        assert any(
+            name in script
+            for name in ("beech_60_bark_normal.jpg", "beech_60_bark_pve_nah.png")
+        )
 
     def test_it_names_the_plugins_master_not_a_game_copy(self, script):
         assert DEFAULT_MASTER_MATERIAL in script

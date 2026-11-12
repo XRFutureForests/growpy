@@ -687,6 +687,14 @@ class PVEGraphSpec:
     bark_y_scale: float | None = None
     da_vinci_rule_strength: float = 0.0
     min_radius: float = 0.0
+    # Vertices around a branch ring (Mesh Details min/max divisions). PVE's
+    # default 6..12 left a 40 cm trunk a visible 12-sided prism (2026-11-11);
+    # 12..64 is what Epic's own MegaPlants oak graph runs the same mesher at.
+    ring_divisions: tuple[int, int] = (12, 64)
+    # U range per branch generation for an atlas bark (MegaPlants: strips of
+    # trunk, branch and twig bark side by side). Empty: the chains' Grove
+    # wraps, (0, k), on a plain tiling texture.
+    bark_u_ranges: tuple[tuple[float, float], ...] = ()
     create_nanite_foliage: bool = True
     nanite_shape_preservation: str = "VOXELIZE"
     # ALL_GENERATIONS by default (owner, 2026-09-15): a twin tree is walked up
@@ -838,6 +846,8 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
         "bark_y_scale": graph.bark_y_scale,
         "da_vinci_rule_strength": graph.da_vinci_rule_strength,
         "min_radius": graph.min_radius,
+        "ring_divisions": list(graph.ring_divisions),
+        "bark_u_ranges": [list(r) for r in graph.bark_u_ranges],
         "create_nanite_foliage": graph.create_nanite_foliage,
         "nanite_shape_preservation": graph.nanite_shape_preservation,
         "collision_generation": graph.collision_generation,
@@ -1147,6 +1157,24 @@ def build(spec):
         setp(params, "min_radius", spec["min_radius"])
         radius_settings.set_editor_property("params", params)
 
+        detail_node, detail_settings = graph.add_node_of_type(
+            unreal.PVMeshBuilderMeshDetailSettings
+        )
+        detail_node.set_node_position(-260, row + 460)
+        detail = detail_settings.get_editor_property("params")
+        setp(detail, "min_divisions", int(spec["ring_divisions"][0]))
+        setp(detail, "max_divisions", int(spec["ring_divisions"][1]))
+        detail_settings.set_editor_property("params", detail)
+        detail = detail_settings.get_editor_property("params")
+        got = [
+            detail.get_editor_property(p) for p in ("min_divisions", "max_divisions")
+        ]
+        if got != list(spec["ring_divisions"]):
+            raise RuntimeError(
+                "%s: ring divisions read back %s, wanted %s"
+                % (chain["mesh_name"], got, spec["ring_divisions"])
+            )
+
         material_node, material_settings = graph.add_node_of_type(
             unreal.PVMeshBuilderMaterialDetailSettings
         )
@@ -1155,8 +1183,12 @@ def build(spec):
         # g reads setup g-1, later ones the last). All share the bark material,
         # which the mesher merges into one section; only X Range differs. PVE
         # multiplies V by the same range, so YScale = W/H still holds.
+        # A MegaPlants bark is an atlas of strips: its graph names one U range
+        # per generation (bark_u_ranges). A Grove tile wraps k times: (0, k).
+        ranges = spec["bark_u_ranges"] or [
+            [0.0, float(w)] for w in chain["bark_wraps"]] or [None]
         setups = []
-        for wraps in chain["bark_wraps"] or [None]:
+        for u_range in ranges:
             setup = unreal.TrunkGenerationMaterialSetup()
             setp(
                 setup,
@@ -1169,10 +1201,11 @@ def build(spec):
             setup.set_editor_property("material", bark)
             if spec["bark_y_scale"] is not None:
                 setp(setup, "y_scale", float(spec["bark_y_scale"]))
-            if wraps is not None:
+            if u_range is not None:
                 setup.import_text(
-                    "(URange=(LowerBound=(Type=Inclusive,Value=0.000000),"
-                    "UpperBound=(Type=Exclusive,Value=%f)))" % float(wraps)
+                    "(URange=(LowerBound=(Type=Inclusive,Value=%f),"
+                    "UpperBound=(Type=Exclusive,Value=%f)))"
+                    % (float(u_range[0]), float(u_range[1]))
                 )
             setups.append(setup)
         material_params = material_settings.get_editor_property("params")
@@ -1181,14 +1214,16 @@ def build(spec):
         written = material_settings.get_editor_property("params").get_editor_property(
             "material_setups")
         got = [
-            round(s.get_editor_property("u_range").get_editor_property(
-                "upper_bound").get_editor_property("value"), 3)
+            [round(s.get_editor_property("u_range").get_editor_property(
+                bound).get_editor_property("value"), 3)
+             for bound in ("lower_bound", "upper_bound")]
             for s in written
         ]
-        if got != [float(w) for w in (chain["bark_wraps"] or [1])]:
+        wanted = [[round(float(v), 3) for v in r] for r in ranges if r is not None]
+        if (got if wanted else [g[1] for g in got]) != (wanted or [1.0]):
             raise RuntimeError(
                 "%s: bark X Range read back %s, wanted %s"
-                % (chain["mesh_name"], got, chain["bark_wraps"])
+                % (chain["mesh_name"], got, wanted or "native")
             )
 
         # Bone Reduction (Epic's place for it, MeshBuilder -> BoneReduction ->
@@ -1331,6 +1366,7 @@ def build(spec):
             (import_node, "Out", mesh_node, "In"),
             (profile_node, profile_pin, mesh_node, "Profile"),
             (radius_node, "Out", mesh_node, "BranchRadius"),
+            (detail_node, "Out", mesh_node, "MeshDetails"),
             (material_node, "Out", mesh_node, "MaterialDetails"),
             *bone_edges,
             (upstream, "Out", dist_node, "In"),
@@ -1348,7 +1384,7 @@ def build(spec):
                 edges += len(out_pin.get_editor_property("edges"))
             except Exception:
                 pass
-    expected = 7 * len(spec["chains"]) + 2 * sum(
+    expected = 8 * len(spec["chains"]) + 2 * sum(
         len(c["layers"]) for c in spec["chains"]
     ) + (len(spec["chains"]) if spec["static_export_folder"] else 0) + sum(
         1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0

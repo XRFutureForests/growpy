@@ -499,8 +499,31 @@ class SpeciesCalibration:
     # buffer of 2^22 entries (16 per bone): the ECOSENSE plot sat at 95-97 %
     # in 2026-10, and meshes past it render in their rest pose.
     bone_reduction_strength: float = 0.0
+    # A MegaPlants bark instance (UE path) whose textures and tuned values the
+    # species' bark material copies, in place of the Grove bark (2026-11-11:
+    # Grove maps carry no AO or height, MegaPlants' _NAH maps do). None keeps
+    # the Grove bark. Set from ``bark_source_per_species``.
+    bark_material_source: str | None = None
+    # The source's atlas strips, one U range per branch generation, read off
+    # the MegaPlants graph of the same bark. Its maps are not tiles: wrapping
+    # the whole width (Grove's (0, k)) showed every strip on the trunk.
+    bark_u_ranges: tuple[tuple[float, float], ...] = ()
+    # False ("textures = grove"): the source is only a template -- its normal,
+    # AO, roughness and specular values onto the Grove bark textures, whose
+    # tiling (Grove wraps, texture aspect) stays as it is.
+    bark_source_textures: bool = True
 
     def __post_init__(self) -> None:
+        if (
+            self.bark_material_source is not None
+            and self.bark_source_textures
+            and (self.bark_y_scale is None or not self.bark_u_ranges)
+        ):
+            raise ValueError(
+                f"species {self.species!r} takes its bark from "
+                f"{self.bark_material_source!r} but pins no y_scale or no "
+                f"u_ranges: the plan would tile its atlas like a Grove bark"
+            )
         if self.bark_texture_repeat < 1:
             raise ValueError(
                 f"species {self.species!r} bark_texture_repeat must be >= 1, "
@@ -652,6 +675,10 @@ class PVECalibration:
     # and reaches the species built from the defaults too, which have no
     # block to carry it.
     bone_reduction_per_species: dict[str, float] = field(default_factory=dict)
+    # ``[pve_calibration.bark_source_per_species]``: species ->
+    # ``{material = <MegaPlants bark MI>, y_scale = <W/H of its texture>}``.
+    # A table of its own for the same reason as the bone reduction one.
+    bark_source_per_species: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.schema_version != SCHEMA_VERSION:
@@ -692,8 +719,11 @@ class PVECalibration:
                 f"calibration for {species!r} cannot record what decimation its "
                 f"growth JSONs carry"
             )
-        return _with_bone_reduction(
-            _species(species, data, derived=True), self.bone_reduction_per_species
+        return _with_bark_source(
+            _with_bone_reduction(
+                _species(species, data, derived=True), self.bone_reduction_per_species
+            ),
+            self.bark_source_per_species,
         )
 
 
@@ -925,6 +955,31 @@ def _with_bone_reduction(
     return replace(species, bone_reduction_strength=per_species[species.species])
 
 
+def _with_bark_source(
+    species: SpeciesCalibration, per_species: dict[str, dict[str, Any]]
+) -> SpeciesCalibration:
+    """The species with its ``bark_source_per_species`` entry, if any."""
+    entry = per_species.get(species.species)
+    if entry is None:
+        return species
+    textures = str(entry.get("textures", "source"))
+    if textures not in ("source", "grove"):
+        raise ValueError(
+            f"bark_source_per_species.{species.species}: textures must be "
+            f"'source' or 'grove', got {textures!r}"
+        )
+    y_scale = entry.get("y_scale")
+    return replace(
+        species,
+        bark_material_source=str(entry["material"]),
+        bark_y_scale=species.bark_y_scale if y_scale is None else float(y_scale),
+        bark_u_ranges=tuple(
+            (float(lo), float(hi)) for lo, hi in entry.get("u_ranges", ())
+        ),
+        bark_source_textures=textures == "source",
+    )
+
+
 def _merge_defaults(defaults: dict[str, Any], habit: str | None) -> dict[str, Any]:
     """The defaults block with its ``conifer`` / ``broadleaf`` sub-table folded in.
 
@@ -973,16 +1028,23 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
         str(k): float(v)
         for k, v in (data.get("bone_reduction_strength_per_species") or {}).items()
     }
+    bark_sources = {
+        str(k): dict(v) for k, v in (data.get("bark_source_per_species") or {}).items()
+    }
     calibration = PVECalibration(
         schema_version=int(data.get("schema_version", 0)),
         profile_mean=float(data["profile_mean"]),
         profile_pin=str(data["profile_pin"]),
         species={
-            name: _with_bone_reduction(_species(name, species_data), per_species)
+            name: _with_bark_source(
+                _with_bone_reduction(_species(name, species_data), per_species),
+                bark_sources,
+            )
             for name, species_data in sorted(data.get("species", {}).items())
         },
         defaults=defaults,
         bone_reduction_per_species=per_species,
+        bark_source_per_species=bark_sources,
     )
     logger.debug(
         "loaded PVE calibration from %s: %d species, %d trees",

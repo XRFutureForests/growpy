@@ -71,6 +71,30 @@ schema_version = 1
 # spruce), 40 % (Douglas fir), 78 % (beech).
 bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, norway_spruce = 0.7, douglas_fir = 0.7, european_beech = 0.6 }
 
+# Bark from a MegaPlants instance instead of the Grove map (2026-11-11). The
+# Grove bark normals carry no AO and no height, where the master reads both from
+# the Normal map's B and A (MegaPlants' _NAH layout); growpy-pack-pve-textures
+# --bark derives them for the species not listed here. Listed: a MegaPlants bark
+# of the same or a close species on the plain MA_Foliage_Trees master. Its
+# textures, values and switches are copied onto the species' own bark instance,
+# which stays parented to the trunk-DBH master. `y_scale` is the texture's W/H
+# (4096 x 4096). MegaPlants bark maps are ATLASES -- trunk, branch and twig bark
+# in vertical strips, plus a cut-end strip at the right edge -- so `u_ranges`
+# (one per branch generation, the last repeating) are copied from the strips
+# the MegaPlants graph of the same bark uses (its MeshBuilder Material Details,
+# 2026-11-11); wrapping the whole width put a yellow stripe down the oak.
+# Not listed although MegaPlants has them: Scots pine (Baltic pine) and birch
+# (two-texture blends on MA_Foliage_Trees_TwoBarkBlend, which has no trunk-DBH
+# copy); Norway spruce (its graph takes the ranges from a Trunk Texture Setup
+# pin, not read yet); wild cherry (Yoshino: generation offset 1 and Fit
+# distribution, so which strip lands on the trunk is not settled).
+bark_source_per_species.european_oak = { material = "/Game/Megaplant_Library/Tree_English_Oak/Materials/MI_English_Oak_Bark_01", y_scale = 1.0, u_ranges = [[0.003785, 0.503907], [0.511722, 0.761783], [0.769597, 0.894628]] }
+# Template only (textures = "grove"): the Grove bark keeps its textures and
+# tiling and takes the MegaPlants instance's normal/AO/roughness/specular values
+# and switches, without its colour tint. Hornbeam: the closest smooth grey bark.
+bark_source_per_species.european_beech = { material = "/Game/Megaplant_Library/Tree_Hornbeam/Materials/MI_Tree_Hornbeam_01_Bark", textures = "grove" }
+bark_source_per_species.sycamore_maple ={ material = "/Game/Megaplant_Library/Tree_Norway_Maple/Materials/MI_Norway_Maple_Bark_01", y_scale = 1.0, u_ranges = [[0.003785, 0.543956], [0.551770, 0.801831], [0.809646, 0.932234]] }
+
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
 # trunk profile; growpy divides emitted radii by it so a tape-measured DBH
 # survives. `profile_pin` is which pin of PVPlantProfileLoader the graph must
