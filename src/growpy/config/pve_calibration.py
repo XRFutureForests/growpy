@@ -273,10 +273,18 @@ class TwigPose:
     # proportionally fewer instances -- "fewer, larger". Measured densities were
     # taken at 1.0, so a measured row ignores it.
     base_scale: float = 1.0
+    # Density floor for the offline solve (XRFF-681, 2026-11-12). With large twigs a
+    # small tree (or a many-branched fir) reaches its leaf-area target below one twig
+    # per branch, so the solve sits on the floor and overshoots. While the solved
+    # density is below this, the plan re-solves at 0.85x the base scale, down to 1.0.
+    # 0 keeps the pose's base scale whatever the density.
+    min_density: int = 0
 
     def __post_init__(self) -> None:
         if self.base_scale <= 0.0:
             raise ValueError(f"base_scale must be positive, got {self.base_scale}")
+        if self.min_density < 0:
+            raise ValueError(f"min_density must be >= 0, got {self.min_density}")
         if not -90.0 <= self.axil_angle <= 90.0:
             raise ValueError(f"axil_angle must be in [-90, 90], got {self.axil_angle}")
         if self.orient not in ("AIM_FACE", "RANDOM_ROLL"):
@@ -888,6 +896,7 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         scale_ramp_basis=str(data.get("scale_ramp_basis", "PLANT")).upper(),
         scale_ramp=_pair(data.get("scale_ramp"), (1.0, 1.0)),
         base_scale=float(data.get("base_scale", 1.0)),
+        min_density=int(data.get("min_density", 0)),
     )
 
 

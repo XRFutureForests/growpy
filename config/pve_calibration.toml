@@ -343,6 +343,9 @@ randomize_axil_angle = [0.0, 0.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
 base_scale = 3.0
+# Where base scale 3 would put a tree below 10 twigs per branch (the h05 saplings), the
+# plan steps the scale down until it is not: h05 lands on target instead of +36-67 %.
+min_density = 10
 
 [pve_calibration.species.norway_spruce.ladder]
 scale_weight = 1.0

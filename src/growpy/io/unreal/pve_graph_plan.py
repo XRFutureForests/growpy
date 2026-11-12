@@ -435,6 +435,23 @@ def graded_palette(
     )
 
 
+def _step_base_scale(
+    solve, base: DistributorSpec, min_density: int, factor: float = 0.85
+):
+    """Solve at ``base``; while the density is below ``min_density``, re-solve at a
+    smaller base scale (``factor`` per step, never below 1.0). Returns (solved, base).
+
+    XRFF-681: large twigs put small trees on the one-per-branch floor, where they
+    overshoot their leaf-area target; smaller twigs give the solve room again.
+    """
+    solved = solve(base)
+    while min_density and solved.density < min_density and base.base_scale > 1.0:
+        smaller = max(1.0, round(base.base_scale * factor, 4))
+        base = dataclasses.replace(base, base_scale=smaller)
+        solved = solve(base)
+    return solved, base
+
+
 def _pose_distributor(
     calibration: SpeciesCalibration,
     density: int,
@@ -766,15 +783,19 @@ def _offline_chain(
                 names,
             )
             ladder = dataclasses.replace(ladder, leader_spacing_m=0.0)
-        solved = solve_graded(
-            entry.path,
+        solved, base = _step_base_scale(
+            lambda b: solve_graded(
+                entry.path,
+                b,
+                meshes,
+                palette_areas,
+                ladder,
+                target_m2,
+                max_instances=max_instances,
+                names=names,
+            ),
             base,
-            meshes,
-            palette_areas,
-            ladder,
-            target_m2,
-            max_instances=max_instances,
-            names=names,
+            calibration.pose.min_density,
         )
         conditions = ConditionSpec(
             scale=ConditionInfluence(weight=ladder.scale_weight),
@@ -826,15 +847,19 @@ def _offline_chain(
             palette, conditions = crown_floor_gate(
                 crown_floor, palette or masked_palette(meshes, 0)
             )
-        solved = solve_flat(
-            entry.path,
-            base,
-            mean_area * (1.0 - mask),
-            target_m2,
-            max_instances=(
-                None if max_instances is None else int(max_instances / (1.0 - mask))
+        solved, base = _step_base_scale(
+            lambda b: solve_flat(
+                entry.path,
+                b,
+                mean_area * (1.0 - mask),
+                target_m2,
+                max_instances=(
+                    None if max_instances is None else int(max_instances / (1.0 - mask))
+                ),
+                height_floor=crown_floor,
             ),
-            height_floor=crown_floor,
+            base,
+            calibration.pose.min_density,
         )
         if mask > 0.0:
             solved = dataclasses.replace(

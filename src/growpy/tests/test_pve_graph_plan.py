@@ -863,3 +863,43 @@ class TestBarkWraps:
         stub.write_text("{}")
         assert bark_wraps_by_generation(stub) == (3, 1)
         assert bark_wraps_by_generation(stub, 1) == (1,)
+
+
+class TestStepBaseScale:
+    """XRFF-681: large twigs put small trees on the one-per-branch floor."""
+
+    @staticmethod
+    def _solve(threshold_scale: float):
+        # density falls as the base scale grows: 100 at 1.0, ~11 at 3.0
+        def solve(spec):
+            return dataclasses.make_dataclass("S", ["density"])(
+                max(1, int(100 / spec.base_scale**2))
+            )
+
+        return solve
+
+    def test_a_dense_tree_keeps_its_scale(self):
+        from growpy.io.unreal.pve_graph_builder import DistributorSpec
+        from growpy.io.unreal.pve_graph_plan import _step_base_scale
+
+        base = DistributorSpec(branch_density=1, base_scale=3.0)
+        solved, out = _step_base_scale(self._solve(0), base, min_density=10)
+        assert out.base_scale == 3.0 and solved.density == 11
+
+    def test_a_tree_on_the_floor_steps_down_until_it_is_off_it(self):
+        from growpy.io.unreal.pve_graph_builder import DistributorSpec
+        from growpy.io.unreal.pve_graph_plan import _step_base_scale
+
+        base = DistributorSpec(branch_density=1, base_scale=3.0)
+        solved, out = _step_base_scale(self._solve(0), base, min_density=40)
+        assert solved.density >= 40 and 1.0 <= out.base_scale < 3.0
+
+    def test_it_never_goes_below_one_and_zero_switches_it_off(self):
+        from growpy.io.unreal.pve_graph_builder import DistributorSpec
+        from growpy.io.unreal.pve_graph_plan import _step_base_scale
+
+        base = DistributorSpec(branch_density=1, base_scale=3.0)
+        _, floor = _step_base_scale(self._solve(0), base, min_density=1000)
+        assert floor.base_scale == 1.0
+        _, off = _step_base_scale(self._solve(0), base, min_density=0)
+        assert off.base_scale == 3.0

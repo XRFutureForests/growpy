@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Twig size steps down where a tree would sit on the density floor
+
+#### Added
+
+- **`min_density`** in a `pose`: when the offline solve lands below this many twigs per
+  branch at the pose's base scale, the plan re-solves at 0.85x the scale, down to 1.0.
+  Large twigs otherwise put small trees (and many-branched firs) on the one-per-branch
+  floor, overshooting their leaf area. Spruce uses 10: its h05 saplings land on target;
+  h10 and up are unchanged. With the same pose, all 62 spruce, silver fir, Douglas fir
+  and pine trees plan within ±3 % of target.
+
 ### 2026-11-12 — Spruce: clumped twig placement, fewer bones
 
 #### Changed
