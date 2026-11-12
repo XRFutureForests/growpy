@@ -809,6 +809,55 @@ class TestPerInstanceVariance:
         assert pose.randomize_axil_angle == (0.0, 0.0)
         assert pose.spacing_ramp is None
 
+    def test_the_pose_defaults_keep_the_aimed_flat_ramp(self):
+        # XRFF-681: a pose without the new keys is the shipped catalog pose
+        pose = _pose({"axil_angle": 25.0})
+        assert pose.orient == "AIM_FACE"
+        assert (pose.scale_ramp_basis, pose.scale_ramp) == ("PLANT", (1.0, 1.0))
+
+    def test_the_greenleaf_pose_parses(self):
+        pose = _pose({
+            "orient": "random_roll",
+            "jitter": [{"mode": "ROLL", "degrees": 180.0}],
+            "scale_ramp_basis": "branch",
+            "scale_ramp": [1.89, 0.56],
+        })
+        assert pose.orient == "RANDOM_ROLL"
+        assert (pose.scale_ramp_basis, pose.scale_ramp) == ("BRANCH", (1.89, 0.56))
+
+    def test_random_roll_without_a_roll_jitter_is_refused(self):
+        with pytest.raises(ValueError, match="ROLL jitter"):
+            TwigPose(
+                orient="RANDOM_ROLL",
+                jitter=(TwigJitter(mode="PITCH", degrees=10.0),),
+            )
+
+    def test_a_graded_ramp_needs_the_branch_basis(self):
+        with pytest.raises(ValueError, match="BRANCH"):
+            TwigPose(scale_ramp=(1.89, 0.56))
+        TwigPose(scale_ramp_basis="BRANCH", scale_ramp=(1.89, 0.56))  # accepted
+
+    def test_random_roll_reaches_the_distributor_without_aim_or_face(self, shipped):
+        from dataclasses import replace
+
+        from growpy.io.unreal.pve_graph_plan import _pose_distributor
+
+        cal = shipped.for_species("norway_spruce", habit="conifer")
+        pose = replace(
+            cal.pose,
+            orient="RANDOM_ROLL",
+            jitter=(TwigJitter(mode="ROLL", degrees=180.0),),
+            scale_ramp_basis="BRANCH",
+            scale_ramp=(1.89, 0.56),
+        )
+        spec = _pose_distributor(replace(cal, pose=pose), 80)
+        assert spec.aim is None and spec.face is None
+        assert [(j.mode, j.degrees) for j in spec.jitter] == [("ROLL", 180.0)]
+        assert (spec.scale_ramp_basis, spec.scale_ramp) == ("BRANCH", (1.89, 0.56))
+        # and the shipped spruce keeps its aimed pose
+        shipped_spec = _pose_distributor(cal, 80)
+        assert shipped_spec.aim is not None and shipped_spec.face is not None
+
     def test_the_knobs_reach_the_distributor_the_plan_builds(self, shipped):
         from growpy.io.unreal.pve_graph_plan import _pose_distributor
 

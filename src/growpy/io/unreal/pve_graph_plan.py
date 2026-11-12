@@ -453,7 +453,12 @@ def _pose_distributor(
     and ``base_scale`` are the per-tree values an offline build resolves from
     the species' height ramps (XRFF-475 / XRFF-474); a measured row keeps the
     species' flat start it was measured at.
+
+    ``pose.orient = RANDOM_ROLL`` (XRFF-681) drops the aim and face vectors, so
+    the jitter entries alone orient each twig; ``pose.scale_ramp`` grades size
+    along the branch.
     """
+    roll = calibration.pose.orient == "RANDOM_ROLL"
     return DistributorSpec(
         branch_density=density,
         relative_start=(
@@ -465,7 +470,8 @@ def _pose_distributor(
         axil_angle=calibration.pose.axil_angle,
         axil_angle_ramp=(1.0, 1.0),  # constant; the engine default ramps it 0->1
         single_bud_tip=True,
-        scale_ramp=(1.0, 1.0),
+        scale_ramp_basis=calibration.pose.scale_ramp_basis,
+        scale_ramp=calibration.pose.scale_ramp,
         randomize_scale=calibration.pose.randomize_scale,
         randomize_axil_angle=calibration.pose.randomize_axil_angle,
         spacing_ramp=calibration.pose.spacing_ramp,
@@ -475,7 +481,9 @@ def _pose_distributor(
         # Tip Up = Apical first, then the aim entry flattens it -- except a
         # leader, which the WorldUpDot blend leaves pointing up.
         auto_align_end=True,
-        aim=FoliageVectorSpec(
+        aim=None
+        if roll
+        else FoliageVectorSpec(
             kind="aim",
             vector1="AXIS_FLATTEN",
             vector2="AXIS_AIM",
@@ -484,7 +492,9 @@ def _pose_distributor(
             blend_attribute="WORLD_UP_DOT",
             ramp=((0.0, 0.0), (0.9, 0.0), (1.0, 1.0)),
         ),
-        face=FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
+        face=None
+        if roll
+        else FoliageVectorSpec(kind="face", vector2="AXIS_AIM", affect_tip=True),
         jitter=tuple(
             JitterSpec(mode=j.mode, degrees=j.degrees, seed=j.seed)
             for j in calibration.pose.jitter

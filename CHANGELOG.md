@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Clumped twig placement as a pose option
+
+#### Added
+
+- **`orient = "RANDOM_ROLL"`** in a species' `pose` (`config/pve_calibration.toml`) drops the
+  aim and face vectors and lets a ROLL jitter entry orient each twig, which clumps sprays
+  around the branch instead of laying them flat in its plane. Default stays `AIM_FACE`.
+- **`scale_ramp_basis` / `scale_ramp`** in a `pose` grade twig size along each branch (a
+  graded ramp needs `BRANCH`). The offline leaf-area solve divides the ramp's mean square
+  back out, and is unchanged for flat ramps. No shipped species uses either yet.
+
 ### 2026-11-12 — Round stems and bark with depth
 
 #### Changed

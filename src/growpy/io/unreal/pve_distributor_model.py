@@ -244,18 +244,61 @@ def expected_scale_squared_factor(distributor) -> float:
     return (lo * lo + lo * hi + hi * hi) / 3.0
 
 
-def expected_area_factor(distributor) -> float:
-    """Leaf-area multiplier per instance under a FLAT scale ramp at 1.0.
+def expected_ramp_squared_factor(distributor, samples: int = 1001) -> float:
+    """Mean of ``ramp^2`` over where the samples land along a branch (XRFF-681).
 
-    ``ComputeAttachmentScale`` is ``ramp x BaseScale x U``, so on the flat
-    ramp every instance carries ``base_scale^2 x E[U^2]`` times its
-    prototype's area. This is what the offline solvers multiply the palette
-    areas by; :func:`measure_leaf_area` reads the ramp off the placements
-    instead and applies only the random factor. ``base_scale`` (XRFF-474) is
-    the free leaf-area lever once the instance cap binds.
+    Exactly ``v^2`` for a flat ramp at ``v`` (1.0 for every graph built before
+    XRFF-681, so their solves are unchanged). A graded ramp is only allowed on
+    the BRANCH basis, where the lookup is the position along the branch: the
+    even loop value through ``spacing_ramp`` and the relative start/end remap,
+    the same chain :func:`simulate_placements` walks.
+
+    shortcut: integrates the continuous loop value; the per-branch loop count,
+    the discarded root sample and the density-1 tip rule are ignored (a few
+    per cent at low densities). Upgrade to a simulated mean if a profile with
+    density < 10 per branch needs exact areas.
+    """
+    ramp = _normalise_ramp(getattr(distributor, "scale_ramp", (1.0, 1.0)))
+    values = [v for _, v in ramp]
+    if max(values) == min(values):
+        return values[0] * values[0]
+    basis = str(getattr(distributor, "scale_ramp_basis", "PLANT")).upper()
+    if basis != "BRANCH":
+        raise ValueError(
+            f"a graded scale_ramp on the {basis} basis cannot be predicted by the "
+            "offline solve; grade along the branch (scale_ramp_basis = BRANCH)"
+        )
+    spacing = getattr(distributor, "spacing_ramp", None)
+    spacing = _normalise_ramp(spacing) if spacing is not None else None
+    start = float(getattr(distributor, "relative_start", 0.0))
+    end = float(getattr(distributor, "relative_end", 1.0))
+    total = 0.0
+    for i in range(samples):
+        u = i / (samples - 1)
+        along = u if spacing is None else ramp_eval(spacing, u)
+        value = ramp_eval(ramp, start + (end - start) * along)
+        total += value * value
+    return total / samples
+
+
+def expected_area_factor(distributor) -> float:
+    """Leaf-area multiplier per instance relative to its prototype.
+
+    ``ComputeAttachmentScale`` is ``ramp x BaseScale x U``, so every instance
+    carries ``base_scale^2 x E[U^2] x E[ramp^2]`` times its prototype's area;
+    on the flat ramp at 1.0 the last factor is exactly 1.0. This is what the
+    offline solvers multiply the palette areas by; :func:`measure_leaf_area`
+    reads the ramp off the placements instead and applies only the random
+    factor. ``base_scale`` (XRFF-474) is the free leaf-area lever once the
+    instance cap binds.
     """
     base = float(getattr(distributor, "base_scale", 1.0))
-    return expected_scale_squared_factor(distributor) * base * base
+    return (
+        expected_scale_squared_factor(distributor)
+        * base
+        * base
+        * expected_ramp_squared_factor(distributor)
+    )
 
 
 def _load(path: Path):

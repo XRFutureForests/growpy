@@ -23,8 +23,10 @@ from growpy.io.unreal.pve_distributor_model import (
     ENGINE_DEFAULT_RAMP,
     FLAT_RAMP,
     LeafAreaMeasurement,
+    expected_area_factor,
     expected_instances,
     expected_palette_mix,
+    expected_ramp_squared_factor,
     expected_scale_squared_factor,
     measure_leaf_area,
     pick_candidates,
@@ -550,6 +552,44 @@ class TestRandomizeScale:
         assert varied.instances == plain.instances
         assert varied.correction_factor == pytest.approx(1.03)
         assert varied.area_m2 == pytest.approx(plain.area_m2 * 1.03)
+
+
+class TestGradedScaleRamp:
+    """XRFF-681: a size ramp along the branch (Greenleaf grades 1.89 -> 0.56)
+    adds area as its mean square, which the offline solve has to divide out."""
+
+    def test_a_flat_ramp_is_its_value_squared(self):
+        assert expected_ramp_squared_factor(_spec()) == 1.0
+        assert expected_ramp_squared_factor(_spec(scale_ramp=(2.0, 2.0))) == 4.0
+        # every graph built before XRFF-681: the solve is unchanged
+        assert expected_area_factor(_spec()) == pytest.approx(1.0)
+
+    def test_a_linear_branch_ramp_is_its_analytic_mean_square(self):
+        spec = _spec(scale_ramp_basis="BRANCH", scale_ramp=(1.89, 0.56))
+        # int_0^1 (1.89 - 1.33 t)^2 dt = 1.89^2 - 1.89 * 1.33 + 1.33^2 / 3
+        analytic = 1.89**2 - 1.89 * 1.33 + 1.33**2 / 3
+        assert expected_ramp_squared_factor(spec) == pytest.approx(analytic, rel=1e-3)
+        assert expected_area_factor(spec) == pytest.approx(analytic, rel=1e-3)
+
+    def test_the_relative_start_moves_the_lookup(self):
+        full = _spec(scale_ramp_basis="BRANCH", scale_ramp=(1.89, 0.56))
+        outer = _spec(
+            scale_ramp_basis="BRANCH", scale_ramp=(1.89, 0.56), relative_start=0.5
+        )
+        # the inboard (large) half is skipped, so the outer instances are smaller
+        assert expected_ramp_squared_factor(outer) < expected_ramp_squared_factor(full)
+
+    def test_it_agrees_with_the_simulated_placements(self, tmp_path):
+        spec = _spec(
+            branch_density=60, scale_ramp_basis="BRANCH", scale_ramp=(1.89, 0.56)
+        )
+        placements = simulate_placements(_tree(tmp_path), spec)
+        simulated = sum(p.scale * p.scale for p in placements) / len(placements)
+        assert simulated == pytest.approx(expected_ramp_squared_factor(spec), rel=0.1)
+
+    def test_a_graded_plant_ramp_is_refused(self):
+        with pytest.raises(ValueError, match="BRANCH"):
+            expected_ramp_squared_factor(_spec(scale_ramp=(1.0, 0.1)))
 
 
 class TestSpacingRamp:

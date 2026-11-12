@@ -255,10 +255,46 @@ class TwigPose:
     phyllotaxy_type: str = "SPIRAL"
     node_buds: tuple[int, int] = (1, 1)
     phyllotaxy_additional_angle: float = 0.0
+    # XRFF-681 (2026-11-12, swap test E57): "AIM_FACE" is the measured pectinate
+    # pose (aim + face vectors lay every spray flat in the branch plane, which
+    # reads as pressed fern fronds on a spruce). "RANDOM_ROLL" drops both and
+    # leaves the orientation to the jitter entries -- the Greenleaf conifer pose,
+    # a full-range ROLL -- which clumps the same twig around its branch.
+    orient: str = "AIM_FACE"
+    # Instance size along each branch. Under BRANCH the ramp is read at the
+    # position along the branch (0 base, 1 tip); Greenleaf grades 1.89 -> 0.56,
+    # big at the base and small at the tip. Leaf area goes as scale squared, so
+    # the offline solve divides the ramp's mean square back out
+    # (pve_distributor_model.expected_area_factor). Only BRANCH may be non-flat.
+    scale_ramp_basis: str = "PLANT"
+    scale_ramp: tuple[float, float] = (1.0, 1.0)
 
     def __post_init__(self) -> None:
         if not -90.0 <= self.axil_angle <= 90.0:
             raise ValueError(f"axil_angle must be in [-90, 90], got {self.axil_angle}")
+        if self.orient not in ("AIM_FACE", "RANDOM_ROLL"):
+            raise ValueError(
+                f"orient must be AIM_FACE or RANDOM_ROLL, got {self.orient!r}"
+            )
+        has_roll = any(j.mode == "ROLL" for j in self.jitter)
+        if self.orient == "RANDOM_ROLL" and not has_roll:
+            raise ValueError(
+                "orient = RANDOM_ROLL needs a ROLL jitter entry; without one every "
+                "twig keeps its default frame"
+            )
+        if self.scale_ramp_basis not in ("PLANT", "BRANCH"):
+            raise ValueError(
+                "scale_ramp_basis must be PLANT or BRANCH, "
+                f"got {self.scale_ramp_basis!r}"
+            )
+        if any(v <= 0.0 for v in self.scale_ramp):
+            raise ValueError(f"scale_ramp must be positive, got {self.scale_ramp!r}")
+        graded = self.scale_ramp[0] != self.scale_ramp[1]
+        if graded and self.scale_ramp_basis != "BRANCH":
+            raise ValueError(
+                "a graded scale_ramp needs scale_ramp_basis = BRANCH: the offline "
+                "solve can only predict the area of a ramp along the branch"
+            )
 
 
 @dataclass(frozen=True)
@@ -837,6 +873,9 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         phyllotaxy_additional_angle=float(
             data.get("phyllotaxy_additional_angle", 0.0)
         ),
+        orient=str(data.get("orient", "AIM_FACE")).upper(),
+        scale_ramp_basis=str(data.get("scale_ramp_basis", "PLANT")).upper(),
+        scale_ramp=_pair(data.get("scale_ramp"), (1.0, 1.0)),
     )
 
 
