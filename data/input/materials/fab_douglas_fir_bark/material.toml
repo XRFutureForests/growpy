@@ -1,0 +1,14 @@
+# Intake: Fab/Megascans 'Douglas Fir Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_douglas_fir_bark"
+species = "douglas_fir"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:tipkfjes"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-17 08:32:36", note = "Quixel Megascans 'Douglas Fir Bark', scan area 1x2 m, relief 0.044 m" }
+maps_from = { normal = "Douglas_Fir_Bark_tipkfjes_8K_Normal.jpg", albedo = "Douglas_Fir_Bark_tipkfjes_8K_BaseColor.jpg", roughness = "Douglas_Fir_Bark_tipkfjes_8K_Roughness.jpg", ao = "Douglas_Fir_Bark_tipkfjes_8K_AO.jpg", height = "Douglas_Fir_Bark_tipkfjes_8K_Displacement.jpg" }

@@ -1,0 +1,13 @@
+# Intake: Grove bark fir_70 (growpy-material-intake grove).
+# No AO or height: build derives both from the normal.
+id = "grove_fir_70"
+species = "silver_fir"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = "grove-wraps"
+normal_convention = "opengl"
+source = "grove"
+source_ref = "grove:fir_70_bark"
+licence = "The Grove 2.3 bundled bark texture (thegrove3d.com licence)"
+redistributable = false
+capture = { place = "", date = "", note = "The Grove 2.3 bark library" }

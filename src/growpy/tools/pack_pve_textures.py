@@ -412,24 +412,35 @@ def bark_height(normal_xy):
     return (height - height.mean()) / max(float(height.std()), 1e-6)
 
 
-def pack_bark_normal(normal):
-    """The MegaPlants ``_NAH`` layout from a Grove bark normal map.
+def pack_bark_normal(normal, ao_map=None, height_map=None):
+    """The MegaPlants ``_NAH`` layout from a bark normal map.
 
     R/G keep the normal's X/Y as authored (OpenGL; the importer flips green,
-    as it does for MegaPlants' own maps). B is ambient occlusion from the
-    height's cavities, A the height. The trunk function reads B as AO; a plain
-    RGB normal put normal Z (~1) there, i.e. no occlusion at all.
+    as it does for MegaPlants' own maps). B is ambient occlusion, A the height.
+    The trunk function reads B as AO; a plain RGB normal put normal Z (~1)
+    there, i.e. no occlusion at all. A measured ``ao_map`` / ``height_map``
+    (scans, Megascans; same size as the normal) is used as is -- the height
+    z-scored onto the same 0.5 +- ``BARK_HEIGHT_STD`` level -- else both are
+    derived from the normal (Grove barks carry neither).
     """
     import numpy as np
     from PIL import Image
     from scipy.ndimage import gaussian_filter
 
     rgb = np.asarray(normal.convert("RGB"), dtype=np.float32)
-    height = bark_height(rgb[..., :2] / 127.5 - 1.0)
-    w = height.shape[1]
-    cavity = np.clip(gaussian_filter(height, w / 256, mode="wrap") - height, 0.0, None)
-    cavity = gaussian_filter(cavity, w / 1024, mode="wrap")  # speckle off
-    ao = 1.0 - cavity * (1.0 - BARK_AO_MEAN) / max(float(cavity.mean()), 1e-6)
+    if height_map is not None:
+        height = np.asarray(height_map.convert("F"), dtype=np.float32)
+        height = (height - height.mean()) / max(float(height.std()), 1e-6)
+    else:
+        height = bark_height(rgb[..., :2] / 127.5 - 1.0)
+    if ao_map is not None:
+        ao = np.asarray(ao_map.convert("L"), dtype=np.float32) / 255.0
+    else:
+        w = height.shape[1]
+        cavity = np.clip(
+            gaussian_filter(height, w / 256, mode="wrap") - height, 0.0, None)
+        cavity = gaussian_filter(cavity, w / 1024, mode="wrap")  # speckle off
+        ao = 1.0 - cavity * (1.0 - BARK_AO_MEAN) / max(float(cavity.mean()), 1e-6)
     channels = [
         rgb[..., 0],
         rgb[..., 1],

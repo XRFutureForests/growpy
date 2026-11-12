@@ -17,6 +17,10 @@
 # actually changed, never a copy of the Grove directory.
 /data/input/custom_twigs/*
 !/data/input/custom_twigs/.gitkeep
+# Bark material intake (XRFF-679): only material.toml is tracked; the maps are
+# rebuilt from their source (Fab cache, Grove) or kept on the backup share.
+/data/input/materials/*/*
+!/data/input/materials/*/material.toml
 
 # Grove commercial software (requires separate license from thegrove3d.com)
 /src/the_grove_*/

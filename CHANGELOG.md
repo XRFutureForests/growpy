@@ -5,6 +5,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Bark material intake (XRFF-679)
+
+#### Added
+
+- **`growpy-material-intake`**: every bark material comes in as one folder,
+  `data/input/materials/<id>/` (only its `material.toml` is tracked: catalog key,
+  tile size, normal convention, origin, required licence and `redistributable`).
+  `fab` writes the folder from a Megascans set in the Fab launcher cache, `grove`
+  from a Grove bark; `build` checks it (including the normal convention by a curl
+  test), packs the `_NAH` map, writes the UE script for `MI_<id>` and regenerates
+  `config/material_catalog.toml`.
+- **`pack_bark_normal`** takes measured AO and height maps when a source has them.
+
+#### Changed
+
+- **Douglas fir takes its own Megascans bark** (`fab_douglas_fir_bark`, a 1 x 2 m
+  tile) instead of the Norway spruce atlas: live without a re-export.
+
 ### 2026-11-12 — Conifer bark without the moss texture
 
 #### Changed
