@@ -30,6 +30,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`scale_ramp_basis` / `scale_ramp`** in a `pose` grade twig size along each branch (a
   graded ramp needs `BRANCH`). The offline leaf-area solve divides the ramp's mean square
   back out, and is unchanged for flat ramps. No shipped species uses either yet.
+- **`base_scale`** in a `pose` is a fixed instance-size multiplier; the solve divides its
+  square back out, so larger twigs come with proportionally fewer instances. Measured
+  density rows keep 1.0.
 
 ### 2026-11-12 — Round stems and bark with depth
 

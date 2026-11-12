@@ -442,7 +442,7 @@ def _pose_distributor(
     conditions: ConditionSpec | None = None,
     generation_band: tuple[int | None, int | None] | None = None,
     relative_start: float | None = None,
-    base_scale: float = 1.0,
+    base_scale: float | None = None,
 ) -> DistributorSpec:
     """The species' measured twig pose at ``density`` (XRFF-438, 2026-09-14).
 
@@ -456,7 +456,7 @@ def _pose_distributor(
 
     ``pose.orient = RANDOM_ROLL`` (XRFF-681) drops the aim and face vectors, so
     the jitter entries alone orient each twig; ``pose.scale_ramp`` grades size
-    along the branch.
+    along the branch; ``base_scale`` defaults to ``pose.base_scale``.
     """
     roll = calibration.pose.orient == "RANDOM_ROLL"
     return DistributorSpec(
@@ -464,7 +464,7 @@ def _pose_distributor(
         relative_start=(
             calibration.relative_start if relative_start is None else relative_start
         ),
-        base_scale=base_scale,
+        base_scale=calibration.pose.base_scale if base_scale is None else base_scale,
         phyllotaxy_formation=calibration.phyllotaxy_formation,
         reset_phyllotaxy=calibration.pose.reset_phyllotaxy,
         axil_angle=calibration.pose.axil_angle,
@@ -554,6 +554,7 @@ def _chain_for(
         resolved.density,
         conditions=conditions,
         generation_band=generation_band,
+        base_scale=1.0,  # measured densities were taken at base scale 1.0
     )
     if ladder is not None and ladder.apex and tree.scale_targets is not None:
         layers = (_apex_layer(distributor, palette_meshes, palette_areas),)
@@ -850,12 +851,13 @@ def _offline_chain(
         )
         layers = ()
         detail["layout"] = "flat"
-    base_scale = 1.0
+    base_scale = distributor.base_scale  # the pose's own (1.0 unless it sets one)
     if solved.capped and calibration.max_base_scale > 1.0 and solved.area_m2 > 0:
         # The cap bound before the target was reached: spend instance scale
         # on the gap (XRFF-474). Area goes as scale squared and the density
-        # at the cap does not move, so the solve is rescaled, not re-run.
-        base_scale = min(
+        # at the cap does not move, so the solve is rescaled, not re-run. The
+        # solved area already carries the pose's scale, so the gap multiplies it.
+        base_scale *= min(
             calibration.max_base_scale, math.sqrt(target_m2 / solved.area_m2)
         )
         scaled_area = solved.area_m2 * base_scale * base_scale

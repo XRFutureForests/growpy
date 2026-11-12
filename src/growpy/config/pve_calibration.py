@@ -268,8 +268,15 @@ class TwigPose:
     # (pve_distributor_model.expected_area_factor). Only BRANCH may be non-flat.
     scale_ramp_basis: str = "PLANT"
     scale_ramp: tuple[float, float] = (1.0, 1.0)
+    # A fixed size multiplier on every instance (Greenleaf: 3.0). The offline
+    # solve divides its square back out of the area, so a larger twig gets
+    # proportionally fewer instances -- "fewer, larger". Measured densities were
+    # taken at 1.0, so a measured row ignores it.
+    base_scale: float = 1.0
 
     def __post_init__(self) -> None:
+        if self.base_scale <= 0.0:
+            raise ValueError(f"base_scale must be positive, got {self.base_scale}")
         if not -90.0 <= self.axil_angle <= 90.0:
             raise ValueError(f"axil_angle must be in [-90, 90], got {self.axil_angle}")
         if self.orient not in ("AIM_FACE", "RANDOM_ROLL"):
@@ -880,6 +887,7 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         orient=str(data.get("orient", "AIM_FACE")).upper(),
         scale_ramp_basis=str(data.get("scale_ramp_basis", "PLANT")).upper(),
         scale_ramp=_pair(data.get("scale_ramp"), (1.0, 1.0)),
+        base_scale=float(data.get("base_scale", 1.0)),
     )
 
 

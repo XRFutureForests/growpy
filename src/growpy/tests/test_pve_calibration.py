@@ -860,6 +860,25 @@ class TestPerInstanceVariance:
         shipped_spec = _pose_distributor(cal, 80)
         assert shipped_spec.aim is not None and shipped_spec.face is not None
 
+    def test_a_pose_base_scale_reaches_the_distributor_and_the_area(self, shipped):
+        from dataclasses import replace
+
+        from growpy.io.unreal.pve_distributor_model import expected_area_factor
+        from growpy.io.unreal.pve_graph_plan import _pose_distributor
+
+        cal = shipped.for_species("norway_spruce", habit="conifer")
+        big = replace(cal, pose=replace(cal.pose, base_scale=3.0))
+        assert _pose_distributor(big, 80).base_scale == 3.0
+        # the solve sees 9x the area per instance, so it places a ninth as many
+        ratio = expected_area_factor(_pose_distributor(big, 80)) / expected_area_factor(
+            _pose_distributor(cal, 80)
+        )
+        assert ratio == pytest.approx(9.0)
+        # an explicit value (a measured row passes 1.0) wins over the pose
+        assert _pose_distributor(big, 80, base_scale=1.0).base_scale == 1.0
+        with pytest.raises(ValueError, match="base_scale"):
+            TwigPose(base_scale=0.0)
+
     def test_the_knobs_reach_the_distributor_the_plan_builds(self, shipped):
         from growpy.io.unreal.pve_graph_plan import _pose_distributor
 
