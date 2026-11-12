@@ -68,8 +68,11 @@ schema_version = 1
 # (2026-10-26); trees past it render in their rest pose. Epic uses 0.55-0.70 on
 # the MegaPlants pines. Owner decision 2026-10-26: 0.7 for oak and the conifers
 # of the plot, 0.6 for beech; estimated bones kept 56 % (oak), 51 % (fir,
-# spruce), 40 % (Douglas fir), 78 % (beech).
-bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, norway_spruce = 0.7, douglas_fir = 0.7, european_beech = 0.6 }
+# spruce), 40 % (Douglas fir), 78 % (beech). Owner 2026-11-12 (XRFF-681, Q61/Q63):
+# spruce 1.0, Greenleaf's value -- on the r07 h20 profile tree 2,307 bones instead
+# of 5,838 at 0.7, the same in a still shot; the sway is judged in the twin after
+# the next spruce export, and goes back to 0.7 if the limbs look stiff.
+bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, norway_spruce = 1.0, douglas_fir = 0.7, european_beech = 0.6 }
 
 # Bark from a MegaPlants instance instead of the Grove map (2026-11-11). The
 # Grove bark normals carry no AO and no height, where the master reads both from
@@ -306,6 +309,43 @@ minimum_candidates = 1
 cutoff_threshold = 0.1
 apex = true
 main_generation_start = 2
+
+
+# ---------------------------------------------------------------- spruce ---
+
+# XRFF-681 (owner 2026-11-12, register E60): Greenleaf-style twig placement for spruce. The aimed
+# pectinate pose laid every spray flat in its branch plane (crowns read as pressed fern fronds);
+# random roll clumps the same twigs around the branch, size is graded along it (1.89 -> 0.56, big at
+# the base), and twigs are three times larger, so the offline solve places a tenth as many (density
+# 81, 1,592 instances on the r07 h20 leaf-area target instead of 16,285 capped below it). No tip
+# cap and no leader layer: at base scale 3 they would carry most of the area. A species block
+# replaces the defaults wholesale, so the conifer defaults are restated.
+[pve_calibration.species.norway_spruce]
+fraction = 0.06
+relative_start = 0.0
+phyllotaxy_formation = "DISTICHOUS"
+palette = "twigs"
+fullness = 4.0
+
+[pve_calibration.species.norway_spruce.pose]
+orient = "RANDOM_ROLL"
+jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
+reset_phyllotaxy = true
+axil_angle = 45.0
+randomize_scale = [0.85, 1.15]
+randomize_axil_angle = [0.0, 0.0]
+scale_ramp_basis = "BRANCH"
+scale_ramp = [1.89, 0.56]
+base_scale = 3.0
+
+[pve_calibration.species.norway_spruce.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+leader_spacing_m = 0.0
+leader_tier = ["_h", "lateral_c"]
 
 
 # ---------------------------------------------------------------- beech ----

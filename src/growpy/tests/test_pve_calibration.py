@@ -137,15 +137,20 @@ def _species(**kwargs) -> SpeciesCalibration:
 class TestShippedCalibration:
     def test_the_file_is_tracked_and_loads(self, shipped):
         assert CALIBRATION_TOML.is_file()
-        assert set(shipped.species) == {"european_beech", "silver_fir"}
+        # spruce has a block since XRFF-681 (2026-11-12): its pose, no measured rows
+        assert set(shipped.species) == {"european_beech", "silver_fir", "norway_spruce"}
         assert sum(len(s.trees) for s in shipped.species.values()) == 27
 
     def test_defaults_synthesise_a_species_per_habit(self, shipped):
         # The nine species without a block build from the defaults, refined by
         # habit; beech and fir keep their own blocks and now build offline.
-        conifer = shipped.for_species("norway_spruce", habit="conifer")
+        conifer = shipped.for_species("douglas_fir", habit="conifer")
         broadleaf = shipped.for_species("european_oak", habit="broadleaf")
         assert conifer.derived and broadleaf.derived
+        # XRFF-681: spruce left the defaults for its own Greenleaf-style block
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        assert not spruce.derived and spruce.pose.orient == "RANDOM_ROLL"
+        assert spruce.fullness == 4.0 and spruce.trees == {}
         assert conifer.trees == {} and broadleaf.trees == {}
         # Broadleaf defaults are round-2 R4 (2026-09-16): x6, outer 15 %, 70 deg.
         assert conifer.fullness == 4.0 and broadleaf.fullness == 6.0
@@ -172,7 +177,7 @@ class TestShippedCalibration:
             species=shipped.species,
         )
         with pytest.raises(KeyError, match="no PVE calibration"):
-            bare.for_species("norway_spruce", habit="conifer")
+            bare.for_species("douglas_fir", habit="conifer")
 
     @pytest.mark.parametrize("species", sorted(SHIPPED_DENSITIES))
     def test_build_densities_are_the_shipped_ones(self, shipped, species):
@@ -228,7 +233,8 @@ class TestShippedCalibration:
         total = sum(
             cal.leaf_area_m2(tree_id)
             for species, cal in shipped.species.items()
-            for tree_id in SHIPPED_DENSITIES[species]
+            # spruce: a block, but no measured rows
+            for tree_id in SHIPPED_DENSITIES.get(species, {})
         )
         # 815.4 m2 as shipped on 2026-09-11; +7.6 m2 from the three fir h05
         # re-solves of 2026-09-15 (+48, +157, +171 instances at 0.0201 m2).
@@ -241,7 +247,7 @@ class TestShippedCalibration:
         # (ladder, per-instance areas) 110.5 against 111.9.
         placed = target = 0.0
         for species, cal in shipped.species.items():
-            for tree_id in OFFLINE_R08_R16_DENSITIES[species]:
+            for tree_id in OFFLINE_R08_R16_DENSITIES.get(species, {}):
                 placed += cal.leaf_area_m2(tree_id)
                 target += cal.tree(tree_id).target_m2
         assert placed / target == pytest.approx(1.0, abs=0.005)
@@ -287,7 +293,7 @@ class TestShippedCalibration:
         on_target = [
             delta(species, tree_id)
             for species in sorted(shipped.species)
-            for tree_id in sorted(SHIPPED_DENSITIES[species])
+            for tree_id in sorted(SHIPPED_DENSITIES.get(species, {}))
         ]
         assert len(on_target) == 15
         assert all(-0.03 <= d <= 0.032 for d in on_target), on_target
@@ -297,7 +303,7 @@ class TestShippedCalibration:
         offline = [
             delta(species, tree_id)
             for species in sorted(shipped.species)
-            for tree_id in sorted(OFFLINE_R08_R16_DENSITIES[species])
+            for tree_id in sorted(OFFLINE_R08_R16_DENSITIES.get(species, {}))
         ]
         assert len(offline) == 12
         assert all(-0.04 <= d <= 0.03 for d in offline), offline
@@ -381,13 +387,16 @@ class TestShippedCalibration:
         assert _species().ladder is None
 
     def test_the_conifers_foliate_the_leader_and_a_broadleaf_does_not(self, shipped):
-        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        douglas = shipped.for_species("douglas_fir", habit="conifer")
         pine = shipped.for_species("scots_pine", habit="conifer")
         oak = shipped.for_species("european_oak", habit="broadleaf")
         # the fir family has `_h`, the pine its lateral spray: first match wins
-        for conifer in (spruce, pine):
+        for conifer in (douglas, pine):
             assert conifer.ladder.leader_spacing_m == 0.3
             assert conifer.ladder.leader_tier == ("_h", "lateral_c")
+        # XRFF-681: spruce's three-times-larger twigs leave no leader layer
+        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        assert spruce.ladder.leader_spacing_m == 0.0
         assert oak.ladder.leader_spacing_m == 0.0
         assert oak.ladder.leader_tier == ()
 
@@ -409,10 +418,12 @@ class TestShippedCalibration:
     def test_conifer_defaults_carry_the_tip_tier_and_broadleaf_do_not(self, shipped):
         # Spruce and douglas share the fir twig, so they inherit the cap via
         # the conifer defaults; a broadleaf rosette has no branch-end spray.
-        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        douglas = shipped.for_species("douglas_fir", habit="conifer")
         oak = shipped.for_species("european_oak", habit="broadleaf")
-        assert spruce.ladder.tip_tier == "_h"
+        assert douglas.ladder.tip_tier == "_h"
         assert oak.ladder.tip_tier is None
+        # XRFF-681: spruce dropped the cap (it carried most of the area at base scale 3)
+        assert shipped.for_species("norway_spruce").ladder.tip_tier is None
 
     def test_an_empty_tip_tier_reads_as_none(self):
         assert _ladder({"tip_tier": ""}).tip_tier is None
@@ -655,12 +666,13 @@ class TestBoneReduction:
         assert shipped.for_species("silver_fir").bone_reduction_strength == 0.7
         for name, habit in (
             ("european_oak", "broadleaf"),
-            ("norway_spruce", "conifer"),
             ("douglas_fir", "conifer"),
         ):
             derived = shipped.for_species(name, habit)
             assert derived.derived, name
             assert derived.bone_reduction_strength == 0.7, name
+        # owner 2026-11-12 (XRFF-681): spruce at Greenleaf's 1.0, sway judged in twin
+        assert shipped.for_species("norway_spruce").bone_reduction_strength == 1.0
         pine = shipped.for_species("scots_pine", "conifer")
         assert pine.bone_reduction_strength == 0.0
 
@@ -761,7 +773,7 @@ class TestPerInstanceVariance:
     """
 
     def test_the_shipped_defaults_carry_a_spread_per_habit(self, shipped):
-        conifer = shipped.for_species("norway_spruce", habit="conifer").pose
+        conifer = shipped.for_species("douglas_fir", habit="conifer").pose
         broadleaf = shipped.for_species("european_oak", habit="broadleaf").pose
         # Widened 2026-09-17 with the golden-angle phyllotaxy and the tip-heavy
         # spacing gradient (owner: still a caterpillar on the 1.5x ash ladder).
@@ -844,7 +856,7 @@ class TestPerInstanceVariance:
 
         from growpy.io.unreal.pve_graph_plan import _pose_distributor
 
-        cal = shipped.for_species("norway_spruce", habit="conifer")
+        cal = shipped.for_species("douglas_fir", habit="conifer")
         pose = replace(
             cal.pose,
             orient="RANDOM_ROLL",
@@ -856,9 +868,17 @@ class TestPerInstanceVariance:
         assert spec.aim is None and spec.face is None
         assert [(j.mode, j.degrees) for j in spec.jitter] == [("ROLL", 180.0)]
         assert (spec.scale_ramp_basis, spec.scale_ramp) == ("BRANCH", (1.89, 0.56))
-        # and the shipped spruce keeps its aimed pose
+        # a conifer on the defaults keeps its aimed pose ...
         shipped_spec = _pose_distributor(cal, 80)
         assert shipped_spec.aim is not None and shipped_spec.face is not None
+        # ... and the shipped spruce block is the owner-approved profile (E60)
+        spruce = _pose_distributor(shipped.for_species("norway_spruce"), 81)
+        assert spruce.aim is None and spruce.face is None
+        assert (spruce.scale_ramp, spruce.base_scale, spruce.axil_angle) == (
+            (1.89, 0.56),
+            3.0,
+            45.0,
+        )
 
     def test_a_pose_base_scale_reaches_the_distributor_and_the_area(self, shipped):
         from dataclasses import replace
@@ -866,7 +886,7 @@ class TestPerInstanceVariance:
         from growpy.io.unreal.pve_distributor_model import expected_area_factor
         from growpy.io.unreal.pve_graph_plan import _pose_distributor
 
-        cal = shipped.for_species("norway_spruce", habit="conifer")
+        cal = shipped.for_species("douglas_fir", habit="conifer")
         big = replace(cal, pose=replace(cal.pose, base_scale=3.0))
         assert _pose_distributor(big, 80).base_scale == 3.0
         # the solve sees 9x the area per instance, so it places a ninth as many

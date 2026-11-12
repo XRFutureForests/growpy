@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Spruce: clumped twig placement, fewer bones
+
+#### Changed
+
+- **Norway spruce has its own `pve_calibration` block** with the clumped pose (random roll,
+  twig size graded 1.89 → 0.56 along the branch, base scale 3, no tip cap or leader layer).
+  On the r07 h20 tree the solve places 1,592 instances on the leaf-area target instead of
+  16,285 capped below it. Takes effect at the next spruce export.
+- **Spruce bone reduction 1.0** (was 0.7): 2,307 bones instead of 5,838 on the same tree.
+  The sway is judged in the twin after the next export; 0.7 is the fallback.
+
 ### 2026-11-12 — Bark material intake (XRFF-679)
 
 #### Added
