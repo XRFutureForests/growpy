@@ -349,9 +349,9 @@ class TestShippedCalibration:
         assert PVEGraphSpec.profile_pin == shipped.profile_pin
 
     def test_only_fir_corrects_bark_aspect(self, shipped):
-        # The fir block's 0.5 (Grove fir_70, 1024 x 2048) gave way on 2026-11-12
-        # to the Norway spruce atlas's trunk-strip YScale.
-        assert shipped.for_species("silver_fir").bark_y_scale == 0.8
+        # The fir block's 0.5 (Grove fir_70, 1024 x 2048) also fits its tiled
+        # Megascans bark (2048 x 4096); a tiled source keeps the species' pin.
+        assert shipped.for_species("silver_fir").bark_y_scale == 0.5
         assert shipped.for_species("european_beech").bark_y_scale is None
 
     def test_the_measured_twig_pose_ships(self, shipped):
@@ -764,7 +764,7 @@ class TestRoundTripToGeneratedScript:
         )
         text = script.read_text(encoding="utf-8")
         fir = text.split("PVG_Fir_Ship", 1)[1]
-        assert "'bark_y_scale': 0.8" in fir
+        assert "'bark_y_scale': 0.5" in fir
 
 
 class TestPerInstanceVariance:

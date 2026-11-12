@@ -90,15 +90,16 @@ bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, no
 # MA_Foliage_Trees_TwoBarkBlend, which has no trunk-DBH copy); wild cherry
 # (Yoshino: generation offset 1 and Fit distribution, so which strip lands on
 # the trunk is not settled).
-# Conifers (2026-11-12, replacing the Grove fir_70 moss bark): spruce and
-# silver fir take the Norway spruce atlas (strips from
-# PVE_Norway_Spruce_01, no Trunk Texture Setup override; its trunk strip uses
-# YScale 0.8, the others 1.0 -- one y_scale per species here, so 0.8). The strip
-# UVs are baked at EXPORT: these two only switch with their next re-export
-# (folded into the template-graph export, XRFF-677). Running growpy-pve-assets
-# before that puts the atlas on meshes that still wrap like a Grove tile.
-# Silver fir has no MegaPlants bark of its own; spruce is the closest conifer
-# bark in the library (its grey, smoother bark would need a tint).
+# Conifers (2026-11-12, replacing the Grove fir_70 moss bark): Norway spruce
+# takes the Norway spruce atlas (strips from PVE_Norway_Spruce_01, no Trunk
+# Texture Setup override; its trunk strip uses YScale 0.8, the others 1.0 -- one
+# y_scale per species here, so 0.8) for release 1, its trees exported with these
+# strips. A Megascans spruce tile is taken in (fab_nordic_spruce_bark) for the
+# owner's atlas-vs-tile review; any switch comes with the template-graph export
+# (XRFF-677).
+# Silver fir: no fir bark in the library; Megascans "Beech Bark" (smooth pale
+# grey, no moss) through the material intake stands in for young-to-mature
+# Abies alba, a tile (approved 2026-11-12, XRFF-679). Old plated fir bark: none.
 # Scots pine: Baltic pine's lower bark is a seamless tile, not an atlas
 # (`tiled = true`: Grove wraps, no u_ranges, live without a re-export), on the
 # project instance MI_XRFF_ScotsPine_Bark (Baltic textures and "Lower" values of
@@ -114,7 +115,7 @@ bark_source_per_species.norway_spruce = { material = "/Game/Megaplant_Library/Tr
 # Douglas fir: its own Megascans scan through the material intake (XRFF-679,
 # data/input/materials/fab_douglas_fir_bark), a seamless 1 x 2 m tile.
 bark_source_per_species.douglas_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark", tiled = true }
-bark_source_per_species.silver_fir = { material = "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/MI_Norway_Spruce_Bark_01", y_scale = 0.8, u_ranges = [[0.003785, 0.710256], [0.718071, 0.843101], [0.850916, 0.913431], [0.921245, 0.987668]] }
+bark_source_per_species.silver_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir", tiled = true }
 bark_source_per_species.scots_pine = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/MI_XRFF_ScotsPine_Bark", tiled = true }
 
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE

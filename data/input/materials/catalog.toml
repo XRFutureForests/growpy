@@ -4,6 +4,18 @@
 # entries stay inside the UE project and are left out of any
 # published catalog.
 
+[materials.fab_beech_bark_silver_fir]
+species = "silver_fir"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:wmohcgfn"
+licence = "Fab Standard License"
+redistributable = false
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir"
+
 [materials.fab_douglas_fir_bark]
 species = "douglas_fir"
 bark_stage = "mature"
@@ -15,6 +27,18 @@ source_ref = "megascans:tipkfjes"
 licence = "Fab Standard License"
 redistributable = false
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark"
+
+[materials.fab_nordic_spruce_bark]
+species = "norway_spruce"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:xlooabxlw"
+licence = "Fab Standard License"
+redistributable = false
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_nordic_spruce_bark/MI_fab_nordic_spruce_bark"
 
 [materials.grove_fir_70]
 species = "silver_fir"

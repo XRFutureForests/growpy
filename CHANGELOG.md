@@ -44,6 +44,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Douglas fir takes its own Megascans bark** (`fab_douglas_fir_bark`, a 1 x 2 m
   tile) instead of the Norway spruce atlas: live without a re-export.
+- **Silver fir takes the Megascans "Beech Bark"** (`fab_beech_bark_silver_fir`, smooth
+  pale grey, a tile) instead of the spruce atlas; the library has no fir bark. Norway
+  spruce keeps the atlas for release 1; a Megascans spruce tile
+  (`fab_nordic_spruce_bark`) is in the catalog for the owner's comparison.
 
 ### 2026-11-12 — Conifer bark without the moss texture
 

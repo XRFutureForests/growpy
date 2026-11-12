@@ -1,0 +1,14 @@
+# Intake: Fab/Megascans 'Nordic Forest Tree Bark Spruce' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_nordic_spruce_bark"
+species = "norway_spruce"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:xlooabxlw"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-16 11:06:07", note = "Quixel Megascans 'Nordic Forest Tree Bark Spruce', scan area 1x2 m, relief 0.013 m" }
+maps_from = { normal = "Nordic_Forest_Tree_Bark_Spruce_xlooabxlw_8K_Normal.jpg", albedo = "Nordic_Forest_Tree_Bark_Spruce_xlooabxlw_8K_BaseColor.jpg", ao = "Nordic_Forest_Tree_Bark_Spruce_xlooabxlw_8K_AO.jpg", roughness = "Nordic_Forest_Tree_Bark_Spruce_xlooabxlw_8K_Roughness.jpg", height = "Nordic_Forest_Tree_Bark_Spruce_xlooabxlw_8K_Displacement.jpg" }
