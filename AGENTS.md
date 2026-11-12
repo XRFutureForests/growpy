@@ -51,7 +51,7 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 | `growpy-derive-twig-ladder` | Derive a twig size ladder from a Grove twig |
 | `growpy-pack-pve-textures` | Pack twig textures into the two maps PVE's tree material expects |
 | `growpy-pve-assets` | Generate the UE script that imports PVE twig palettes and bark materials |
-| `growpy-material-intake` | Bark material intake (XRFF-679): `fab` / `grove` write an intake folder under `data/input/materials/<id>/`; `build` checks it, packs the `_NAH` map, writes the UE script for `MI_<id>` and regenerates `data/input/materials/catalog.toml` |
+| `growpy-material-intake` | Bark material intake (XRFF-679): `fab` / `grove` / `set` (any folder of texture maps) write an intake folder under `data/input/materials/<id>/`; `build` checks it, packs the `_NAH` map, writes the UE script for `MI_<id>` and regenerates `data/input/materials/catalog.toml` |
 | `growpy-pve-leaf-area` | Report scale-corrected leaf area for the calibrated PVE trees |
 | `growpy-pve-export` | Trigger the Export of PVE graphs in the running editor (posted Ctrl+E + UI Automation; works with the workstation locked) |
 | `growpy-pve-gallery` | Lay the exported PVE trees out in gallery levels (one per species: stand radius x stage) to judge the catalog by eye; skips meshes over the 32,767-bone cap; `--shots` photographs each stand row |

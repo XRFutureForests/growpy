@@ -17,6 +17,8 @@ Commands::
 
     growpy-material-intake fab <megascans set dir> --species douglas_fir
     growpy-material-intake grove fir_70 --species silver_fir
+    growpy-material-intake set <dir> --species beech --id scan_x --tile-size-m 1 1
+        --licence "CC-BY-4.0" --source-ref <capture id>
     growpy-material-intake build data/input/materials/<id> [--run]
 
 ``fab`` and ``grove`` write an intake folder from a source; ``build`` is the
@@ -343,6 +345,121 @@ def prepare_fab(
     return folder
 
 
+# Generic texture sets (Substance, photo-to-material tools, our own scans):
+# a map is recognised by a token of its file name, split at _ - . and spaces.
+SET_TOKENS = {
+    "albedo": {"basecolor", "albedo", "diffuse", "diff", "color", "colour", "col"},
+    "normal": {"normal", "normals", "nrm", "nor", "normalgl", "normaldx"},
+    "roughness": {"roughness", "rough", "rgh"},
+    "gloss": {"gloss", "glossiness"},
+    "ao": {"ao", "ambientocclusion", "occlusion"},
+    "height": {"height", "displacement", "disp", "heightmap"},
+}
+SET_SUFFIXES = (".png", ".tif", ".tiff", ".jpg", ".jpeg")  # what PIL reads
+
+
+def classify_map(path: Path) -> str | None:
+    """Map kind of a texture file from its name tokens; None if none or ambiguous."""
+    tokens = {t for t in re.split(r"[_\-.\s]+", path.stem.lower()) if t}
+    found = [kind for kind, names in SET_TOKENS.items() if tokens & names]
+    return found[0] if len(found) == 1 else None
+
+
+def _to_grey(image):
+    """8-bit grey from any PIL mode; 16/32-bit maps are min-max rescaled."""
+    import numpy as np
+    from PIL import Image
+
+    if image.mode in ("I", "I;16", "I;16B", "I;16L", "F"):
+        a = np.asarray(image, dtype=np.float64)
+        lo, hi = float(a.min()), float(a.max())
+        a = (a - lo) / (hi - lo) if hi > lo else np.zeros_like(a)
+        return Image.fromarray((a * 255).round().astype(np.uint8))
+    return image.convert("L")
+
+
+def prepare_set(
+    src_dir: Path,
+    species: str,
+    *,
+    material_id: str,
+    tile_size_m: tuple[float, float],
+    licence: str,
+    source_ref: str,
+    source: str = "scan",
+    redistributable: bool = False,
+    bark_stage: str = "mature",
+    dbh_cm=(0, 200),
+    size: int = DEFAULT_SIZE,
+    normal_convention: str | None = None,
+    capture_place: str = "",
+    capture_date: str = "",
+    root: Path = INTAKE_ROOT,
+) -> Path:
+    """Intake folder from any folder of texture maps (custom sets, scans).
+
+    Each file is recognised by its name (``classify_map``); a gloss map stands
+    in, inverted, for a missing roughness map. Maps are scaled to ``size`` px
+    wide. Tile size, licence and source reference cannot be read from plain
+    image files, so they are arguments; the normal convention is measured
+    unless given.
+    """
+    from PIL import Image, ImageOps
+
+    if source not in SOURCES:
+        raise ValueError(f"source {source!r} not in {SOURCES}")
+    found: dict[str, list[Path]] = {}
+    for path in sorted(src_dir.iterdir()):
+        kind = classify_map(path) if path.suffix.lower() in SET_SUFFIXES else None
+        if kind:
+            found.setdefault(kind, []).append(path)
+    gloss = found.pop("gloss", None)
+    if "roughness" not in found and gloss:
+        found["roughness"] = gloss
+    missing = [m for m in ("albedo", "normal") if m not in found]
+    if missing:
+        raise FileNotFoundError(f"{src_dir}: no {', '.join(missing)} map recognised")
+    folder = root / material_id
+    folder.mkdir(parents=True, exist_ok=True)
+    written = {}
+    for kind, paths in found.items():
+        path = max(paths, key=lambda p: p.stat().st_size)  # highest resolution
+        with Image.open(path) as image:
+            image.load()
+            if kind in ("albedo", "normal"):
+                out = image.convert("RGB")
+            else:
+                out = _to_grey(image)
+                if classify_map(path) == "gloss":
+                    out = ImageOps.invert(out)
+            _resize(out, size).save(folder / f"{kind}.png")
+        written[kind] = path.name
+    if normal_convention is None:
+        with Image.open(folder / "normal.png") as normal:
+            normal_convention = normal_convention_by_curl(normal)
+    write_material_toml(
+        folder,
+        {
+            "id": material_id,
+            "species": species,
+            "bark_stage": bark_stage,
+            "dbh_cm": list(dbh_cm),
+            "tile_size_m": [float(v) for v in tile_size_m],
+            "normal_convention": normal_convention,
+            "source": source,
+            "source_ref": source_ref,
+            "licence": licence,
+            "redistributable": redistributable,
+            "capture": {"place": capture_place, "date": capture_date, "note": ""},
+            "maps_from": written,
+        },
+        header=f"Intake: texture set {src_dir.name} (growpy-material-intake set).\n"
+        "A scan's maps have no other source: keep a copy on the backup share.",
+    )
+    logger.info("%s: %s maps %s", folder, material_id, sorted(written))
+    return folder
+
+
 def prepare_grove(
     stem: str,
     species: str,
@@ -574,6 +691,29 @@ def main(argv: list[str] | None = None) -> int:
     fab.add_argument("set_dir", type=Path)
     fab.add_argument("--size", type=int, default=DEFAULT_SIZE, help="map width in px")
     key_args(fab)
+    tset = sub.add_parser("set", help="intake folder from any folder of texture maps")
+    tset.add_argument("src_dir", type=Path)
+    tset.add_argument(
+        "--tile-size-m",
+        nargs=2,
+        type=float,
+        required=True,
+        metavar=("WIDTH", "HEIGHT"),
+        help="physical size of one tile",
+    )
+    tset.add_argument("--licence", required=True)
+    tset.add_argument("--source-ref", required=True, help="URL or capture id")
+    tset.add_argument("--source", default="scan", choices=SOURCES)
+    tset.add_argument("--redistributable", action="store_true")
+    tset.add_argument(
+        "--normal-convention",
+        choices=CONVENTIONS,
+        help="default: measured from the normal map",
+    )
+    tset.add_argument("--capture-place", default="")
+    tset.add_argument("--capture-date", default="")
+    tset.add_argument("--size", type=int, default=DEFAULT_SIZE, help="map width in px")
+    key_args(tset)
     grove = sub.add_parser("grove", help="intake folder from a Grove bark")
     grove.add_argument("stem", help="e.g. fir_70 for fir_70_bark.jpg")
     grove.add_argument("--textures", type=Path, default=Path("data/assets/textures"))
@@ -601,6 +741,28 @@ def main(argv: list[str] | None = None) -> int:
             bark_stage=args.bark_stage,
             dbh_cm=args.dbh_cm,
             size=args.size,
+            root=args.root,
+        )
+        print(folder)
+        return 0
+    if args.command == "set":
+        if not args.material_id:
+            parser.error("set needs --id")
+        folder = prepare_set(
+            args.src_dir,
+            args.species,
+            material_id=args.material_id,
+            tile_size_m=tuple(args.tile_size_m),
+            licence=args.licence,
+            source_ref=args.source_ref,
+            source=args.source,
+            redistributable=args.redistributable,
+            bark_stage=args.bark_stage,
+            dbh_cm=args.dbh_cm,
+            size=args.size,
+            normal_convention=args.normal_convention,
+            capture_place=args.capture_place,
+            capture_date=args.capture_date,
             root=args.root,
         )
         print(folder)

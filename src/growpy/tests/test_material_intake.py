@@ -100,6 +100,73 @@ def test_build_writes_script_and_catalog(tmp_path):
     assert entry["instance"].endswith("/fab_test_bark/MI_fab_test_bark")
 
 
+@pytest.mark.parametrize(
+    "name, kind",
+    [
+        ("Bark_BaseColor.png", "albedo"),
+        ("oak_scan_diffuse_4k.jpg", "albedo"),
+        ("T_Bark_Normal.tif", "normal"),
+        ("bark-nrm.png", "normal"),
+        ("bark_Roughness.png", "roughness"),
+        ("bark_Glossiness.png", "gloss"),
+        ("bark_AO.png", "ao"),
+        ("bark_Displacement.png", "height"),
+        ("bark_preview.png", None),
+        ("bark_normal_roughness.png", None),  # ambiguous: two kinds
+    ],
+)
+def test_map_names_are_recognised(name, kind):
+    from pathlib import Path
+
+    assert mi.classify_map(Path(name)) == kind
+
+
+def test_set_takes_a_custom_texture_folder(tmp_path):
+    src = tmp_path / "scan"
+    src.mkdir()
+    h = _height(256)
+    Image.new("RGB", (256, 256), (120, 110, 100)).save(src / "Bark01_BaseColor.png")
+    _normal(h, "directx").save(src / "Bark01_Normal.png")
+    Image.new("L", (256, 256), 200).save(src / "Bark01_Gloss.png")
+    h16 = ((h - h.min()) / np.ptp(h) * 65535).astype(np.uint16)
+    Image.fromarray(h16).save(src / "Bark01_Height.png")
+    Image.new("RGB", (64, 64)).save(src / "Bark01_preview.png")
+    folder = mi.prepare_set(
+        src,
+        "european_beech",
+        material_id="scan_test",
+        tile_size_m=(0.5, 0.5),
+        licence="CC-BY-4.0",
+        source_ref="capture:2026-11-12-01",
+        size=128,
+        root=tmp_path / "in",
+    )
+    m = mi.read_material(folder)
+    assert m["normal_convention"] == "directx"
+    assert m["source"] == "scan" and m["redistributable"] is False
+    rough = np.asarray(Image.open(folder / "roughness.png"))
+    assert rough.mean() == pytest.approx(55, abs=1)  # gloss 200 inverted
+    height = np.asarray(Image.open(folder / "height.png"))
+    assert height.dtype == np.uint8 and height.max() == 255
+    assert mi.check(folder) == []
+
+
+def test_set_without_a_normal_map_is_refused(tmp_path):
+    src = tmp_path / "scan"
+    src.mkdir()
+    Image.new("RGB", (32, 32)).save(src / "x_albedo.png")
+    with pytest.raises(FileNotFoundError, match="normal"):
+        mi.prepare_set(
+            src,
+            "x",
+            material_id="x",
+            tile_size_m=(1, 1),
+            licence="l",
+            source_ref="r",
+            root=tmp_path / "in",
+        )
+
+
 def test_fab_reads_the_megascans_set(tmp_path):
     raw = tmp_path / "set" / "texture-set" / "raw" / "x_extracted"
     raw.mkdir(parents=True)

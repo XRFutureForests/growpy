@@ -39,6 +39,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   test), packs the `_NAH` map, writes the UE script for `MI_<id>` and regenerates
   `data/input/materials/catalog.toml`.
 - **`pack_bark_normal`** takes measured AO and height maps when a source has them.
+- **`growpy-material-intake set`** takes any folder of texture maps (custom sets, scans):
+  maps are recognised by name (BaseColor/Albedo/Diffuse, Normal, Roughness or inverted
+  Gloss, AO, Height/Displacement), 16-bit maps rescaled; tile size, licence and source
+  reference are arguments, the normal convention is measured.
 
 #### Changed
 
