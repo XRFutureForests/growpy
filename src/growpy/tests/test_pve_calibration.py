@@ -343,7 +343,9 @@ class TestShippedCalibration:
         assert PVEGraphSpec.profile_pin == shipped.profile_pin
 
     def test_only_fir_corrects_bark_aspect(self, shipped):
-        assert shipped.for_species("silver_fir").bark_y_scale == 0.5
+        # The fir block's 0.5 (Grove fir_70, 1024 x 2048) gave way on 2026-11-12
+        # to the Norway spruce atlas's trunk-strip YScale.
+        assert shipped.for_species("silver_fir").bark_y_scale == 0.8
         assert shipped.for_species("european_beech").bark_y_scale is None
 
     def test_the_measured_twig_pose_ships(self, shipped):
@@ -746,7 +748,7 @@ class TestRoundTripToGeneratedScript:
         )
         text = script.read_text(encoding="utf-8")
         fir = text.split("PVG_Fir_Ship", 1)[1]
-        assert "'bark_y_scale': 0.5" in fir
+        assert "'bark_y_scale': 0.8" in fir
 
 
 class TestPerInstanceVariance:
@@ -894,3 +896,16 @@ class TestBarkSource:
     def test_an_unknown_texture_mode_is_refused(self, shipped):
         with pytest.raises(ValueError, match="textures"):
             self._source(shipped, textures="x")
+
+    def test_a_tiled_source_wraps_like_a_grove_bark(self, shipped):
+        beech, got = self._source(shipped, tiled=True)
+        assert got.bark_source_textures is True
+        assert got.bark_source_tiled is True
+        assert got.bark_u_ranges == ()
+        assert got.bark_y_scale == beech.bark_y_scale
+
+    def test_the_conifers_leave_the_grove_moss_bark(self, shipped):
+        for sp in ("norway_spruce", "douglas_fir", "silver_fir", "scots_pine"):
+            assert shipped.for_species(sp, "conifer").bark_material_source, sp
+        assert shipped.for_species("scots_pine", "conifer").bark_source_tiled
+        assert len(shipped.for_species("norway_spruce", "conifer").bark_u_ranges) == 4

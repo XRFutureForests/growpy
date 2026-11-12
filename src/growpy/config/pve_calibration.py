@@ -548,11 +548,15 @@ class SpeciesCalibration:
     # AO, roughness and specular values onto the Grove bark textures, whose
     # tiling (Grove wraps, texture aspect) stays as it is.
     bark_source_textures: bool = True
+    # True ("tiled = true"): the source's maps are a seamless tile (Baltic pine),
+    # not an atlas, so they wrap like a Grove bark and need no u_ranges.
+    bark_source_tiled: bool = False
 
     def __post_init__(self) -> None:
         if (
             self.bark_material_source is not None
             and self.bark_source_textures
+            and not self.bark_source_tiled
             and (self.bark_y_scale is None or not self.bark_u_ranges)
         ):
             raise ValueError(
@@ -1016,6 +1020,7 @@ def _with_bark_source(
             (float(lo), float(hi)) for lo, hi in entry.get("u_ranges", ())
         ),
         bark_source_textures=textures == "source",
+        bark_source_tiled=bool(entry.get("tiled", False)),
     )
 
 

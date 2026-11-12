@@ -5,6 +5,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Conifer bark without the moss texture
+
+#### Changed
+
+- **The four conifers leave the Grove `fir_70` bark** (a yellow-green moss bark).
+  Scots pine takes the MegaPlants Baltic pine lower bark (project instance
+  `MI_XRFF_ScotsPine_Bark`). Norway spruce, Douglas fir and silver fir take the Norway
+  spruce atlas (four strips, `y_scale` 0.8), which reaches their meshes at their next
+  export; silver fir's own grey bark is not in the library.
+
+#### Added
+
+- **`tiled = true`** in `bark_source_per_species` takes a source bark that is a seamless
+  tile rather than an atlas: it wraps like a Grove bark and needs no `u_ranges`.
+
 ### 2026-11-12 — Clumped twig placement as a pose option
 
 #### Added

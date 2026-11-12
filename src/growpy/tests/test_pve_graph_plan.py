@@ -539,12 +539,13 @@ class TestPlanEndToEnd:
 
     def test_bark_y_scale_follows_the_texture_aspect(self, tmp_path, forest_root):
         # PVE maps the trunk square in world space, so a W x H bark keeps its
-        # aspect only at YScale = W / H. Fir pins 0.5 (= its 1024 x 2048);
+        # aspect only at YScale = W / H. Fir takes the Norway spruce atlas's
+        # trunk-strip 0.8 since 2026-11-12 (was 0.5, its Grove 1024 x 2048);
         # beech has no pin and takes 1024 / 4096 from beech_60_bark.jpg --
         # the owner saw it squashed at the native 1.0 (2026-09-16).
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
         by_species = {g.graph_name.split("_")[1]: g.bark_y_scale for g in plan.graphs}
-        assert by_species["SilverFir"] == 0.5
+        assert by_species["SilverFir"] == 0.8
         assert by_species["EuropeanBeech"] == pytest.approx(0.25)
 
     def test_bark_aspect_is_width_over_height_and_tolerates_a_missing_file(
