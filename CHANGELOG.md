@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Silver fir, Douglas fir and pine take the spruce placement
+
+#### Changed
+
+- **Silver fir, Douglas fir and Scots pine use the spruce twig placement** (owner
+  decision 2026-11-12): random roll, twig size graded along the branch, base scale 3,
+  no tip cap or leader layer, and spruce's bare-stem start on small trees. Douglas fir
+  and pine get their own `pve_calibration` blocks. A species block does not fall back
+  to the conifer defaults, so they repeat fullness 4 and distichous phyllotaxy as the
+  spruce block does.
+- Leaf area is now on target (±3 %) for all 46 trees, where the old catalog was capped
+  below it: Douglas fir from 30 m up carried only 10–27 % of its target. Twig instances
+  over the ladders:
+  - fir 200,403 → 32,449;
+  - Douglas fir 248,594 → 77,821;
+  - pine 49,174 → 6,536.
+- **Bone reduction 1.0** for the three species (fir and Douglas fir were 0.7; pine had
+  none). Bones on the r07 h20 trees:
+  - fir 5,969 → 2,401;
+  - Douglas fir 2,850 → 904;
+  - pine 2,312 → 343.
+- Takes effect at the next export of each species. The big Douglas firs (up to 10,832
+  twigs, ~250 M foliage triangles at h45) need one export click each.
+
 ### 2026-11-12 — Twig size steps down where a tree would sit on the density floor
 
 #### Added

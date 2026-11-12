@@ -72,7 +72,7 @@ schema_version = 1
 # spruce 1.0, Greenleaf's value -- on the r07 h20 profile tree 2,307 bones instead
 # of 5,838 at 0.7, the same in a still shot; the sway is judged in the twin after
 # the next spruce export, and goes back to 0.7 if the limbs look stiff.
-bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 0.7, norway_spruce = 1.0, douglas_fir = 0.7, european_beech = 0.6 }
+bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 1.0, norway_spruce = 1.0, douglas_fir = 1.0, european_beech = 0.6, scots_pine = 1.0 }
 
 # Bark from a MegaPlants instance instead of the Grove map (2026-11-11). The
 # Grove bark normals carry no AO and no height, where the master reads both from
@@ -349,6 +349,69 @@ base_scale = 3.0
 min_density = 10
 
 [pve_calibration.species.norway_spruce.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+leader_spacing_m = 0.0
+leader_tier = ["_h", "lateral_c"]
+
+[pve_calibration.species.douglas_fir]
+# Spruce placement profile (owner C2, 2026-11-12). A species block does not fall back to
+# the conifer defaults, so it repeats them as the spruce block does (fullness 4, distichous).
+fraction = 0.06
+relative_start = 0.0
+relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
+phyllotaxy_formation = "DISTICHOUS"
+palette = "twigs"
+fullness = 4.0
+
+[pve_calibration.species.douglas_fir.pose]
+orient = "RANDOM_ROLL"
+jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
+reset_phyllotaxy = true
+axil_angle = 45.0
+randomize_scale = [0.85, 1.15]
+randomize_axil_angle = [0.0, 0.0]
+scale_ramp_basis = "BRANCH"
+scale_ramp = [1.89, 0.56]
+base_scale = 3.0
+min_density = 10
+
+[pve_calibration.species.douglas_fir.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+leader_spacing_m = 0.0
+leader_tier = ["_h", "lateral_c"]
+
+
+[pve_calibration.species.scots_pine]
+# Spruce placement profile (owner C3, 2026-11-12). A species block does not fall back to
+# the conifer defaults, so it repeats them as the spruce block does (fullness 4, distichous).
+fraction = 0.06
+relative_start = 0.0
+relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
+phyllotaxy_formation = "DISTICHOUS"
+palette = "twigs"
+fullness = 4.0
+
+[pve_calibration.species.scots_pine.pose]
+orient = "RANDOM_ROLL"
+jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
+reset_phyllotaxy = true
+axil_angle = 45.0
+randomize_scale = [0.85, 1.15]
+randomize_axil_angle = [0.0, 0.0]
+scale_ramp_basis = "BRANCH"
+scale_ramp = [1.89, 0.56]
+base_scale = 3.0
+min_density = 10
+
+[pve_calibration.species.scots_pine.ladder]
 scale_weight = 1.0
 minimum_candidates = 1
 cutoff_threshold = 0.1
@@ -703,6 +766,8 @@ build_density_source = "measured"
 # ------------------------------------------------------------------ fir ----
 
 [pve_calibration.species.silver_fir]
+# Owner C1 (2026-11-12): bare-stem start on small trees, as spruce.
+relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 # Fir stays at 0.0. Four of six trees already have more branches than their
 # Forrester target allows, so the one-instance-per-branch floor that a non-zero
 # relative_start imposes would put them over target at density 1. Adopting it
@@ -741,12 +806,18 @@ fitted_on = "european_beech r05_h15m"
 # Sprays on the sides, tilted 30 deg toward the tip, flat, faces up, one tip
 # spray continuing the branch, leader pointing up; no jitter -- a pectinate
 # spray is flat. Measured on PVG_FirZV 2026-09-14. Rotations only.
+# Owner C1 (2026-11-12): the spruce placement profile replaces the pose above.
 [pve_calibration.species.silver_fir.pose]
+orient = "RANDOM_ROLL"
+jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
-axil_angle = 30.0
-# XRFF-467, matching the conifer defaults (a species block replaces them).
-randomize_scale = [0.8, 1.2]
-randomize_axil_angle = [-12.0, 12.0]
+axil_angle = 45.0
+randomize_scale = [0.85, 1.15]
+randomize_axil_angle = [0.0, 0.0]
+scale_ramp_basis = "BRANCH"
+scale_ramp = [1.89, 0.56]
+base_scale = 3.0
+min_density = 10
 
 # Scale-graded size ladder (XRFF-412, 2026-09-15). Every prototype advertises
 # a Scale target (per tree below, `scale_targets`, in ascending prototype-area
@@ -759,16 +830,14 @@ randomize_axil_angle = [-12.0, 12.0]
 # with six tiers within 0.004 of one another Epic's 0.3 / 2 draws six or seven
 # candidates for most samples; 0.1 / 1 picks the two big sprays by radius and
 # draws among the near-equal small ones at random.
+# Owner C1 (2026-11-12): spruce profile ladder -- no tip cap, no leader layer.
 [pve_calibration.species.silver_fir.ladder]
 scale_weight = 1.0
 minimum_candidates = 1
 cutoff_threshold = 0.1
 apex = true
 main_generation_start = 2
-# Three-fingered spray on every branch end (see the conifer defaults).
-tip_tier = "_h"
-# Sprays along the leader (see the conifer defaults).
-leader_spacing_m = 0.3
+leader_spacing_m = 0.0
 leader_tier = ["_h", "lateral_c"]
 
 [pve_calibration.species.silver_fir.trees.r05_h05m]

@@ -261,8 +261,9 @@ class TestLadder:
             cutoff_threshold=0.1,
             apex=True,
             main_generation_start=2,
-            tip_tier="_h",
-            leader_spacing_m=0.3,
+            # owner C1 (2026-11-12): the spruce profile, no tip cap, no leader layer
+            tip_tier=None,
+            leader_spacing_m=0.0,
             leader_tier=("_h", "lateral_c"),
         )
         assert load_pve_calibration().for_species("european_beech").ladder is None
@@ -289,21 +290,15 @@ class TestLadder:
         assert chain.distributor.conditions.minimum_candidates == 1
         assert chain.distributor.generation_band == (2, None)
         assert chain.distributor.branch_density == tree.build_density
-        # Apex layer: one largest spray on the leader, ungraded. Tip cap: the
-        # three-fingered `_h` at density 1 on every main-layer branch end.
-        assert len(chain.layers) == 2
-        apex, cap = chain.layers
+        # Apex layer: one largest spray on the leader, ungraded. No tip cap since
+        # owner C1 (2026-11-12): the spruce profile drops it.
+        assert len(chain.layers) == 1
+        (apex,) = chain.layers
         assert apex.distributor.branch_density == 1
         assert apex.distributor.generation_band == (1, 1)
         assert apex.distributor.conditions is None
         assert apex.distributor.axil_angle == chain.distributor.axil_angle
         assert [e.mesh for e in apex.palette] == [big.mesh]
-        assert cap.distributor.branch_density == 1
-        assert cap.distributor.generation_band == (2, None)
-        assert cap.distributor.conditions is None
-        assert [e.mesh for e in cap.palette] == [
-            m for m in (e.mesh for e in chain.palette) if m.endswith("foliage_h_ZUP")
-        ]
 
     def test_a_fir_tree_without_targets_stays_flat(self, tmp_path, forest_root):
         # The legacy radii were solved for a flat palette and still build
@@ -580,8 +575,10 @@ class TestPlanEndToEnd:
             for c in g.chains
         }
         fir, beech = by_species["SilverFir"], by_species["EuropeanBeech"]
-        assert (fir.axil_angle, beech.axil_angle) == (30.0, 40.0)
-        assert fir.jitter == ()
+        # owner C1 (2026-11-12): fir carries the spruce profile, random roll, no aim
+        assert (fir.axil_angle, beech.axil_angle) == (45.0, 40.0)
+        assert [(j.mode, j.degrees) for j in fir.jitter] == [("ROLL", 180.0)]
+        assert fir.aim is None and fir.face is None
         assert [(j.mode, j.degrees) for j in beech.jitter] == [
             ("PITCH", 20.0),
             ("ROLL", 12.0),
@@ -592,9 +589,9 @@ class TestPlanEndToEnd:
             assert spec.reset_phyllotaxy and spec.single_bud_tip
             assert spec.auto_align_end
             assert spec.axil_angle_ramp == (1.0, 1.0)
-            assert spec.aim is not None and spec.aim.dual
-            assert spec.aim.blend_attribute == "WORLD_UP_DOT"
-            assert spec.face is not None and spec.face.affect_tip
+        assert beech.aim is not None and beech.aim.dual
+        assert beech.aim.blend_attribute == "WORLD_UP_DOT"
+        assert beech.face is not None and beech.face.affect_tip
 
     def test_graphs_voxelize_by_default(self, tmp_path, forest_root):
         # VOXELIZE is the owner's ask. It was blamed for bare exports on
