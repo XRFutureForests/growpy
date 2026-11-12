@@ -322,6 +322,9 @@ main_generation_start = 2
 # cap and no leader layer: at base scale 3 they would carry most of the area. A species block
 # replaces the defaults wholesale, so the conifer defaults are restated.
 [pve_calibration.species.norway_spruce]
+# Owner 2026-11-12 (trim sheet): PVE Carve cuts 15 % of the lateral branch length
+# off the thin, bendy ends; the plan solves the density on the trimmed skeleton.
+carve_trim = 0.15
 fraction = 0.06
 relative_start = 0.0
 # Small trees (2026-11-12): without the tip cap, a short branch gets one sample, and at
@@ -358,6 +361,9 @@ leader_spacing_m = 0.0
 leader_tier = ["_h", "lateral_c"]
 
 [pve_calibration.species.douglas_fir]
+# Owner 2026-11-12 (trim sheet): PVE Carve cuts 15 % of the lateral branch length
+# off the thin, bendy ends; the plan solves the density on the trimmed skeleton.
+carve_trim = 0.15
 # Spruce placement profile (owner C2, 2026-11-12). A species block does not fall back to
 # the conifer defaults, so it repeats them as the spruce block does (fullness 4, distichous).
 fraction = 0.06
@@ -390,6 +396,9 @@ leader_tier = ["_h", "lateral_c"]
 
 
 [pve_calibration.species.scots_pine]
+# Owner 2026-11-12 (trim sheet): PVE Carve cuts 15 % of the lateral branch length
+# off the thin, bendy ends; the plan solves the density on the trimmed skeleton.
+carve_trim = 0.15
 # Spruce placement profile (owner C3, 2026-11-12). A species block does not fall back to
 # the conifer defaults, so it repeats them as the spruce block does (fullness 4, distichous).
 fraction = 0.06
@@ -766,6 +775,9 @@ build_density_source = "measured"
 # ------------------------------------------------------------------ fir ----
 
 [pve_calibration.species.silver_fir]
+# Owner 2026-11-12 (trim sheet): PVE Carve cuts 15 % of the lateral branch length
+# off the thin, bendy ends; the plan solves the density on the trimmed skeleton.
+carve_trim = 0.15
 # Owner C1 (2026-11-12): bare-stem start on small trees, as spruce.
 relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 # Fir stays at 0.0. Four of six trees already have more branches than their

@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   leaf-area target come from the full skeleton.
 - On the r07 h20 conifers, a 15 % trim takes Carve 0.002–0.007 and a 30 % trim
   0.005–0.012. The density rises to compensate (spruce 81 → 93 → 110 per branch).
-- Off by default; no species sets it yet.
+- Off by default. Spruce, silver fir, Douglas fir and Scots pine set `carve_trim = 0.15`
+  (owner, trim review sheet: the 15 % arm looked best on every species). The trim takes
+  effect at the next export.
 
 ### 2026-11-12 — Tree catalog manifest (XRFF-678)
 

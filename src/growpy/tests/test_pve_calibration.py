@@ -387,6 +387,14 @@ class TestShippedCalibration:
     def test_a_species_without_a_pose_section_gets_the_default(self):
         assert _species().pose == TwigPose()
 
+    def test_the_conifers_ship_the_branch_trim(self, shipped):
+        # owner trim sheet (2026-11-12): 15 % of the lateral length;
+        # broadleaves untrimmed
+        for name in PROFILE_CONIFERS:
+            assert shipped.for_species(name).carve_trim == 0.15, name
+        assert shipped.for_species("european_beech").carve_trim == 0.0
+        assert shipped.for_species(DERIVED_CONIFER, "conifer").carve_trim == 0.0
+
     def test_the_conifers_ship_the_profile_ladder(self, shipped):
         # XRFF-681 / owner C1-C4 (2026-11-12): no tip cap and no leader layer
         # (three-times-larger twigs would carry most of the area there)
