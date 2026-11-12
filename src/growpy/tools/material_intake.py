@@ -23,7 +23,7 @@ Commands::
 one command of the design: it checks the folder, packs the PVE ``_NAH`` map
 (normal R/G, AO B, height A), writes the UE script that imports the maps and
 creates ``MI_<id>`` on the plain bark master, and regenerates
-``config/material_catalog.toml`` from every intake folder. ``--run`` sends the
+``data/input/materials/catalog.toml`` from every intake folder. ``--run`` sends the
 script to the running editor. The species' ``bark_source_per_species`` entry
 in ``config/pve_calibration.toml`` then points at the instance (``tiled =
 true``: a seamless tile, the default).
@@ -42,7 +42,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 INTAKE_ROOT = Path("data/input/materials")
-CATALOG = Path("config/material_catalog.toml")
+# Beside the intake folders, not in config/: growpy merges every config/*.toml.
+CATALOG = INTAKE_ROOT / "catalog.toml"
 UE_FOLDER = "/Game/00_XRFF/30_Forest/Materials/Bark"
 # The plain master every MegaPlants bark instance sits on; bark_source_per_species
 # copies a source's textures and values onto the species' trunk-DBH instance.

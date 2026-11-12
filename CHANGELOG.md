@@ -26,7 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `fab` writes the folder from a Megascans set in the Fab launcher cache, `grove`
   from a Grove bark; `build` checks it (including the normal convention by a curl
   test), packs the `_NAH` map, writes the UE script for `MI_<id>` and regenerates
-  `config/material_catalog.toml`.
+  `data/input/materials/catalog.toml`.
 - **`pack_bark_normal`** takes measured AO and height maps when a source has them.
 
 #### Changed
