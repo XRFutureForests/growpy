@@ -323,6 +323,12 @@ main_generation_start = 2
 [pve_calibration.species.norway_spruce]
 fraction = 0.06
 relative_start = 0.0
+# Small trees (2026-11-12): without the tip cap, a short branch gets one sample, and at
+# relative_start 0 it lands on the root and is discarded -- the h05 trees came out bare
+# (1 instance) and h10/h15 sat on the density floor. Starting the span further out on small
+# trees puts that sample mid-branch: h10/h15 land on target, h05 has twigs again (+36-67 %
+# leaf area at one twig per branch), h20 and up are unchanged.
+relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
 fullness = 4.0

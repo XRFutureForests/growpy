@@ -444,13 +444,17 @@ class TestHeightKeyedOverrides:
         assert oak.relative_start_for(18.0) == pytest.approx(0.6)
         assert oak.relative_start_for(25.0) == 0.35
         assert oak.relative_start_for(30.0) == 0.35
-        # Conifers and beech are untouched.
-        spruce = shipped.for_species("norway_spruce", habit="conifer")
+        # Conifers on the defaults and beech are untouched.
+        douglas = shipped.for_species("douglas_fir", habit="conifer")
         beech = shipped.for_species("european_beech")
-        for cal in (spruce, beech):
+        for cal in (douglas, beech):
             assert cal.relative_start_by_height is None
             assert cal.max_base_scale == 1.0
             assert cal.relative_start_for(25.0) == cal.relative_start
+        # Spruce (XRFF-681): small trees start further out, h20+ at 0 as approved
+        spruce = shipped.for_species("norway_spruce")
+        assert spruce.relative_start_for(5.0) == 0.5
+        assert spruce.relative_start_for(20.0) == spruce.relative_start_for(40.0) == 0.0
 
     def test_no_ramp_means_the_flat_start(self):
         assert _species(relative_start=0.3).relative_start_for(25.0) == 0.3
