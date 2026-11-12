@@ -5,6 +5,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Tree catalog manifest (XRFF-678)
+
+#### Added
+
+- **`growpy-tree-catalog`**: `build` writes `data/input/tree_catalog.toml`, one generated
+  entry per catalog tree asset. Each entry records:
+  - structure (growth JSON, stand radius, height, DBH);
+  - twig set and bark material (the material-catalog id where the instance is an intake
+    entry);
+  - variant, the exported skinned and static meshes;
+  - twig count and leaf area against target;
+  - bones;
+  - the pass/fail traits of the target sheet.
+
+  It reads the PVE plan manifests (a later plan of a tree replaces an earlier one), a bones
+  dump and `tree-structure-target-sheet score` CSVs. `check` lists assets with missing
+  entries (exit 1) and out-of-target traits (reported, not failing).
+- **`ue_scripts/dump_catalog_bones.py`**: writes the asset registry Bones count of every
+  catalog skeletal mesh to `<project>/Saved/growpy_catalog_bones.json` without loading a
+  mesh.
+- The manifest lives in `data/input/`, not `config/`, because growpy merges every
+  `config/*.toml`. It is a record only: the export reads it once bark stages by DBH exist
+  (owner, 2026-11-12).
+
 ### 2026-11-12 — Silver fir, Douglas fir and pine take the spruce placement
 
 #### Changed
