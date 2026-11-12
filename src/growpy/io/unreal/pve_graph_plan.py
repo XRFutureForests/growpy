@@ -268,6 +268,29 @@ def apply_crown_floor(entry: GrowthJson, floor: float) -> tuple[GrowthJson, floa
     return dataclasses.replace(entry, path=out), cut_m
 
 
+CARVE_MODEL_SUFFIX = ".carve.json"
+
+
+def apply_carve(entry: GrowthJson, trim: float) -> tuple[Path, float]:
+    """The skeleton the solve reads for a trimmed tree, and the PVE Carve value.
+
+    The graph trims with PVE's own Carve node (radius basis) on the emitted
+    skeleton; this writes ``<name>.carve.json`` beside it -- the same trim as
+    :mod:`~growpy.io.unreal.pve_carve_model` predicts it -- for the leaf-area
+    solve only, so the twig density is solved on the branches PVE will keep.
+    """
+    from growpy.io.unreal.pve_carve_model import carve_for_trim, carve_skeleton
+
+    data = json.loads(entry.path.read_text(encoding="utf-8"))
+    carve = carve_for_trim(data, trim)
+    out = entry.path.with_name(entry.path.stem + CARVE_MODEL_SUFFIX)
+    out.write_text(
+        json.dumps(carve_skeleton(data, carve), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    return out, carve
+
+
 def crown_floor_gate(
     floor: float, palette: Sequence[PaletteEntry]
 ) -> tuple[tuple[PaletteEntry, ...], ConditionSpec]:
@@ -710,6 +733,11 @@ def _offline_chain(
         entry, crown_floor_m = apply_crown_floor(entry, crown_floor)
     stats = tree_stats(entry.path, profile_mean)
     forrester_m2, model_id, extrapolated = forrester_target(entry.species, stats.dbh_cm)
+    # Trimmed trees (owner, 2026-11-12): DBH, height and the leaf-area target
+    # come from the full skeleton; the density is solved on the trimmed one.
+    solve_path, carve = entry.path, 0.0
+    if calibration.carve_trim > 0.0:
+        solve_path, carve = apply_carve(entry, calibration.carve_trim)
     target_m2 = forrester_m2 * calibration.fullness
     meshes = assets.palette_meshes
     names = [p.name for p in assets.prototypes]
@@ -732,10 +760,12 @@ def _offline_chain(
         "fullness": calibration.fullness,
         "target_m2": round(target_m2, 2),
     }
+    if carve > 0.0:
+        detail.update(carve_trim=calibration.carve_trim, carve=carve)
 
     if calibration.palette == "compound":
         layout = compound_layout(
-            entry.path,
+            solve_path,
             base,
             names,
             meshes,
@@ -748,6 +778,7 @@ def _offline_chain(
             mesh_name=f"{mesh_prefix}_{entry.tree_id}",
             wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
             bone_reduction_strength=calibration.bone_reduction_strength,
+            carve=carve,
             palette=layout.palette,
             distributor=layout.distributor,
             layers=layout.layers,
@@ -785,7 +816,7 @@ def _offline_chain(
             ladder = dataclasses.replace(ladder, leader_spacing_m=0.0)
         solved, base = _step_base_scale(
             lambda b: solve_graded(
-                entry.path,
+                solve_path,
                 b,
                 meshes,
                 palette_areas,
@@ -820,7 +851,7 @@ def _offline_chain(
             detail["tip_tier"] = ladder.tip_tier
         if ladder.apex and ladder.leader_spacing_m > 0.0:
             leader = _leader_layer(
-                distributor, ladder, names, meshes, leader_span(entry.path)
+                distributor, ladder, names, meshes, leader_span(solve_path)
             )
             if leader is not None:
                 layers += (leader,)
@@ -849,7 +880,7 @@ def _offline_chain(
             )
         solved, base = _step_base_scale(
             lambda b: solve_flat(
-                entry.path,
+                solve_path,
                 b,
                 mean_area * (1.0 - mask),
                 target_m2,
@@ -921,6 +952,7 @@ def _offline_chain(
         mesh_name=f"{mesh_prefix}_{entry.tree_id}",
         wind_settings=wind_settings_for(entry.tree_id, calibration.wind),
         bone_reduction_strength=calibration.bone_reduction_strength,
+        carve=carve,
         palette=palette,
         distributor=distributor,
         layers=layers,

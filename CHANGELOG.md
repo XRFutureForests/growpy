@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-12 — Branch trim: PVE Carve before the mesh builder
+
+#### Added
+
+- **`carve_trim`** in a species block (owner request, 2026-11-12): the share of lateral
+  branch length that PVE's Carve node (radius basis) cuts off the thin, bendy branch
+  ends. The node sits between the growth-data importer and the mesh builder, so mesh,
+  bones and foliage all see the trimmed skeleton.
+- The plan finds each tree's Carve value for that share and solves the twig density on
+  a trimmed model copy (`<growth json>.carve.json`, new module `pve_carve_model`, which
+  mirrors `FPVCarve::CarveFromTop`). The leaf area stays on target. DBH, height and the
+  leaf-area target come from the full skeleton.
+- On the r07 h20 conifers, a 15 % trim takes Carve 0.002–0.007 and a 30 % trim
+  0.005–0.012. The density rises to compensate (spruce 81 → 93 → 110 per branch).
+- Off by default; no species sets it yet.
+
 ### 2026-11-12 — Tree catalog manifest (XRFF-678)
 
 #### Added

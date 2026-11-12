@@ -641,6 +641,9 @@ class TreeChainSpec:
     # no node. It thins the bones of the finished mesh only (geometry and
     # foliage placement unchanged), see SpeciesCalibration.bone_reduction_strength.
     bone_reduction_strength: float = 0.0
+    # PVE Carve (radius basis) between importer and MeshBuilder; 0 wires no node.
+    # The plan sets it per tree from SpeciesCalibration.carve_trim.
+    carve: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.mesh_name:
@@ -654,6 +657,10 @@ class TreeChainSpec:
             raise ValueError(
                 f"chain {self.mesh_name!r} names no wind_settings asset; a null "
                 "WindSettings exports a tree with no simulation groups"
+            )
+        if not 0.0 <= self.carve <= 1.0:
+            raise ValueError(
+                f"chain {self.mesh_name!r} carve must be in [0, 1], got {self.carve}"
             )
         if not 0.0 <= self.bone_reduction_strength <= 1.0:
             raise ValueError(
@@ -860,6 +867,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "wind_settings": c.wind_settings,
                 "bark_wraps": list(c.bark_wraps),
                 "bone_reduction_strength": c.bone_reduction_strength,
+                "carve": c.carve,
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1148,6 +1156,30 @@ def build(spec):
         mesh_node, _ = graph.add_node_of_type(unreal.PVMeshBuilderSettings)
         mesh_node.set_node_position(320, row)
 
+        # Carve (radius basis) trims the thin, bendy branch ends before meshing,
+        # so the mesh, its bones and the foliage all see the trimmed skeleton.
+        skeleton = import_node
+        carve_edges = []
+        if chain["carve"] > 0.0:
+            carve_node, carve_settings = graph.add_node_of_type(
+                unreal.PVCarveSettings
+            )
+            carve_node.set_node_position(160, row + 120)
+            params = unreal.PVCarveParams()
+            params.set_editor_property("carve_basis", unreal.CarveBasis.RADIUS)
+            params.set_editor_property("carve", float(chain["carve"]))
+            carve_settings.set_editor_property("carve_settings", params)
+            got = carve_settings.get_editor_property("carve_settings")
+            basis = got.get_editor_property("carve_basis")
+            value = got.get_editor_property("carve")
+            if basis != unreal.CarveBasis.RADIUS or abs(value - chain["carve"]) > 1e-6:
+                raise RuntimeError(
+                    "%s: carve read back as %s, wanted RADIUS %s"
+                    % (chain["mesh_name"], got, chain["carve"])
+                )
+            carve_edges.append((import_node, "Out", carve_node, "In"))
+            skeleton = carve_node
+
         radius_node, radius_settings = graph.add_node_of_type(
             unreal.PVMeshBuilderBranchRadiusSettings
         )
@@ -1363,7 +1395,8 @@ def build(spec):
             static_edges.append((last_node, "Out", static_node, "In"))
 
         for src, src_pin, dst, dst_pin in (
-            (import_node, "Out", mesh_node, "In"),
+            *carve_edges,
+            (skeleton, "Out", mesh_node, "In"),
             (profile_node, profile_pin, mesh_node, "Profile"),
             (radius_node, "Out", mesh_node, "BranchRadius"),
             (detail_node, "Out", mesh_node, "MeshDetails"),
@@ -1388,7 +1421,7 @@ def build(spec):
         len(c["layers"]) for c in spec["chains"]
     ) + (len(spec["chains"]) if spec["static_export_folder"] else 0) + sum(
         1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0
-    )
+    ) + sum(1 for c in spec["chains"] if c["carve"] > 0.0)
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(
