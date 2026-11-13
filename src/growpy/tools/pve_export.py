@@ -424,6 +424,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="X,Y",
         help="window-relative offset of the toolbar Export button (default 435,83)",
     )
+    parser.add_argument(
+        "--no-catalog-print",
+        action="store_true",
+        help="skip rebuilding the catalog print beside the catalog and in the hub",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -453,6 +458,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     failed = [p for p, ok in results.items() if not ok]
     logger.info("%d/%d graph(s) exported", len(results) - len(failed), len(results))
+    if len(failed) < len(results) and not args.no_catalog_print:
+        # keep the catalog print live (owner, 2026-11-13); never fail the export on it
+        try:
+            from growpy.tools.catalog_print import publish
+
+            logger.info("catalog print -> %s", publish(log.parents[2]))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("catalog print not rebuilt: %s", exc)
     return 1 if failed else 0
 
 

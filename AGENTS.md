@@ -59,6 +59,7 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 | `growpy-structure-regrow` | Regrow one species for scoring: N seeds, unthinned `growth_json_only`, optional preset knobs (`--set key=value`) in a sandbox project root, into `data/output/regrow/<species>/<arm>/`; score the arm with `tree-structure-score-arm` (tree-structure repo) |
 | `growpy-export-budget` | Export budget report (XRFF-592): bones, branches with bones, planned parts and triangles per catalog mesh; skinned transform buffer share per site x scenario step from the twin's tree caches, gated against the draft PCVR budget |
 | `growpy-tree-catalog` | Tree catalog manifest (XRFF-678): `build` writes `data/input/tree_catalog.toml` from the PVE plan manifests, an editor bones dump and target-sheet score CSVs (structure, twig set, bark material, variant, meshes, twigs, bones, target result per tree asset); `check` lists missing entries and out-of-target traits |
+| `growpy-catalog-print` | Print catalog PDF (structure side views, twig renders, bark renders); `--publish` writes it beside the UE catalog and copies it plus an overview note to the knowledge hub. `growpy-pve-export` runs it after each export |
 | `growpy-skeleton-budget` | Bone budget of catalog growth JSONs (points, polylines, Douglas-Peucker keep shares) and, with `--spacing`, what `min_point_spacing` would save |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |

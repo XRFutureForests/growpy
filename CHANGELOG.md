@@ -5,6 +5,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-13 — Catalog print, kept live by the export
+
+#### Added
+
+- **`growpy-catalog-print`**: an A4 landscape PDF of the tree catalog in three parts
+  (owner request, 2026-11-13). Structure: a true-scale side view of every catalog
+  skeleton. Twigs: a render of every twig prototype with its size and triangle count.
+  Materials: a bark render per species with its material source. `--publish` writes
+  `XRFF_TreeCatalog.pdf` beside the UE catalog (`Content/Generated/Trees/`), copies it
+  to the knowledge hub (`Pics/`) and regenerates the hub note
+  `04-LOGIC-TIER/tree-catalog-overview.md`.
+- `ue_scripts/capture_catalog_previews.py` renders the twig and bark previews in a
+  sandbox level (run it three times; Nanite and textures stream in between calls).
+- `growpy-pve-export` rebuilds and publishes the print after every export that wrote
+  at least one graph. `--no-catalog-print` skips it; a failed print only logs a warning.
+
 ### 2026-11-13 — Beech: no crown floor on the new skeleton
 
 #### Removed

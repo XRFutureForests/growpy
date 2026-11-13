@@ -1,4 +1,6 @@
-"""Dump the Bones count of every catalog skeletal mesh to <project>/Saved/growpy_catalog_bones.json.
+"""Dump the Bones count of every catalog skeletal mesh to a JSON file.
+
+Output: <project>/Saved/growpy_catalog_bones.json.
 
 For ``growpy-tree-catalog build --bones`` and ``growpy-export-budget --bones``:
 ``{"SK_NorwaySpruce_r07_h20m": 2307, ...}``. Reads the asset registry tag only,
@@ -28,4 +30,4 @@ for data in registry.get_assets(flt):
 out = os.path.join(unreal.Paths.project_saved_dir(), "growpy_catalog_bones.json")
 with open(out, "w", encoding="utf-8") as fh:
     json.dump(dict(sorted(bones.items())), fh, indent=1)
-print("BONES %d meshes -> %s; %d without a Bones tag" % (len(bones), out, len(untagged)))
+print(f"BONES {len(bones)} meshes -> {out}; {len(untagged)} without a Bones tag")
