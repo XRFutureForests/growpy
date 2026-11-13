@@ -30,3 +30,21 @@ silver_fir,28.7,0.4064,measured,n 22; row h30
 silver_fir,35.0,0.4943,allometry,fewer than 10 trees; n 4 measured; slope b 0.986 through h30 at 28.70 m
 silver_fir,40.0,0.5638,allometry,fewer than 10 trees; n 0 measured; slope b 0.986 through h30 at 28.70 m
 silver_fir,45.0,0.6333,allometry,fewer than 10 trees; n 0 measured; slope b 0.986 through h30 at 28.70 m
+douglas_fir,5.0,0.0183,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h25 at 26.65 m
+douglas_fir,10.0,0.0604,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h25 at 26.65 m
+douglas_fir,15.0,0.1215,allometry,fewer than 10 trees; n 2 measured; slope b 1.724 through h25 at 26.65 m
+douglas_fir,20.0,0.1995,allometry,fewer than 10 trees; n 3 measured; slope b 1.724 through h25 at 26.65 m
+douglas_fir,26.65,0.3273,measured,n 10; row h25
+douglas_fir,30.95,0.5091,measured,n 31; row h30; pooled with a neighbour (median 0.509)
+douglas_fir,34.4,0.5091,measured,n 20; row h35; pooled with a neighbour (median 0.509)
+douglas_fir,40.0,0.6602,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h35 at 34.40 m
+douglas_fir,45.0,0.8089,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h35 at 34.40 m
+scots_pine,5.0,0.0422,allometry,fewer than 10 trees; n 3 measured; slope b 1.255 through h10 at 11.58 m
+scots_pine,11.58,0.1212,measured,n 90; row h10
+scots_pine,15.59,0.1591,measured,n 643; row h15
+scots_pine,19.86,0.2255,measured,n 932; row h20
+scots_pine,24.4,0.3101,measured,n 618; row h25
+scots_pine,30.33,0.4067,measured,n 428; row h30
+scots_pine,33.22,0.4715,measured,n 78; row h35
+scots_pine,40.0,0.5953,allometry,fewer than 10 trees; n 0 measured; slope b 1.255 through h35 at 33.22 m
+scots_pine,45.0,0.6901,allometry,fewer than 10 trees; n 0 measured; slope b 1.255 through h35 at 33.22 m
