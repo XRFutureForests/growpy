@@ -4,6 +4,19 @@
 # entries stay inside the UE project and are left out of any
 # published catalog.
 
+[materials.fab_beech_bark_maple_branch]
+species = "sycamore_maple"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:wmohcgfn"
+licence = "Fab Standard License"
+redistributable = false
+part = "branch"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_maple_branch/MI_fab_beech_bark_maple_branch"
+
 [materials.fab_beech_bark_silver_fir]
 species = "silver_fir"
 bark_stage = "mature"
@@ -14,7 +27,21 @@ source = "fab"
 source_ref = "megascans:wmohcgfn"
 licence = "Fab Standard License"
 redistributable = false
+part = "trunk"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir"
+
+[materials.fab_chestnut_bark_oak_branch]
+species = "european_oak"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:th5iaejk"
+licence = "Fab Standard License"
+redistributable = false
+part = "branch"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_chestnut_bark_oak_branch/MI_fab_chestnut_bark_oak_branch"
 
 [materials.fab_douglas_fir_bark]
 species = "douglas_fir"
@@ -26,6 +53,7 @@ source = "fab"
 source_ref = "megascans:tipkfjes"
 licence = "Fab Standard License"
 redistributable = false
+part = "trunk"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark"
 
 [materials.fab_nordic_spruce_bark]
@@ -38,7 +66,21 @@ source = "fab"
 source_ref = "megascans:xlooabxlw"
 licence = "Fab Standard License"
 redistributable = false
+part = "branch"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_nordic_spruce_bark/MI_fab_nordic_spruce_bark"
+
+[materials.fab_oak_bark]
+species = "european_oak"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:thqpeg2s"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_oak_bark/MI_fab_oak_bark"
 
 [materials.grove_fir_70]
 species = "silver_fir"
@@ -50,4 +92,18 @@ source = "grove"
 source_ref = "grove:fir_70_bark"
 licence = "The Grove 2.3 bundled bark texture (thegrove3d.com licence)"
 redistributable = false
+part = "trunk"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/grove_fir_70/MI_grove_fir_70"
+
+[materials.grove_maple_a60]
+species = "sycamore_maple"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = "grove-wraps"
+normal_convention = "opengl"
+source = "grove"
+source_ref = "grove:maple_a60_bark"
+licence = "The Grove 2.3 bundled bark texture (thegrove3d.com licence)"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/grove_maple_a60/MI_grove_maple_a60"

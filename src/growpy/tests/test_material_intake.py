@@ -84,6 +84,23 @@ def test_pack_uses_the_measured_height(tmp_path):
     assert np.corrcoef(nah[..., 3].ravel(), height.ravel())[0, 1] > 0.99
 
 
+def test_a_branch_tile_is_marked_in_the_catalog(tmp_path):
+    folder = _folder(tmp_path)
+    mi.set_part(folder, "branch")
+    mi.set_part(folder, "branch")  # idempotent: one part line
+    assert mi.read_material(folder)["part"] == "branch"
+    assert mi.check(folder) == []
+    import tomllib
+
+    catalog = mi.write_catalog(tmp_path, tmp_path / "catalog.toml")
+    entry = tomllib.loads(catalog.read_text(encoding="utf-8"))["materials"][
+        "fab_test_bark"
+    ]
+    assert entry["part"] == "branch"
+    with pytest.raises(ValueError):
+        mi.set_part(folder, "twig")
+
+
 def test_build_writes_script_and_catalog(tmp_path):
     folder = _folder(tmp_path)
     script, catalog = tmp_path / "s.py", tmp_path / "catalog.toml"

@@ -54,6 +54,9 @@ SOURCE_MASTER = (
     "MA_Foliage_Trees"
 )
 STAGES = ("young", "mature", "old")
+# Which branch generations a bark is for (owner 2026-11-13: a trunk tile for
+# generation 0 and a smoother branch tile for 1+ instead of a strip atlas).
+PARTS = ("trunk", "branch")
 SOURCES = ("grove", "megaplants", "fab", "scan")
 CONVENTIONS = ("opengl", "directx")
 REQUIRED_MAPS = ("albedo", "normal", "roughness")
@@ -150,6 +153,8 @@ def check(folder: Path) -> list[str]:
         problems.append(f"id {m['id']!r}: lowercase letters, digits and _ only")
     if m["bark_stage"] not in STAGES:
         problems.append(f"bark_stage {m['bark_stage']!r} not in {STAGES}")
+    if m.get("part", "trunk") not in PARTS:
+        problems.append(f"part {m['part']!r} not in {PARTS}")
     dbh = m["dbh_cm"]
     if not (isinstance(dbh, list) and len(dbh) == 2 and 0 <= dbh[0] < dbh[1]):
         problems.append(f"dbh_cm {dbh!r} must be [low, high] with 0 <= low < high")
@@ -637,6 +642,7 @@ def write_catalog(root: Path = INTAKE_ROOT, catalog: Path = CATALOG) -> Path:
             "redistributable",
         ):
             lines.append(f"{key} = {_toml_value(m[key])}")
+        lines.append(f"part = {_toml_value(m.get('part', 'trunk'))}")
         lines.append(f"instance = {_toml_value(instance_path(m['id']))}")
         lines.append("")
     catalog.parent.mkdir(parents=True, exist_ok=True)
@@ -674,6 +680,21 @@ def build(
 # --------------------------------------------------------------------- CLI
 
 
+def set_part(folder: Path, part: str) -> None:
+    """Record which generations the bark is for (absent means trunk)."""
+    if part not in PARTS:
+        raise ValueError(f"part {part!r} not in {PARTS}")
+    path = folder / "material.toml"
+    text = re.sub(r"(?m)^part = .*\n", "", path.read_text(encoding="utf-8"))
+    path.write_text(text + f'part = "{part}"\n', encoding="utf-8")
+
+
+def _finish_prepare(folder: Path, part: str) -> int:
+    set_part(folder, part)
+    print(folder)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -684,6 +705,12 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--bark-stage", default="mature", choices=STAGES)
         p.add_argument(
             "--dbh-cm", nargs=2, type=float, default=(0, 200), metavar=("LOW", "HIGH")
+        )
+        p.add_argument(
+            "--part",
+            default="trunk",
+            choices=PARTS,
+            help="trunk (generation 0) or branch (generations 1+) bark",
         )
         p.add_argument("--root", type=Path, default=INTAKE_ROOT)
 
@@ -743,8 +770,7 @@ def main(argv: list[str] | None = None) -> int:
             size=args.size,
             root=args.root,
         )
-        print(folder)
-        return 0
+        return _finish_prepare(folder, args.part)
     if args.command == "set":
         if not args.material_id:
             parser.error("set needs --id")
@@ -765,8 +791,7 @@ def main(argv: list[str] | None = None) -> int:
             capture_date=args.capture_date,
             root=args.root,
         )
-        print(folder)
-        return 0
+        return _finish_prepare(folder, args.part)
     if args.command == "grove":
         folder = prepare_grove(
             args.stem,
@@ -777,8 +802,7 @@ def main(argv: list[str] | None = None) -> int:
             dbh_cm=args.dbh_cm,
             root=args.root,
         )
-        print(folder)
-        return 0
+        return _finish_prepare(folder, args.part)
     problems = build(args.folders, args.script, root=args.root, catalog=args.catalog)
     for p in problems:
         print("PROBLEM", p)

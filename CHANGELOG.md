@@ -119,6 +119,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   maps are recognised by name (BaseColor/Albedo/Diffuse, Normal, Roughness or inverted
   Gloss, AO, Height/Displacement), 16-bit maps rescaled; tile size, licence and source
   reference are arguments, the normal convention is measured.
+- **`part = "trunk" | "branch"`** (`--part`) marks bark for generation 0 or for
+  generations 1+, for the trunk-tile plus branch-tile test against the MegaPlants atlases
+  (owner rule 2026-11-13: tiles by default). Taken in: Megascans oak (trunk) and chestnut
+  (oak branch), Grove `maple_a60` (maple trunk), Megascans beech (maple branch); the Nordic
+  spruce tile is now a branch tile.
 
 #### Changed
 

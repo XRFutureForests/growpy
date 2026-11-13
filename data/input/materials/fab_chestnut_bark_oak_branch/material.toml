@@ -1,0 +1,15 @@
+# Intake: Fab/Megascans 'Chestnut Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_chestnut_bark_oak_branch"
+species = "european_oak"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:th5iaejk"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-17 09:50:37", note = "Quixel Megascans 'Chestnut Bark', scan area 1x2 m, relief 0.064 m" }
+maps_from = { normal = "Chestnut_Bark_th5iaejk_8K_Normal.jpg", albedo = "Chestnut_Bark_th5iaejk_8K_BaseColor.jpg", ao = "Chestnut_Bark_th5iaejk_8K_AO.jpg", roughness = "Chestnut_Bark_th5iaejk_8K_Roughness.jpg", height = "Chestnut_Bark_th5iaejk_8K_Displacement.jpg" }
+part = "branch"
