@@ -458,6 +458,23 @@ class CompoundSpec:
 
 
 @dataclass(frozen=True)
+class BarkAtlasStrip:
+    """A trunk bark taken from one strip of an atlas (spruce's MegaPlants bark)."""
+
+    material: str
+    u_range: tuple[float, float]
+    y_scale: float
+
+    def __post_init__(self) -> None:
+        lo, hi = self.u_range
+        if not 0.0 <= lo < hi or self.y_scale <= 0.0:
+            raise ValueError(
+                f"atlas strip {self.material!r}: u_range must be 0 <= lo < hi and "
+                f"y_scale > 0, got {self.u_range}, {self.y_scale}"
+            )
+
+
+@dataclass(frozen=True)
 class SpeciesCalibration:
     """Every calibrated tree of one species, plus the settings they share.
 
@@ -571,32 +588,25 @@ class SpeciesCalibration:
     # True ("tiled = true"): the source's maps are a seamless tile (Baltic pine),
     # not an atlas, so they wrap like a Grove bark and need no u_ranges.
     bark_source_tiled: bool = False
-    # Tile pair (XRFF-679): one bark material per branch generation, trunk
-    # first (later generations take the last), each an instance on the trunk
-    # master, with the physical width of its tile in metres; the plan then
-    # wraps each generation round(2 pi r / width) times. Empty: one bark for
-    # every generation, wrapped by the Grove rule or the atlas u_ranges.
-    bark_generation_materials: tuple[str, ...] = ()
-    bark_tile_widths_m: tuple[float, ...] = ()
+    # Tile pair (XRFF-679, ``trunk`` / ``branch`` in the species' bark source):
+    # generation 0 reads MI_<species>_bark with the trunk source copied in, 1+
+    # reads MI_<species>_bark_branch with the branch source. Sources are intake
+    # ids (data/input/materials/catalog.toml); the trunk may instead be an
+    # atlas strip. None: one bark for every generation, as before.
+    bark_trunk_source: str | BarkAtlasStrip | None = None
+    bark_branch_source: str | None = None
 
     def __post_init__(self) -> None:
-        if self.bark_generation_materials or self.bark_tile_widths_m:
-            if len(self.bark_generation_materials) != len(self.bark_tile_widths_m):
-                raise ValueError(
-                    f"species {self.species!r} names "
-                    f"{len(self.bark_generation_materials)} generation materials "
-                    f"but {len(self.bark_tile_widths_m)} tile widths"
-                )
-            if any(w <= 0.0 for w in self.bark_tile_widths_m):
-                raise ValueError(
-                    f"species {self.species!r} tile widths must be > 0 m, "
-                    f"got {self.bark_tile_widths_m}"
-                )
-            if self.bark_u_ranges:
-                raise ValueError(
-                    f"species {self.species!r} sets both atlas u_ranges and "
-                    "generation tiles; a setup can only take one"
-                )
+        if (self.bark_trunk_source is None) != (self.bark_branch_source is None):
+            raise ValueError(
+                f"species {self.species!r} names a bark trunk or branch source "
+                "without the other; a tile pair needs both"
+            )
+        if self.bark_trunk_source is not None and self.bark_u_ranges:
+            raise ValueError(
+                f"species {self.species!r} sets both atlas u_ranges and a bark "
+                "tile pair; the trunk's strip goes in its trunk table"
+            )
         if (
             self.bark_material_source is not None
             and self.bark_source_textures
@@ -1065,19 +1075,31 @@ def _with_bark_source(
             f"'source' or 'grove', got {textures!r}"
         )
     y_scale = entry.get("y_scale")
+    trunk = entry.get("trunk")
+    if isinstance(trunk, dict):
+        lo, hi = trunk["u_range"]
+        trunk = BarkAtlasStrip(
+            material=str(trunk["material"]),
+            u_range=(float(lo), float(hi)),
+            y_scale=float(trunk["y_scale"]),
+        )
+    elif trunk is not None:
+        trunk = str(trunk)
+    branch = entry.get("branch")
+    # A tile pair names its sources in trunk/branch; every other species keeps
+    # the single source material.
+    material = entry.get("material") if trunk is not None else entry["material"]
     return replace(
         species,
-        bark_material_source=str(entry["material"]),
+        bark_trunk_source=trunk,
+        bark_branch_source=None if branch is None else str(branch),
+        bark_material_source=None if material is None else str(material),
         bark_y_scale=species.bark_y_scale if y_scale is None else float(y_scale),
         bark_u_ranges=tuple(
             (float(lo), float(hi)) for lo, hi in entry.get("u_ranges", ())
         ),
         bark_source_textures=textures == "source",
         bark_source_tiled=bool(entry.get("tiled", False)),
-        bark_generation_materials=tuple(
-            str(m) for m in entry.get("generation_materials", ())
-        ),
-        bark_tile_widths_m=tuple(float(w) for w in entry.get("tile_widths_m", ())),
     )
 
 

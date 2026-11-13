@@ -865,31 +865,61 @@ class TestBarkWraps:
 class TestBarkTilePair:
     """XRFF-679: a trunk tile and a branch tile, wrapped at their real size."""
 
-    def test_each_generation_wraps_its_tile_at_its_base_circumference(self, tmp_path):
-        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+    TILES = {"trunk_tile": (0.5, 1.0), "branch_tile": (0.3, 0.6), "grove": None}
 
-        # trunk 2 pi 0.20 / 0.5 = 2.51 -> 3;
-        # limbs 2 pi 0.12 / 0.3 = 2.5 -> 3; twigs 2 pi 0.005 / 0.3 -> 1, end.
-        wraps, mats = bark_wraps_physical(
-            _skeleton(tmp_path, 0.12), ("T", "B"), (0.5, 0.3)
+    def _setups(self, path, trunk="trunk_tile", branch="branch_tile"):
+        from growpy.io.unreal.pve_graph_plan import bark_tile_pair_setups
+
+        return bark_tile_pair_setups(
+            path, trunk, branch, self.TILES, "MI_trunk", "MI_branch", 3, 0.25
         )
-        assert wraps == (3, 3, 1)
-        assert mats == ("T", "B", "B")
 
-    def test_thin_limbs_end_the_list_on_the_branch_tile(self, tmp_path):
-        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+    def test_each_generation_wraps_its_tile_at_its_base_circumference(self, tmp_path):
+        # trunk 2 pi 0.20 / 0.5 = 2.51 -> 3; limbs 2 pi 0.12 / 0.3 = 2.51 -> 3;
+        # twigs 2 pi 0.005 / 0.3 -> 1, which ends the list.
+        setups = self._setups(_skeleton(tmp_path, 0.12))
+        assert [(s.material, s.u_range, s.y_scale) for s in setups] == [
+            ("MI_trunk", (0.0, 3.0), 0.5),
+            ("MI_branch", (0.0, 3.0), 0.5),
+            ("MI_branch", (0.0, 1.0), 0.5),
+        ]
 
-        assert bark_wraps_physical(
-            _skeleton(tmp_path, 0.02), ("T", "B"), (0.5, 0.3)
-        ) == ((3, 1), ("T", "B"))
+    def test_an_atlas_trunk_keeps_its_strip(self, tmp_path):
+        from growpy.config.pve_calibration import BarkAtlasStrip
 
-    def test_an_unreadable_skeleton_is_an_error_not_a_fallback(self, tmp_path):
-        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+        strip = BarkAtlasStrip("MI_atlas", (0.003785, 0.710256), 0.8)
+        setups = self._setups(_skeleton(tmp_path, 0.02), trunk=strip)
+        assert (setups[0].u_range, setups[0].y_scale) == ((0.003785, 0.710256), 0.8)
+        assert [(s.material, s.u_range) for s in setups[1:]] == [
+            ("MI_branch", (0.0, 1.0))
+        ]
 
+    def test_a_grove_wraps_source_falls_back_to_the_grove_ratio(self, tmp_path):
+        # limbs 3 x 0.12 / 0.20 = 1.8 -> 2, twigs -> 1; the Grove texture aspect.
+        setups = self._setups(_skeleton(tmp_path, 0.12), branch="grove")
+        assert [(s.u_range[1], s.y_scale) for s in setups[1:]] == [
+            (2.0, 0.25),
+            (1.0, 0.25),
+        ]
+
+    def test_an_unknown_source_or_unreadable_skeleton_is_an_error(self, tmp_path):
+        with pytest.raises(KeyError, match="intake catalog"):
+            self._setups(_skeleton(tmp_path, 0.12), branch="nope")
         stub = tmp_path / "stub.json"
         stub.write_text("{}")
         with pytest.raises((KeyError, ValueError)):
-            bark_wraps_physical(stub, ("T", "B"), (0.5, 0.3))
+            self._setups(stub)
+
+    def test_intake_tiles_reads_sizes_and_grove_wraps(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import intake_tiles
+
+        catalog = tmp_path / "catalog.toml"
+        catalog.write_text(
+            "[materials.a]\ntile_size_m = [1.0, 2.0]\n"
+            '[materials.b]\ntile_size_m = "grove-wraps"\n',
+            encoding="utf-8",
+        )
+        assert intake_tiles(catalog) == {"a": (1.0, 2.0), "b": None}
 
 
 class TestStepBaseScale:

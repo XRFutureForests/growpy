@@ -9,14 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 #### Added
 
-- `bark_source_per_species.<species>` takes `generation_materials` (trunk-master
-  instances, trunk first; later generations take the last) and `tile_widths_m` (the
-  physical width of each tile). The plan then gives each branch generation its own
-  material and wraps it `round(2π r / width)` times around its base circumference
-  (`bark_wraps_physical`). That keeps the bark at its real scale instead of Grove's
-  `texture_repeat` ratio. The graph builder writes and reads back one material per
-  generation setup. Off unless a species names generation materials; it can't be
-  combined with atlas `u_ranges`.
+- `bark_source_per_species.<species>` takes `trunk` and `branch` sources. Each is an
+  intake id from `data/input/materials/catalog.toml`; the trunk can instead be an
+  atlas strip `{ material, u_range, y_scale }` (spruce).
+- Generation 0 reads `MI_<species>_bark`, generations 1+ read
+  `MI_<species>_bark_branch`. Both are trunk-master instances; the asset script
+  copies each source into its instance.
+- The plan writes one setup per generation: material, U range and YScale
+  (`bark_tile_pair_setups`). A tile wraps `round(2π r / width)` times around the
+  generation's base circumference, with YScale `width / height`, so the bark keeps
+  its real scale instead of Grove's `texture_repeat` ratio. A `grove-wraps` intake
+  falls back to that ratio.
+- The graph builder writes and reads back each setup's material and range.
+- Off unless a species names `trunk` and `branch`; it can't be combined with atlas
+  `u_ranges`.
 
 ### 2026-11-13 — Catalog print, kept live by the export
 

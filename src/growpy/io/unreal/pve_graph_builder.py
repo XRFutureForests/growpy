@@ -617,6 +617,20 @@ class FoliageLayer:
 
 
 @dataclass(frozen=True)
+class BarkSetup:
+    """One TrunkGenerationMaterialSetup of a bark tile pair (XRFF-679)."""
+
+    material: str
+    u_range: tuple[float, float]
+    y_scale: float | None = None
+
+    def __post_init__(self) -> None:
+        lo, hi = self.u_range
+        if not 0.0 <= lo < hi:
+            raise ValueError(f"bark setup {self.material!r} u_range {self.u_range}")
+
+
+@dataclass(frozen=True)
 class TreeChainSpec:
     """One tree: a growth JSON in, one exported mesh out.
 
@@ -637,9 +651,10 @@ class TreeChainSpec:
     # TrunkGenerationMaterialSetup each, X Range (0, k)); generations past the
     # end take the last entry. Empty keeps PVE's native single wrap.
     bark_wraps: tuple[int, ...] = ()
-    # Bark material per setup, aligned with bark_wraps (tile pair, XRFF-679).
-    # Empty: every setup takes the graph's bark_material.
-    bark_materials: tuple[str, ...] = ()
+    # A bark tile pair (XRFF-679): one setup per generation, trunk first, each
+    # with its own material, U range and YScale; replaces bark_wraps and the
+    # graph's bark. Empty: the graph's bark on every setup, as before.
+    bark_setups: tuple[BarkSetup, ...] = ()
     # PVE Bone Reduction strength between MeshBuilder and distributor; 0 wires
     # no node. It thins the bones of the finished mesh only (geometry and
     # foliage placement unchanged), see SpeciesCalibration.bone_reduction_strength.
@@ -656,10 +671,10 @@ class TreeChainSpec:
                 f"chain {self.mesh_name!r} bark_wraps must be whole numbers >= 1 "
                 f"(a fractional wrap leaves a seam), got {self.bark_wraps}"
             )
-        if self.bark_materials and len(self.bark_materials) != len(self.bark_wraps):
+        if self.bark_setups and self.bark_wraps:
             raise ValueError(
-                f"chain {self.mesh_name!r} has {len(self.bark_materials)} bark "
-                f"materials for {len(self.bark_wraps)} wrap setups"
+                f"chain {self.mesh_name!r} names bark setups and bark wraps; "
+                "a tile pair's setups carry their own wraps"
             )
         if not self.wind_settings:
             raise ValueError(
@@ -874,7 +889,14 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "static_mesh_name": static_twin_name(c.mesh_name),
                 "wind_settings": c.wind_settings,
                 "bark_wraps": list(c.bark_wraps),
-                "bark_materials": list(c.bark_materials),
+                "bark_setups": [
+                    {
+                        "material": s.material,
+                        "u_range": list(s.u_range),
+                        "y_scale": s.y_scale,
+                    }
+                    for s in c.bark_setups
+                ],
                 "bone_reduction_strength": c.bone_reduction_strength,
                 "carve": c.carve,
                 "palette": _palette_payload(c.palette),
@@ -1228,17 +1250,21 @@ def build(spec):
         # per generation (bark_u_ranges). A Grove tile wraps k times: (0, k).
         ranges = spec["bark_u_ranges"] or [
             [0.0, float(w)] for w in chain["bark_wraps"]] or [None]
-        # A tile pair (XRFF-679) names one material per setup, trunk first;
-        # otherwise every setup takes the graph's bark.
-        setup_materials = []
-        for path in chain["bark_materials"]:
-            material = unreal.load_asset(path)
-            if material is None:
-                raise RuntimeError(
-                    "%s: bark material %s not found" % (chain["mesh_name"], path))
-            setup_materials.append(material)
+        # (material, U range, YScale) per setup. A tile pair (XRFF-679) names
+        # its own, trunk first; otherwise every setup takes the graph's bark.
+        setup_specs = [(bark, r, spec["bark_y_scale"]) for r in ranges]
+        if chain["bark_setups"]:
+            setup_specs = []
+            for s in chain["bark_setups"]:
+                material = unreal.load_asset(s["material"])
+                if material is None:
+                    raise RuntimeError(
+                        "%s: bark material %s not found"
+                        % (chain["mesh_name"], s["material"]))
+                setup_specs.append((material, s["u_range"], s["y_scale"]))
+            ranges = [s["u_range"] for s in chain["bark_setups"]]
         setups = []
-        for index, u_range in enumerate(ranges):
+        for material, u_range, y_scale in setup_specs:
             setup = unreal.TrunkGenerationMaterialSetup()
             setp(
                 setup,
@@ -1248,10 +1274,9 @@ def build(spec):
                 ),
                 False,
             )
-            setup.set_editor_property(
-                "material", setup_materials[index] if setup_materials else bark)
-            if spec["bark_y_scale"] is not None:
-                setp(setup, "y_scale", float(spec["bark_y_scale"]))
+            setup.set_editor_property("material", material)
+            if y_scale is not None:
+                setp(setup, "y_scale", float(y_scale))
             if u_range is not None:
                 setup.import_text(
                     "(URange=(LowerBound=(Type=Inclusive,Value=%f),"
@@ -1276,10 +1301,10 @@ def build(spec):
                 "%s: bark X Range read back %s, wanted %s"
                 % (chain["mesh_name"], got, wanted or "native")
             )
-        if setup_materials:
+        if chain["bark_setups"]:
             got_materials = [
                 s.get_editor_property("material").get_path_name() for s in written]
-            wanted_materials = [m.get_path_name() for m in setup_materials]
+            wanted_materials = [m.get_path_name() for m, _, _ in setup_specs]
             if got_materials != wanted_materials:
                 raise RuntimeError(
                     "%s: bark materials read back %s, wanted %s"

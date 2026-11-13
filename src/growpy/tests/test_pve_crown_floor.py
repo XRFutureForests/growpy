@@ -152,17 +152,17 @@ class TestCalibration:
     @pytest.mark.parametrize(
         "kwargs",
         [
-            {"bark_generation_materials": ("T", "B"), "bark_tile_widths_m": (0.5,)},
-            {"bark_generation_materials": ("T",), "bark_tile_widths_m": (0.0,)},
+            {"bark_trunk_source": "fab_oak_bark"},
+            {"bark_branch_source": "fab_chestnut_bark_oak_branch"},
             {
-                "bark_generation_materials": ("T",),
-                "bark_tile_widths_m": (0.5,),
+                "bark_trunk_source": "fab_oak_bark",
+                "bark_branch_source": "fab_chestnut_bark_oak_branch",
                 "bark_u_ranges": ((0.0, 0.5),),
             },
         ],
     )
     def test_a_bark_tile_pair_is_validated(self, kwargs):
-        # XRFF-679: one width per material, real widths, never on an atlas.
+        # XRFF-679: trunk and branch come together, never beside atlas u_ranges.
         with pytest.raises(ValueError, match="species 'x'"):
             SpeciesCalibration(
                 species="x",

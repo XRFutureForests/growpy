@@ -39,6 +39,7 @@ from growpy.config.ue_layout import TREES_ROOT
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
+    BarkSetup,
     ConditionInfluence,
     ConditionSpec,
     DistributorSpec,
@@ -429,42 +430,103 @@ def _generation_base_radii(
     )
 
 
-def bark_wraps_physical(
-    growth_json: Path | str,
-    materials: tuple[str, ...],
-    tile_widths_m: tuple[float, ...],
-) -> tuple[tuple[int, ...], tuple[str, ...]]:
-    """Wraps and bark material per generation setup for a tile pair (XRFF-679).
+INTAKE_CATALOG = (
+    Path(__file__).resolve().parents[4] / "data/input/materials/catalog.toml"
+)
+# An intake whose tile_size_m is this has no physical size (a Grove bark).
+GROVE_WRAPS = "grove-wraps"
 
-    The trunk generation takes ``materials[0]``, the first branch generation
-    ``materials[1]`` and so on; generations past the list take its last entry,
-    as PVE gives them the last setup. Each wraps ``max(1, round(2 pi r / w))``
-    times: ``r`` its base radius (the trunk's, the median of a later
-    generation's) and ``w`` the physical width of its tile, so the bark keeps
-    its real scale instead of Grove's ``texture_repeat`` ratio. The list ends
-    after the first single wrap on the last material. Raises on a skeleton
-    without radii: a tile pair has no sensible fallback.
+
+def intake_tiles(
+    catalog: Path = INTAKE_CATALOG,
+) -> dict[str, tuple[float, float] | None]:
+    """Intake id -> tile size (width around the stem, height along it) in m;
+    None for a ``grove-wraps`` intake, which has no physical size."""
+    import tomllib
+
+    if not catalog.is_file():
+        return {}
+    materials = tomllib.loads(catalog.read_text(encoding="utf-8")).get("materials", {})
+    tiles: dict[str, tuple[float, float] | None] = {}
+    for mid, entry in materials.items():
+        size = entry.get("tile_size_m")
+        tiles[mid] = (
+            None
+            if size is None or size == GROVE_WRAPS
+            else (float(size[0]), float(size[1]))
+        )
+    return tiles
+
+
+def bark_tile_pair_setups(
+    growth_json: Path | str,
+    trunk_source: object,
+    branch_source: str,
+    tiles: dict[str, tuple[float, float] | None],
+    trunk_material: str,
+    branch_material: str,
+    texture_repeat: int = 3,
+    grove_y_scale: float | None = None,
+) -> tuple[BarkSetup, ...]:
+    """One bark setup per branch generation for a tile pair (XRFF-679).
+
+    Generation 0 takes ``trunk_material``: an atlas strip (``BarkAtlasStrip``)
+    keeps its own U range and YScale; a tile wraps ``max(1, round(2 pi r / w))``
+    times around the trunk's base circumference with YScale ``w / h``, so the
+    bark keeps its real scale. Generations 1+ take ``branch_material`` the same
+    way, ``r`` the median base radius of that generation. A ``grove-wraps``
+    intake has no size and falls back to Grove's ``texture_repeat`` ratio and
+    the Grove texture's aspect (``grove_y_scale``). The list ends after the
+    first single wrap, as PVE gives later generations the last setup. Raises
+    on a skeleton without radii or an unknown intake id.
     """
+    from growpy.config.pve_calibration import BarkAtlasStrip
+
     radii = _generation_base_radii(growth_json)
     if radii is None:
         raise ValueError(f"{growth_json}: no skeleton radii for the bark tile pair")
     trunk_gen, trunk_radius, base_radii, last = radii
-    n_trunk = max(1, trunk_gen)
 
-    def wraps_for(radius_cm: float, slot: int) -> int:
-        width = tile_widths_m[min(slot, len(tile_widths_m) - 1)]
-        return max(1, round(2.0 * math.pi * radius_cm / 100.0 / width))
+    def tile(source: str) -> tuple[float, float] | None:
+        if source not in tiles:
+            raise KeyError(f"bark source {source!r} is not in the intake catalog")
+        return tiles[source]
 
-    wraps = [wraps_for(trunk_radius, 0)] * n_trunk
-    mats = [materials[0]] * n_trunk
+    def physical(radius_cm: float, size: tuple[float, float]) -> tuple[float, float]:
+        return float(max(1, round(2.0 * math.pi * radius_cm / 100.0 / size[0]))), (
+            size[0] / size[1]
+        )
+
+    if isinstance(trunk_source, BarkAtlasStrip):
+        trunk = BarkSetup(trunk_material, trunk_source.u_range, trunk_source.y_scale)
+    else:
+        size = tile(str(trunk_source))
+        if size is None:
+            trunk = BarkSetup(
+                trunk_material, (0.0, float(texture_repeat)), grove_y_scale
+            )
+        else:
+            k, y_scale = physical(trunk_radius, size)
+            trunk = BarkSetup(trunk_material, (0.0, k), y_scale)
+    setups = [trunk] * max(1, trunk_gen)
+    size = tile(branch_source)
     radius = trunk_radius
-    for slot, g in enumerate(range(trunk_gen + 1, last + 1), 1):
+    previous = float(texture_repeat)
+    for g in range(trunk_gen + 1, last + 1):
         radius = base_radii.get(g, radius)
-        wraps.append(wraps_for(radius, slot))
-        mats.append(materials[min(slot, len(materials) - 1)])
-        if wraps[-1] == 1 and slot >= len(materials) - 1:
+        if size is None:
+            # Grove's rule: a child never wraps more often than its parent.
+            k = min(
+                previous, float(max(1, round(texture_repeat * radius / trunk_radius)))
+            )
+            y_scale = grove_y_scale
+        else:
+            k, y_scale = physical(radius, size)
+        setups.append(BarkSetup(branch_material, (0.0, k), y_scale))
+        previous = k
+        if k == 1.0:
             break
-    return tuple(wraps), tuple(mats)
+    return tuple(setups)
 
 
 def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
@@ -1242,25 +1304,35 @@ def plan_pve_graphs(
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue
             # The chain's own skeleton: a crown-floored tree reads a copy.
-            bark_materials: tuple[str, ...] = ()
-            if species_cal.bark_generation_materials:
-                wraps, bark_materials = bark_wraps_physical(
+            wraps: tuple[int, ...] = ()
+            bark_setups: tuple[BarkSetup, ...] = ()
+            if species_cal.bark_trunk_source is not None:
+                bark_setups = bark_tile_pair_setups(
                     planned.chain.growth_json,
-                    species_cal.bark_generation_materials,
-                    species_cal.bark_tile_widths_m,
+                    species_cal.bark_trunk_source,
+                    species_cal.bark_branch_source,
+                    intake_tiles(),
+                    assets.bark_material,
+                    f"{assets.bark_material}_branch",
+                    species_cal.bark_texture_repeat,
+                    species_cal.bark_y_scale
+                    if species_cal.bark_y_scale is not None
+                    else bark_aspect_y_scale(assets.bark_color),
                 )
-                planned.detail["bark_materials"] = list(bark_materials)
+                planned.detail["bark_setups"] = [
+                    [s.material, *s.u_range, s.y_scale] for s in bark_setups
+                ]
             else:
                 wraps = bark_wraps_by_generation(
                     planned.chain.growth_json, species_cal.bark_texture_repeat
                 )
+                planned.detail["bark_wraps"] = list(wraps)
             planned = dataclasses.replace(
                 planned,
                 chain=dataclasses.replace(
-                    planned.chain, bark_wraps=wraps, bark_materials=bark_materials
+                    planned.chain, bark_wraps=wraps, bark_setups=bark_setups
                 ),
             )
-            planned.detail["bark_wraps"] = list(wraps)
             chains.append(planned.chain)
             instances[planned.chain.mesh_name] = planned.instances
             details[planned.chain.mesh_name] = planned.detail

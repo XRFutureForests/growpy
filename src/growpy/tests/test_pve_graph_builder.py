@@ -9,6 +9,7 @@ import pytest
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
+    BarkSetup,
     ConditionInfluence,
     ConditionSpec,
     DistributorSpec,
@@ -252,31 +253,33 @@ class TestTreeChainSpec:
         assert "UpperBound=(Type=Exclusive,Value=%f)" in build
         assert "bark X Range read back" in build
 
-    def test_a_tile_pair_names_one_material_per_setup(self, tmp_path):
-        # XRFF-679: a trunk tile for generation 0, a branch tile for the rest.
+    def test_a_tile_pair_writes_its_own_setups(self, tmp_path):
+        # XRFF-679: an atlas strip on the trunk, a branch tile for the rest.
         chain = TreeChainSpec(
             growth_json=Path("t.json"),
             mesh_name="SK_Pair",
             distributor=DistributorSpec(branch_density=3),
-            bark_wraps=(3, 2, 1),
-            bark_materials=("/Game/M/MI_trunk",) + ("/Game/M/MI_branch",) * 2,
+            bark_setups=(
+                BarkSetup("/Game/M/MI_trunk", (0.003785, 0.710256), 0.8),
+                BarkSetup("/Game/M/MI_branch", (0.0, 2.0), 0.5),
+            ),
         )
         path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
         body = path.read_text(encoding="utf-8")
         compile(body, str(path), "exec")
-        assert "'bark_materials': ['/Game/M/MI_trunk', '/Game/M/MI_branch'" in body
+        assert "'material': '/Game/M/MI_branch', 'u_range': [0.0, 2.0]" in body
         build = body.split("def build(spec):", 1)[1]
-        assert "setup_materials[index] if setup_materials else bark" in build
+        assert 'setup_specs.append((material, s["u_range"], s["y_scale"]))' in build
         assert "bark materials read back" in build
 
-    def test_bark_materials_must_match_the_wraps(self):
-        with pytest.raises(ValueError, match="bark materials"):
+    def test_bark_setups_replace_the_wraps(self):
+        with pytest.raises(ValueError, match="bark setups and bark wraps"):
             TreeChainSpec(
                 growth_json=Path("t.json"),
                 mesh_name="SK_X",
                 distributor=DistributorSpec(branch_density=3),
                 bark_wraps=(3, 1),
-                bark_materials=("/Game/M/MI_trunk",),
+                bark_setups=(BarkSetup("/Game/M/MI_trunk", (0.0, 3.0)),),
             )
 
     def test_no_bark_wraps_keeps_the_native_single_setup(self, tmp_path):
