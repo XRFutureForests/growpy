@@ -470,21 +470,8 @@ fullness = 1.5
 # the density by 1/(1-0.375) so the expected count and leaf area are the
 # same. Flat palette only -- a graded ladder cannot take a mask.
 mask_fraction = 0.375
-# Crown floor by stand radius (owner, 2026-09-21: the r07 trees have "a low
-# crown base height and small branches and leaves along the trunk"). Grove
-# grew the r07 beech with its twigs high (crown base 6.2 / 11.6 / 16.0 / 21.4
-# m at h10-h25) but PVE foliates every branch it is given, so 40-52 % of the
-# placed rosettes sat below that line on the stubs the stand had shed. The
-# fraction of tree height below which (a) side branches lying wholly under
-# the line are dropped from the skeleton the chain reads and (b) a Height-
-# conditioned gate mask spawns nothing. Sharma et al. 2017 put a stand-grown
-# beech's crown base at 7-10 m on 20-25 m (ratio ~0.6): 0.40 at 7 m spacing,
-# 0.30 at the looser 10 m. r00 (open-grown) keeps its full crown. An
-# attachment-height cut cannot do this: the crown of a forking beech hangs
-# off branches that leave the trunk at 1.4-5 m.
-[pve_calibration.species.european_beech.crown_floor]
-r07 = 0.40
-r10 = 0.30
+# No crown floor since 2026-11-13 (owner F1/F3): the release 1 skeleton (E69 t3p20_ds25)
+# grows a clean stem in Grove, so nothing below the crown needs cutting or gating.
 
 
 # Fitted instances law, used only to seed a solve:

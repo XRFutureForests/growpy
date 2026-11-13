@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-13 — Beech: no crown floor on the new skeleton
+
+#### Removed
+
+- **The beech crown floor** (`[pve_calibration.species.european_beech.crown_floor]`,
+  r07 0.40 / r10 0.30). It cut away low side branches and gated foliage below a share of
+  the tree height on the old umbrella skeleton. The release 1 beech skeleton (owner,
+  2026-11-13: E69 `t3p20_ds25` seed 512) grows a clean stem in Grove. On it, the floor
+  would cut real crown at 20 m (crown from 5.5 m against a floor at 8 m).
+
 ### 2026-11-12 — Branch trim: PVE Carve before the mesh builder
 
 #### Added

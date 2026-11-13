@@ -169,10 +169,11 @@ class TestShippedCalibration:
         assert conifer.relative_start == 0.0 and broadleaf.relative_start == 0.85
         assert broadleaf.pose.axil_angle == 70.0
         # Beech keeps its own block beside the R4 defaults: x1.5 since the
-        # 2026-09-21 thinning (x2 before), start 0.4, floored at r07/r10.
+        # 2026-09-21 thinning (x2 before), start 0.4; no crown floor since
+        # 2026-11-13 (owner F1/F3: the new skeleton grows a clean stem).
         beech = shipped.for_species("european_beech")
         assert beech.fullness == 1.5 and beech.relative_start == 0.4
-        assert beech.crown_floor == {"r07": 0.4, "r10": 0.3}
+        assert beech.crown_floor == {}
         assert broadleaf.crown_floor == {}
         assert conifer.ladder is not None and broadleaf.ladder is not None
         assert broadleaf.pose.jitter and not conifer.pose.jitter
