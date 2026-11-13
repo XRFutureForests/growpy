@@ -566,22 +566,22 @@ species = "european_beech"
 tree_id = "r07_h05m"
 radius = 7
 height_m = 5.18
-dbh_cm = 7.1
+dbh_cm = 4.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h05m_d07cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h05m"
-twigs = 978
-leaf_area_m2 = 15.9
-leaf_area_target_m2 = 16.1
-plan = "unreal_scripts_european_beech_2026-11-13"
+twigs = 371
+leaf_area_m2 = 6.0
+leaf_area_target_m2 = 5.3
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 2736
-target.dbh_m = { value = 0.068, p25 = 0.196, p75 = 0.365, inside = false, n = 10 }
-target.crown_base_m = { value = 1.5, p25 = 2.5, p75 = 4.375, inside = false, n = 10 }
-target.crown_radius_m = { value = 1.803, p25 = 0.062, p75 = 0.189, inside = false, n = 10 }
+target.dbh_m = { value = 0.038, p25 = 0.029, p75 = 0.038, inside = true, n = 1 }
+target.crown_base_m = { value = 1.5, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
+target.crown_radius_m = { value = 1.791, p25 = 1.337, p75 = 1.7, inside = false, n = 1 }
 
 [trees.european_beech.r07_h10m]
 species = "european_beech"
@@ -599,11 +599,11 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 1942
 leaf_area_m2 = 31.7
 leaf_area_target_m2 = 32.0
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 8752
-target.dbh_m = { value = 0.102, p25 = 0.088, p75 = 0.106, inside = true, n = 20 }
-target.crown_base_m = { value = 2.0, p25 = 0.5, p75 = 1.5, inside = false, n = 20 }
-target.crown_radius_m = { value = 3.824, p25 = 1.944, p75 = 2.837, inside = false, n = 20 }
+target.dbh_m = { value = 0.102, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
+target.crown_base_m = { value = 2.0, p25 = 0.5, p75 = 1.5, inside = false, n = 19 }
+target.crown_radius_m = { value = 3.824, p25 = 2.075, p75 = 2.852, inside = false, n = 19 }
 
 [trees.european_beech.r07_h15m]
 species = "european_beech"
@@ -621,7 +621,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 3104
 leaf_area_m2 = 50.6
 leaf_area_target_m2 = 50.4
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 7715
 target.dbh_m = { value = 0.129, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 2.5, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -643,7 +643,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 5566
 leaf_area_m2 = 90.8
 leaf_area_target_m2 = 90.8
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 6555
 target.dbh_m = { value = 0.177, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
 target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
@@ -654,22 +654,22 @@ species = "european_beech"
 tree_id = "r07_h25m"
 radius = 7
 height_m = 25.47
-dbh_cm = 29.6
+dbh_cm = 27.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h25m_d30cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h25m_d27cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h25m"
-twigs = 14757
-leaf_area_m2 = 240.7
-leaf_area_target_m2 = 240.8
-plan = "unreal_scripts_european_beech_2026-11-13"
-bones = 6895
-target.dbh_m = { value = 0.296, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
+twigs = 12414
+leaf_area_m2 = 202.5
+leaf_area_target_m2 = 202.4
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+bones = 6896
+target.dbh_m = { value = 0.27, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
 target.crown_base_m = { value = 11.0, p25 = 5.5, p75 = 10.5, inside = false, n = 87 }
-target.crown_radius_m = { value = 4.635, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
+target.crown_radius_m = { value = 4.629, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
 
 [trees.european_beech.r07_h30m]
 species = "european_beech"
@@ -687,7 +687,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 25309
 leaf_area_m2 = 412.8
 leaf_area_target_m2 = 412.9
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 6075
 target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
 target.crown_base_m = { value = 17.0, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
@@ -698,66 +698,66 @@ species = "european_beech"
 tree_id = "r07_h35m"
 radius = 7
 height_m = 35.38
-dbh_cm = 42.7
+dbh_cm = 51.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h35m_d43cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h35m_d51cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h35m"
-twigs = 29529
-leaf_area_m2 = 481.6
-leaf_area_target_m2 = 481.7
-plan = "unreal_scripts_european_beech_2026-11-13"
-bones = 6136
-target.dbh_m = { value = 0.427, p25 = 0.281, p75 = 0.457, inside = true, n = 4 }
-target.crown_base_m = { value = 23.0, p25 = 8.567, p75 = 16.51, inside = false, n = 4 }
-target.crown_radius_m = { value = 4.599, p25 = 5.077, p75 = 6.695, inside = false, n = 4 }
+twigs = 40008
+leaf_area_m2 = 652.5
+leaf_area_target_m2 = 676.6
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+bones = 6134
+target.dbh_m = { value = 0.511, p25 = 0.406, p75 = 0.54, inside = true, n = 4 }
+target.crown_base_m = { value = 23.0, p25 = 12.21, p75 = 20.73, inside = false, n = 4 }
+target.crown_radius_m = { value = 4.596, p25 = 4.248, p75 = 5.403, inside = true, n = 4 }
 
 [trees.european_beech.r07_h40m]
 species = "european_beech"
 tree_id = "r07_h40m"
 radius = 7
 height_m = 40.06
-dbh_cm = 45.5
+dbh_cm = 60.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h40m_d45cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h40m_d60cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h40m"
-twigs = 33318
-leaf_area_m2 = 543.4
-leaf_area_target_m2 = 543.2
-plan = "unreal_scripts_european_beech_2026-11-13"
-bones = 8183
-target.dbh_m = { value = 0.455, p25 = 0.301, p75 = 0.489, inside = true, n = 0 }
-target.crown_base_m = { value = 26.0, p25 = 10.04, p75 = 19.36, inside = false, n = 0 }
-target.crown_radius_m = { value = 5.617, p25 = 6.037, p75 = 7.96, inside = false, n = 0 }
+twigs = 40022
+leaf_area_m2 = 652.8
+leaf_area_target_m2 = 931.4
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+bones = 8184
+target.dbh_m = { value = 0.605, p25 = 0.487, p75 = 0.647, inside = true, n = 0 }
+target.crown_base_m = { value = 26.5, p25 = 16.58, p75 = 28.16, inside = true, n = 0 }
+target.crown_radius_m = { value = 5.623, p25 = 4.598, p75 = 5.849, inside = true, n = 0 }
 
 [trees.european_beech.r10_h05m]
 species = "european_beech"
 tree_id = "r10_h05m"
 radius = 10
 height_m = 5.18
-dbh_cm = 7.1
+dbh_cm = 4.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h05m_d07cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h05m"
-twigs = 974
-leaf_area_m2 = 15.9
-leaf_area_target_m2 = 16.1
-plan = "unreal_scripts_european_beech_2026-11-13"
+twigs = 329
+leaf_area_m2 = 5.4
+leaf_area_target_m2 = 5.3
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 1879
-target.dbh_m = { value = 0.071, p25 = 0.196, p75 = 0.365, inside = false, n = 10 }
-target.crown_base_m = { value = 1.5, p25 = 2.5, p75 = 4.375, inside = false, n = 10 }
-target.crown_radius_m = { value = 1.617, p25 = 0.062, p75 = 0.189, inside = false, n = 10 }
+target.dbh_m = { value = 0.04, p25 = 0.029, p75 = 0.038, inside = false, n = 1 }
+target.crown_base_m = { value = 1.5, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
+target.crown_radius_m = { value = 1.596, p25 = 1.337, p75 = 1.7, inside = true, n = 1 }
 
 [trees.european_beech.r10_h10m]
 species = "european_beech"
@@ -775,11 +775,11 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 1912
 leaf_area_m2 = 31.2
 leaf_area_target_m2 = 31.8
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 11756
-target.dbh_m = { value = 0.101, p25 = 0.088, p75 = 0.106, inside = true, n = 20 }
-target.crown_base_m = { value = 1.5, p25 = 0.5, p75 = 1.5, inside = true, n = 20 }
-target.crown_radius_m = { value = 4.635, p25 = 1.944, p75 = 2.837, inside = false, n = 20 }
+target.dbh_m = { value = 0.101, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
+target.crown_base_m = { value = 1.5, p25 = 0.5, p75 = 1.5, inside = true, n = 19 }
+target.crown_radius_m = { value = 4.635, p25 = 2.075, p75 = 2.852, inside = false, n = 19 }
 
 [trees.european_beech.r10_h15m]
 species = "european_beech"
@@ -797,7 +797,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 3284
 leaf_area_m2 = 53.6
 leaf_area_target_m2 = 53.1
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 11099
 target.dbh_m = { value = 0.133, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 3.0, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -819,7 +819,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 5536
 leaf_area_m2 = 90.3
 leaf_area_target_m2 = 90.0
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 9404
 target.dbh_m = { value = 0.176, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
 target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
@@ -830,22 +830,22 @@ species = "european_beech"
 tree_id = "r10_h25m"
 radius = 10
 height_m = 25.34
-dbh_cm = 29.3
+dbh_cm = 26.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h25m_d29cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h25m_d27cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h25m"
-twigs = 14513
-leaf_area_m2 = 236.7
-leaf_area_target_m2 = 236.9
-plan = "unreal_scripts_european_beech_2026-11-13"
+twigs = 12196
+leaf_area_m2 = 198.9
+leaf_area_target_m2 = 198.4
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 8855
-target.dbh_m = { value = 0.293, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
+target.dbh_m = { value = 0.267, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
 target.crown_base_m = { value = 10.5, p25 = 5.5, p75 = 10.5, inside = true, n = 87 }
-target.crown_radius_m = { value = 5.588, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
+target.crown_radius_m = { value = 5.599, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
 
 [trees.european_beech.r10_h30m]
 species = "european_beech"
@@ -863,7 +863,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 25219
 leaf_area_m2 = 411.3
 leaf_area_target_m2 = 411.2
-plan = "unreal_scripts_european_beech_2026-11-13"
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
 bones = 8388
 target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
 target.crown_base_m = { value = 14.5, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
@@ -874,38 +874,38 @@ species = "european_beech"
 tree_id = "r10_h35m"
 radius = 10
 height_m = 35.26
-dbh_cm = 42.6
+dbh_cm = 50.8
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h35m_d43cm_full_growth_data.floor.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h35m_d51cm_full_growth_data.floor.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h35m"
-twigs = 29430
-leaf_area_m2 = 480.0
-leaf_area_target_m2 = 480.1
-plan = "unreal_scripts_european_beech_2026-11-13"
-bones = 7740
+twigs = 40028
+leaf_area_m2 = 652.8
+leaf_area_target_m2 = 670.6
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+bones = 7739
 
 [trees.european_beech.r10_h40m]
 species = "european_beech"
 tree_id = "r10_h40m"
 radius = 10
 height_m = 40.41
-dbh_cm = 45.7
+dbh_cm = 61.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h40m_d46cm_full_growth_data.floor.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h40m_d61cm_full_growth_data.floor.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h40m"
-twigs = 33581
-leaf_area_m2 = 547.7
-leaf_area_target_m2 = 547.7
-plan = "unreal_scripts_european_beech_2026-11-13"
-bones = 7738
+twigs = 40019
+leaf_area_m2 = 652.7
+leaf_area_target_m2 = 952.0
+plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+bones = 7741
 
 [trees.european_oak.r07_h05m]
 species = "european_oak"
@@ -1164,88 +1164,88 @@ species = "norway_spruce"
 tree_id = "r07_h05m"
 radius = 7
 height_m = 5.11
-dbh_cm = 8.1
+dbh_cm = 6.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h05m_d08cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h05m_d06cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h05m"
-twigs = 679
-leaf_area_m2 = 51.6
-leaf_area_target_m2 = 51.2
-plan = "unreal_scripts_norway_spruce_trim15"
+twigs = 849
+leaf_area_m2 = 34.0
+leaf_area_target_m2 = 34.0
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 1004
-target.dbh_m = { value = 0.08, p25 = 0.039, p75 = 0.049, inside = false, n = 0 }
-target.crown_base_m = { value = 0.5, p25 = 1.369, p75 = 2.29, inside = false, n = 0 }
-target.crown_radius_m = { value = 1.296, p25 = 0.43, p75 = 0.537, inside = false, n = 0 }
+target.dbh_m = { value = 0.064, p25 = 0.039, p75 = 0.048, inside = false, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 1.27, p75 = 2.129, inside = false, n = 0 }
+target.crown_radius_m = { value = 1.285, p25 = 0.506, p75 = 0.629, inside = false, n = 0 }
 
 [trees.norway_spruce.r07_h10m]
 species = "norway_spruce"
 tree_id = "r07_h10m"
 radius = 7
 height_m = 10.09
-dbh_cm = 15.9
+dbh_cm = 15.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h10m_d16cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h10m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h10m"
-twigs = 1001
-leaf_area_m2 = 178.3
-leaf_area_target_m2 = 180.4
-plan = "unreal_scripts_norway_spruce_trim15"
+twigs = 927
+leaf_area_m2 = 161.6
+leaf_area_target_m2 = 162.3
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 1221
-target.dbh_m = { value = 0.159, p25 = 0.142, p75 = 0.266, inside = true, n = 19 }
-target.crown_base_m = { value = 2.0, p25 = 3.75, p75 = 8.0, inside = false, n = 19 }
-target.crown_radius_m = { value = 1.844, p25 = 0.51, p75 = 1.68, inside = false, n = 19 }
+target.dbh_m = { value = 0.15, p25 = 0.139, p75 = 0.276, inside = true, n = 14 }
+target.crown_base_m = { value = 2.0, p25 = 3.125, p75 = 6.125, inside = false, n = 14 }
+target.crown_radius_m = { value = 1.841, p25 = 1.267, p75 = 2.058, inside = true, n = 14 }
 
 [trees.norway_spruce.r07_h15m]
 species = "norway_spruce"
 tree_id = "r07_h15m"
 radius = 7
 height_m = 15.18
-dbh_cm = 22.4
+dbh_cm = 18.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h15m_d22cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h15m_d18cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h15m"
-twigs = 1629
-leaf_area_m2 = 343.7
-leaf_area_target_m2 = 340.1
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 1869
-target.dbh_m = { value = 0.224, p25 = 0.154, p75 = 0.213, inside = false, n = 57 }
-target.crown_base_m = { value = 5.5, p25 = 4.5, p75 = 8.0, inside = true, n = 57 }
-target.crown_radius_m = { value = 2.226, p25 = 1.407, p75 = 1.892, inside = false, n = 56 }
+twigs = 1474
+leaf_area_m2 = 223.7
+leaf_area_target_m2 = 225.2
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 1868
+target.dbh_m = { value = 0.18, p25 = 0.153, p75 = 0.212, inside = true, n = 54 }
+target.crown_base_m = { value = 5.5, p25 = 4.5, p75 = 7.5, inside = true, n = 54 }
+target.crown_radius_m = { value = 2.227, p25 = 1.512, p75 = 1.944, inside = false, n = 54 }
 
 [trees.norway_spruce.r07_h20m]
 species = "norway_spruce"
 tree_id = "r07_h20m"
 radius = 7
 height_m = 20.28
-dbh_cm = 26.9
+dbh_cm = 24.4
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h20m_d27cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h20m_d24cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h20m"
-twigs = 1608
-leaf_area_m2 = 477.9
-leaf_area_target_m2 = 477.1
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 2307
-target.dbh_m = { value = 0.269, p25 = 0.218, p75 = 0.281, inside = true, n = 215 }
+twigs = 1850
+leaf_area_m2 = 400.6
+leaf_area_target_m2 = 398.5
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 2309
+target.dbh_m = { value = 0.244, p25 = 0.218, p75 = 0.281, inside = true, n = 215 }
 target.crown_base_m = { value = 9.0, p25 = 5.0, p75 = 9.0, inside = true, n = 215 }
-target.crown_radius_m = { value = 2.618, p25 = 1.858, p75 = 2.334, inside = false, n = 215 }
+target.crown_radius_m = { value = 2.623, p25 = 1.858, p75 = 2.334, inside = false, n = 215 }
 
 [trees.norway_spruce.r07_h25m]
 species = "norway_spruce"
@@ -1263,7 +1263,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce
 twigs = 1958
 leaf_area_m2 = 594.7
 leaf_area_target_m2 = 596.1
-plan = "unreal_scripts_norway_spruce_trim15"
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 2214
 target.dbh_m = { value = 0.303, p25 = 0.276, p75 = 0.338, inside = true, n = 299 }
 target.crown_base_m = { value = 13.0, p25 = 5.5, p75 = 9.5, inside = false, n = 299 }
@@ -1274,176 +1274,176 @@ species = "norway_spruce"
 tree_id = "r07_h30m"
 radius = 7
 height_m = 30.17
-dbh_cm = 34.1
+dbh_cm = 40.4
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h30m_d34cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h30m_d40cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h30m"
-twigs = 2522
-leaf_area_m2 = 742.4
-leaf_area_target_m2 = 739.7
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 2154
-target.dbh_m = { value = 0.341, p25 = 0.366, p75 = 0.453, inside = false, n = 161 }
+twigs = 3478
+leaf_area_m2 = 1016.7
+leaf_area_target_m2 = 1015.1
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 2161
+target.dbh_m = { value = 0.404, p25 = 0.366, p75 = 0.453, inside = true, n = 161 }
 target.crown_base_m = { value = 18.0, p25 = 7.0, p75 = 11.5, inside = false, n = 161 }
-target.crown_radius_m = { value = 2.821, p25 = 2.763, p75 = 3.452, inside = true, n = 161 }
+target.crown_radius_m = { value = 2.819, p25 = 2.763, p75 = 3.452, inside = true, n = 161 }
 
 [trees.norway_spruce.r07_h35m]
 species = "norway_spruce"
 tree_id = "r07_h35m"
 radius = 7
 height_m = 35.27
-dbh_cm = 37.3
+dbh_cm = 48.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h35m_d37cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h35m_d49cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h35m"
-twigs = 3035
-leaf_area_m2 = 875.8
-leaf_area_target_m2 = 875.0
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 2119
-target.dbh_m = { value = 0.373, p25 = 0.432, p75 = 0.512, inside = false, n = 88 }
+twigs = 4928
+leaf_area_m2 = 1440.2
+leaf_area_target_m2 = 1437.9
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 2123
+target.dbh_m = { value = 0.487, p25 = 0.432, p75 = 0.512, inside = true, n = 88 }
 target.crown_base_m = { value = 22.5, p25 = 10.5, p75 = 14.5, inside = false, n = 88 }
-target.crown_radius_m = { value = 2.884, p25 = 3.02, p75 = 3.677, inside = false, n = 88 }
+target.crown_radius_m = { value = 2.883, p25 = 3.02, p75 = 3.677, inside = false, n = 88 }
 
 [trees.norway_spruce.r07_h40m]
 species = "norway_spruce"
 tree_id = "r07_h40m"
 radius = 7
 height_m = 40.07
-dbh_cm = 40.7
+dbh_cm = 57.8
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h40m_d41cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r07/Norway_Spruce_r07_h40m_d58cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h40m"
-twigs = 3471
-leaf_area_m2 = 1031.3
-leaf_area_target_m2 = 1030.4
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 2196
-target.dbh_m = { value = 0.407, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
+twigs = 6650
+leaf_area_m2 = 1975.4
+leaf_area_target_m2 = 1973.6
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 2199
+target.dbh_m = { value = 0.578, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
 target.crown_base_m = { value = 27.0, p25 = 12.25, p75 = 15.75, inside = false, n = 16 }
-target.crown_radius_m = { value = 2.867, p25 = 3.644, p75 = 4.02, inside = false, n = 16 }
+target.crown_radius_m = { value = 2.858, p25 = 3.644, p75 = 4.02, inside = false, n = 16 }
 
 [trees.norway_spruce.r10_h05m]
 species = "norway_spruce"
 tree_id = "r10_h05m"
 radius = 10
 height_m = 5.15
-dbh_cm = 8.3
+dbh_cm = 6.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h05m_d08cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h05m_d07cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h05m"
-twigs = 722
-leaf_area_m2 = 54.6
-leaf_area_target_m2 = 54.3
-plan = "unreal_scripts_norway_spruce_trim15"
+twigs = 632
+leaf_area_m2 = 34.8
+leaf_area_target_m2 = 34.5
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 877
-target.dbh_m = { value = 0.082, p25 = 0.039, p75 = 0.049, inside = false, n = 0 }
-target.crown_base_m = { value = 0.5, p25 = 1.369, p75 = 2.29, inside = false, n = 0 }
-target.crown_radius_m = { value = 1.333, p25 = 0.43, p75 = 0.537, inside = false, n = 0 }
+target.dbh_m = { value = 0.064, p25 = 0.039, p75 = 0.048, inside = false, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 1.27, p75 = 2.129, inside = false, n = 0 }
+target.crown_radius_m = { value = 1.316, p25 = 0.506, p75 = 0.629, inside = false, n = 0 }
 
 [trees.norway_spruce.r10_h10m]
 species = "norway_spruce"
 tree_id = "r10_h10m"
 radius = 10
 height_m = 10.24
-dbh_cm = 17.3
+dbh_cm = 15.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h10m_d17cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h10m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h10m"
-twigs = 1151
-leaf_area_m2 = 212.5
-leaf_area_target_m2 = 210.8
-plan = "unreal_scripts_norway_spruce_trim15"
+twigs = 1257
+leaf_area_m2 = 167.1
+leaf_area_target_m2 = 168.0
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 1457
-target.dbh_m = { value = 0.172, p25 = 0.142, p75 = 0.266, inside = true, n = 19 }
-target.crown_base_m = { value = 1.0, p25 = 3.75, p75 = 8.0, inside = false, n = 19 }
-target.crown_radius_m = { value = 1.999, p25 = 0.51, p75 = 1.68, inside = false, n = 19 }
+target.dbh_m = { value = 0.152, p25 = 0.139, p75 = 0.276, inside = true, n = 14 }
+target.crown_base_m = { value = 1.0, p25 = 3.125, p75 = 6.125, inside = false, n = 14 }
+target.crown_radius_m = { value = 1.997, p25 = 1.267, p75 = 2.058, inside = true, n = 14 }
 
 [trees.norway_spruce.r10_h15m]
 species = "norway_spruce"
 tree_id = "r10_h15m"
 radius = 10
 height_m = 15.03
-dbh_cm = 24.9
+dbh_cm = 18.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h15m_d25cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h15m_d18cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h15m"
-twigs = 1946
-leaf_area_m2 = 416.3
-leaf_area_target_m2 = 412.6
-plan = "unreal_scripts_norway_spruce_trim15"
+twigs = 2003
+leaf_area_m2 = 225.3
+leaf_area_target_m2 = 225.2
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 2600
-target.dbh_m = { value = 0.248, p25 = 0.154, p75 = 0.213, inside = false, n = 57 }
-target.crown_base_m = { value = 3.0, p25 = 4.5, p75 = 8.0, inside = false, n = 57 }
-target.crown_radius_m = { value = 2.592, p25 = 1.407, p75 = 1.892, inside = false, n = 56 }
+target.dbh_m = { value = 0.179, p25 = 0.153, p75 = 0.212, inside = true, n = 54 }
+target.crown_base_m = { value = 3.0, p25 = 4.5, p75 = 7.5, inside = false, n = 54 }
+target.crown_radius_m = { value = 2.589, p25 = 1.512, p75 = 1.944, inside = false, n = 54 }
 
 [trees.norway_spruce.r10_h20m]
 species = "norway_spruce"
 tree_id = "r10_h20m"
 radius = 10
 height_m = 20.13
-dbh_cm = 31.6
+dbh_cm = 24.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h20m_d32cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h20m_d24cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h20m"
-twigs = 2961
-leaf_area_m2 = 643.3
-leaf_area_target_m2 = 642.6
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 3629
-target.dbh_m = { value = 0.315, p25 = 0.218, p75 = 0.281, inside = false, n = 215 }
+twigs = 2498
+leaf_area_m2 = 392.5
+leaf_area_target_m2 = 391.6
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 3634
+target.dbh_m = { value = 0.241, p25 = 0.218, p75 = 0.281, inside = true, n = 215 }
 target.crown_base_m = { value = 5.5, p25 = 5.0, p75 = 9.0, inside = true, n = 215 }
-target.crown_radius_m = { value = 3.404, p25 = 1.858, p75 = 2.334, inside = false, n = 215 }
+target.crown_radius_m = { value = 3.388, p25 = 1.858, p75 = 2.334, inside = false, n = 215 }
 
 [trees.norway_spruce.r10_h25m]
 species = "norway_spruce"
 tree_id = "r10_h25m"
 radius = 10
 height_m = 25.23
-dbh_cm = 36.4
+dbh_cm = 31.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h25m_d36cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h25m_d32cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h25m"
-twigs = 2762
-leaf_area_m2 = 836.3
-leaf_area_target_m2 = 834.5
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 3709
-target.dbh_m = { value = 0.364, p25 = 0.276, p75 = 0.338, inside = false, n = 299 }
+twigs = 2933
+leaf_area_m2 = 643.3
+leaf_area_target_m2 = 645.6
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 3706
+target.dbh_m = { value = 0.317, p25 = 0.276, p75 = 0.338, inside = true, n = 299 }
 target.crown_base_m = { value = 8.5, p25 = 5.5, p75 = 9.5, inside = true, n = 299 }
-target.crown_radius_m = { value = 3.821, p25 = 2.226, p75 = 2.732, inside = false, n = 299 }
+target.crown_radius_m = { value = 3.817, p25 = 2.226, p75 = 2.732, inside = false, n = 299 }
 
 [trees.norway_spruce.r10_h30m]
 species = "norway_spruce"
@@ -1461,7 +1461,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce
 twigs = 3391
 leaf_area_m2 = 1020.9
 leaf_area_target_m2 = 1021.0
-plan = "unreal_scripts_norway_spruce_trim15"
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
 bones = 3381
 target.dbh_m = { value = 0.405, p25 = 0.366, p75 = 0.453, inside = true, n = 161 }
 target.crown_base_m = { value = 13.5, p25 = 7.0, p75 = 11.5, inside = false, n = 161 }
@@ -1472,44 +1472,44 @@ species = "norway_spruce"
 tree_id = "r10_h35m"
 radius = 10
 height_m = 35.13
-dbh_cm = 43.8
+dbh_cm = 48.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h35m_d44cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h35m_d48cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h35m"
-twigs = 3970
-leaf_area_m2 = 1181.0
-leaf_area_target_m2 = 1180.3
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 3154
-target.dbh_m = { value = 0.438, p25 = 0.432, p75 = 0.512, inside = true, n = 88 }
+twigs = 4778
+leaf_area_m2 = 1422.9
+leaf_area_target_m2 = 1423.0
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 3159
+target.dbh_m = { value = 0.485, p25 = 0.432, p75 = 0.512, inside = true, n = 88 }
 target.crown_base_m = { value = 18.5, p25 = 10.5, p75 = 14.5, inside = false, n = 88 }
-target.crown_radius_m = { value = 3.747, p25 = 3.02, p75 = 3.677, inside = false, n = 88 }
+target.crown_radius_m = { value = 3.741, p25 = 3.02, p75 = 3.677, inside = false, n = 88 }
 
 [trees.norway_spruce.r10_h40m]
 species = "norway_spruce"
 tree_id = "r10_h40m"
 radius = 10
 height_m = 40.23
-dbh_cm = 47.3
+dbh_cm = 58.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h40m_d47cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/norway_spruce/r10/Norway_Spruce_r10_h40m_d58cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h40m"
-twigs = 4633
-leaf_area_m2 = 1360.6
-leaf_area_target_m2 = 1359.1
-plan = "unreal_scripts_norway_spruce_trim15"
-bones = 2967
-target.dbh_m = { value = 0.473, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
+twigs = 6749
+leaf_area_m2 = 1993.1
+leaf_area_target_m2 = 1991.4
+plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+bones = 2969
+target.dbh_m = { value = 0.581, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
 target.crown_base_m = { value = 23.0, p25 = 12.25, p75 = 15.75, inside = false, n = 16 }
-target.crown_radius_m = { value = 3.894, p25 = 3.644, p75 = 4.02, inside = true, n = 16 }
+target.crown_radius_m = { value = 3.887, p25 = 3.644, p75 = 4.02, inside = true, n = 16 }
 
 [trees.scots_pine.r07_h05m]
 species = "scots_pine"
@@ -1924,22 +1924,22 @@ species = "silver_fir"
 tree_id = "r07_h05m"
 radius = 7
 height_m = 5.18
-dbh_cm = 6.2
+dbh_cm = 8.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h05m_d06cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h05m_d08cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h05m"
-twigs = 701
-leaf_area_m2 = 20.0
-leaf_area_target_m2 = 20.4
-plan = "unreal_scripts_silver_fir_trim15"
+twigs = 847
+leaf_area_m2 = 33.9
+leaf_area_target_m2 = 34.3
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 969
-target.dbh_m = { value = 0.061, p25 = 0.079, p75 = 0.14, inside = false, n = 66 }
-target.crown_base_m = { value = 0.5, p25 = 1.5, p75 = 4.0, inside = false, n = 66 }
-target.crown_radius_m = { value = 1.418, p25 = 0.999, p75 = 1.611, inside = true, n = 66 }
+target.dbh_m = { value = 0.08, p25 = 0.078, p75 = 0.114, inside = true, n = 54 }
+target.crown_base_m = { value = 0.5, p25 = 1.5, p75 = 2.875, inside = false, n = 54 }
+target.crown_radius_m = { value = 1.424, p25 = 1.315, p75 = 1.638, inside = true, n = 54 }
 
 [trees.silver_fir.r07_h10m]
 species = "silver_fir"
@@ -1957,187 +1957,187 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h
 twigs = 1216
 leaf_area_m2 = 84.0
 leaf_area_target_m2 = 84.7
-plan = "unreal_scripts_silver_fir_trim15"
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 1485
-target.dbh_m = { value = 0.131, p25 = 0.107, p75 = 0.171, inside = true, n = 138 }
-target.crown_base_m = { value = 1.5, p25 = 2.0, p75 = 5.5, inside = false, n = 138 }
-target.crown_radius_m = { value = 1.818, p25 = 1.358, p75 = 2.027, inside = true, n = 138 }
+target.dbh_m = { value = 0.131, p25 = 0.108, p75 = 0.16, inside = true, n = 116 }
+target.crown_base_m = { value = 1.5, p25 = 2.0, p75 = 4.5, inside = false, n = 116 }
+target.crown_radius_m = { value = 1.818, p25 = 1.574, p75 = 2.083, inside = true, n = 116 }
 
 [trees.silver_fir.r07_h15m]
 species = "silver_fir"
 tree_id = "r07_h15m"
 radius = 7
 height_m = 15.18
-dbh_cm = 19.5
+dbh_cm = 22.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h15m_d20cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h15m_d22cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h15m"
-twigs = 1653
-leaf_area_m2 = 180.0
-leaf_area_target_m2 = 179.8
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 2213
-target.dbh_m = { value = 0.195, p25 = 0.149, p75 = 0.315, inside = true, n = 119 }
-target.crown_base_m = { value = 5.5, p25 = 2.5, p75 = 6.75, inside = true, n = 119 }
-target.crown_radius_m = { value = 2.322, p25 = 1.638, p75 = 2.532, inside = true, n = 118 }
+twigs = 1543
+leaf_area_m2 = 225.9
+leaf_area_target_m2 = 225.3
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 2215
+target.dbh_m = { value = 0.22, p25 = 0.151, p75 = 0.317, inside = true, n = 114 }
+target.crown_base_m = { value = 5.5, p25 = 2.5, p75 = 6.375, inside = true, n = 114 }
+target.crown_radius_m = { value = 2.32, p25 = 1.714, p75 = 2.584, inside = true, n = 114 }
 
 [trees.silver_fir.r07_h20m]
 species = "silver_fir"
 tree_id = "r07_h20m"
 radius = 7
 height_m = 20.28
-dbh_cm = 24.9
+dbh_cm = 30.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h20m_d25cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h20m_d30cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h20m"
-twigs = 1836
-leaf_area_m2 = 285.9
-leaf_area_target_m2 = 285.9
-plan = "unreal_scripts_silver_fir_trim15"
+twigs = 1886
+leaf_area_m2 = 406.4
+leaf_area_target_m2 = 405.5
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 2401
-target.dbh_m = { value = 0.249, p25 = 0.202, p75 = 0.398, inside = true, n = 64 }
+target.dbh_m = { value = 0.3, p25 = 0.202, p75 = 0.398, inside = true, n = 64 }
 target.crown_base_m = { value = 9.0, p25 = 3.75, p75 = 9.5, inside = true, n = 64 }
-target.crown_radius_m = { value = 2.604, p25 = 2.084, p75 = 3.011, inside = true, n = 64 }
+target.crown_radius_m = { value = 2.617, p25 = 2.084, p75 = 3.011, inside = true, n = 64 }
 
 [trees.silver_fir.r07_h25m]
 species = "silver_fir"
 tree_id = "r07_h25m"
 radius = 7
 height_m = 25.08
-dbh_cm = 29.4
+dbh_cm = 39.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h25m_d29cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h25m_d39cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h25m"
-twigs = 1840
-leaf_area_m2 = 392.5
-leaf_area_target_m2 = 391.6
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 2693
-target.dbh_m = { value = 0.294, p25 = 0.314, p75 = 0.47, inside = false, n = 42 }
+twigs = 2271
+leaf_area_m2 = 676.1
+leaf_area_target_m2 = 676.1
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 2694
+target.dbh_m = { value = 0.392, p25 = 0.314, p75 = 0.47, inside = true, n = 42 }
 target.crown_base_m = { value = 13.0, p25 = 5.125, p75 = 11.88, inside = false, n = 42 }
-target.crown_radius_m = { value = 2.753, p25 = 2.594, p75 = 3.732, inside = true, n = 42 }
+target.crown_radius_m = { value = 2.758, p25 = 2.594, p75 = 3.732, inside = true, n = 42 }
 
 [trees.silver_fir.r07_h30m]
 species = "silver_fir"
 tree_id = "r07_h30m"
 radius = 7
 height_m = 30.17
-dbh_cm = 34.0
+dbh_cm = 42.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h30m_d34cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h30m_d43cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h30m"
-twigs = 1686
-leaf_area_m2 = 512.4
-leaf_area_target_m2 = 515.7
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 2461
-target.dbh_m = { value = 0.34, p25 = 0.352, p75 = 0.444, inside = false, n = 22 }
-target.crown_base_m = { value = 17.5, p25 = 6.125, p75 = 9.5, inside = false, n = 22 }
-target.crown_radius_m = { value = 2.725, p25 = 3.119, p75 = 3.688, inside = false, n = 22 }
+twigs = 2631
+leaf_area_m2 = 796.0
+leaf_area_target_m2 = 794.2
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 2463
+target.dbh_m = { value = 0.427, p25 = 0.352, p75 = 0.444, inside = true, n = 22 }
+target.crown_base_m = { value = 18.0, p25 = 6.125, p75 = 9.5, inside = false, n = 22 }
+target.crown_radius_m = { value = 2.73, p25 = 3.119, p75 = 3.688, inside = false, n = 22 }
 
 [trees.silver_fir.r07_h35m]
 species = "silver_fir"
 tree_id = "r07_h35m"
 radius = 7
 height_m = 35.27
-dbh_cm = 39.0
+dbh_cm = 49.8
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h35m_d39cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h35m_d50cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h35m"
-twigs = 2239
-leaf_area_m2 = 669.2
-leaf_area_target_m2 = 669.1
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 2418
-target.dbh_m = { value = 0.39, p25 = 0.364, p75 = 0.617, inside = true, n = 4 }
-target.crown_base_m = { value = 22.5, p25 = 5.464, p75 = 13.75, inside = false, n = 4 }
-target.crown_radius_m = { value = 2.854, p25 = 3.845, p75 = 7.076, inside = false, n = 4 }
+twigs = 3561
+leaf_area_m2 = 1062.3
+leaf_area_target_m2 = 1063.9
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 2422
+target.dbh_m = { value = 0.498, p25 = 0.397, p75 = 0.648, inside = true, n = 4 }
+target.crown_base_m = { value = 22.5, p25 = 6.439, p75 = 14.17, inside = false, n = 4 }
+target.crown_radius_m = { value = 2.856, p25 = 2.961, p75 = 4.132, inside = false, n = 4 }
 
 [trees.silver_fir.r07_h40m]
 species = "silver_fir"
 tree_id = "r07_h40m"
 radius = 7
 height_m = 40.07
-dbh_cm = 43.8
+dbh_cm = 56.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h40m_d44cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r07/Silver_Fir_r07_h40m_d56cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r07_h40m"
-twigs = 2825
-leaf_area_m2 = 832.6
-leaf_area_target_m2 = 833.4
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 2232
-target.dbh_m = { value = 0.438, p25 = 0.411, p75 = 0.697, inside = true, n = 0 }
-target.crown_base_m = { value = 27.5, p25 = 6.0, p75 = 15.09, inside = false, n = 0 }
-target.crown_radius_m = { value = 2.889, p25 = 4.406, p75 = 8.109, inside = false, n = 0 }
+twigs = 4562
+leaf_area_m2 = 1349.7
+leaf_area_target_m2 = 1350.2
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 2235
+target.dbh_m = { value = 0.565, p25 = 0.453, p75 = 0.74, inside = true, n = 0 }
+target.crown_base_m = { value = 28.0, p25 = 7.243, p75 = 15.94, inside = false, n = 0 }
+target.crown_radius_m = { value = 2.892, p25 = 3.177, p75 = 4.433, inside = false, n = 0 }
 
 [trees.silver_fir.r10_h05m]
 species = "silver_fir"
 tree_id = "r10_h05m"
 radius = 10
 height_m = 5.13
-dbh_cm = 6.1
+dbh_cm = 8.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h05m_d06cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h05m_d08cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h05m"
-twigs = 682
-leaf_area_m2 = 19.4
-leaf_area_target_m2 = 19.7
-plan = "unreal_scripts_silver_fir_trim15"
+twigs = 616
+leaf_area_m2 = 34.2
+leaf_area_target_m2 = 33.9
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 933
-target.dbh_m = { value = 0.06, p25 = 0.079, p75 = 0.14, inside = false, n = 66 }
-target.crown_base_m = { value = 0.5, p25 = 1.5, p75 = 4.0, inside = false, n = 66 }
-target.crown_radius_m = { value = 1.363, p25 = 0.999, p75 = 1.611, inside = true, n = 66 }
+target.dbh_m = { value = 0.08, p25 = 0.078, p75 = 0.114, inside = true, n = 54 }
+target.crown_base_m = { value = 0.5, p25 = 1.5, p75 = 2.875, inside = false, n = 54 }
+target.crown_radius_m = { value = 1.363, p25 = 1.315, p75 = 1.638, inside = true, n = 54 }
 
 [trees.silver_fir.r10_h10m]
 species = "silver_fir"
 tree_id = "r10_h10m"
 radius = 10
 height_m = 10.15
-dbh_cm = 14.0
+dbh_cm = 13.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h10m_d14cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h10m_d13cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h10m"
-twigs = 1441
-leaf_area_m2 = 96.5
-leaf_area_target_m2 = 95.8
-plan = "unreal_scripts_silver_fir_trim15"
+twigs = 1235
+leaf_area_m2 = 82.5
+leaf_area_target_m2 = 83.5
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 1849
-target.dbh_m = { value = 0.14, p25 = 0.107, p75 = 0.171, inside = true, n = 138 }
-target.crown_base_m = { value = 1.0, p25 = 2.0, p75 = 5.5, inside = false, n = 138 }
-target.crown_radius_m = { value = 2.207, p25 = 1.358, p75 = 2.027, inside = false, n = 138 }
+target.dbh_m = { value = 0.13, p25 = 0.108, p75 = 0.16, inside = true, n = 116 }
+target.crown_base_m = { value = 1.0, p25 = 2.0, p75 = 4.5, inside = false, n = 116 }
+target.crown_radius_m = { value = 2.205, p25 = 1.574, p75 = 2.083, inside = false, n = 116 }
 
 [trees.silver_fir.r10_h15m]
 species = "silver_fir"
@@ -2155,11 +2155,11 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h
 twigs = 2754
 leaf_area_m2 = 226.1
 leaf_area_target_m2 = 226.6
-plan = "unreal_scripts_silver_fir_trim15"
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 3302
-target.dbh_m = { value = 0.221, p25 = 0.149, p75 = 0.315, inside = true, n = 119 }
-target.crown_base_m = { value = 3.0, p25 = 2.5, p75 = 6.75, inside = true, n = 119 }
-target.crown_radius_m = { value = 2.861, p25 = 1.638, p75 = 2.532, inside = false, n = 118 }
+target.dbh_m = { value = 0.221, p25 = 0.151, p75 = 0.317, inside = true, n = 114 }
+target.crown_base_m = { value = 3.0, p25 = 2.5, p75 = 6.375, inside = true, n = 114 }
+target.crown_radius_m = { value = 2.861, p25 = 1.714, p75 = 2.584, inside = false, n = 114 }
 
 [trees.silver_fir.r10_h20m]
 species = "silver_fir"
@@ -2177,7 +2177,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h
 twigs = 2426
 leaf_area_m2 = 379.3
 leaf_area_target_m2 = 381.1
-plan = "unreal_scripts_silver_fir_trim15"
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
 bones = 3771
 target.dbh_m = { value = 0.29, p25 = 0.202, p75 = 0.398, inside = true, n = 64 }
 target.crown_base_m = { value = 5.0, p25 = 3.75, p75 = 9.5, inside = true, n = 64 }
@@ -2188,88 +2188,88 @@ species = "silver_fir"
 tree_id = "r10_h25m"
 radius = 10
 height_m = 25.14
-dbh_cm = 34.8
+dbh_cm = 39.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h25m_d35cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h25m_d39cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h25m"
-twigs = 2479
-leaf_area_m2 = 540.0
-leaf_area_target_m2 = 538.3
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 3837
-target.dbh_m = { value = 0.348, p25 = 0.314, p75 = 0.47, inside = true, n = 42 }
+twigs = 3093
+leaf_area_m2 = 672.2
+leaf_area_target_m2 = 677.0
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 3840
+target.dbh_m = { value = 0.393, p25 = 0.314, p75 = 0.47, inside = true, n = 42 }
 target.crown_base_m = { value = 9.0, p25 = 5.125, p75 = 11.88, inside = true, n = 42 }
-target.crown_radius_m = { value = 3.679, p25 = 2.594, p75 = 3.732, inside = true, n = 42 }
+target.crown_radius_m = { value = 3.684, p25 = 2.594, p75 = 3.732, inside = true, n = 42 }
 
 [trees.silver_fir.r10_h30m]
 species = "silver_fir"
 tree_id = "r10_h30m"
 radius = 10
 height_m = 30.24
-dbh_cm = 39.7
+dbh_cm = 42.8
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h30m_d40cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h30m_d43cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h30m"
-twigs = 2317
-leaf_area_m2 = 694.8
-leaf_area_target_m2 = 692.9
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 3658
-target.dbh_m = { value = 0.397, p25 = 0.352, p75 = 0.444, inside = true, n = 22 }
+twigs = 2657
+leaf_area_m2 = 795.2
+leaf_area_target_m2 = 797.5
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 3659
+target.dbh_m = { value = 0.428, p25 = 0.352, p75 = 0.444, inside = true, n = 22 }
 target.crown_base_m = { value = 13.5, p25 = 6.125, p75 = 9.5, inside = false, n = 22 }
-target.crown_radius_m = { value = 3.922, p25 = 3.119, p75 = 3.688, inside = false, n = 22 }
+target.crown_radius_m = { value = 3.919, p25 = 3.119, p75 = 3.688, inside = false, n = 22 }
 
 [trees.silver_fir.r10_h35m]
 species = "silver_fir"
 tree_id = "r10_h35m"
 radius = 10
 height_m = 35.04
-dbh_cm = 44.3
+dbh_cm = 49.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h35m_d44cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h35m_d49cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h35m"
-twigs = 2845
-leaf_area_m2 = 850.6
-leaf_area_target_m2 = 851.8
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 3572
-target.dbh_m = { value = 0.443, p25 = 0.364, p75 = 0.617, inside = true, n = 4 }
-target.crown_base_m = { value = 19.0, p25 = 5.464, p75 = 13.75, inside = false, n = 4 }
-target.crown_radius_m = { value = 3.793, p25 = 3.845, p75 = 7.076, inside = false, n = 4 }
+twigs = 3483
+leaf_area_m2 = 1048.8
+leaf_area_target_m2 = 1050.7
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 3574
+target.dbh_m = { value = 0.495, p25 = 0.397, p75 = 0.648, inside = true, n = 4 }
+target.crown_base_m = { value = 19.5, p25 = 6.439, p75 = 14.17, inside = false, n = 4 }
+target.crown_radius_m = { value = 3.799, p25 = 2.961, p75 = 4.132, inside = true, n = 4 }
 
 [trees.silver_fir.r10_h40m]
 species = "silver_fir"
 tree_id = "r10_h40m"
 radius = 10
 height_m = 40.14
-dbh_cm = 49.3
+dbh_cm = 56.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h40m_d49cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/silver_fir/r10/Silver_Fir_r10_h40m_d57cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/silver_fir/MI_silver_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/silver_fir/SM_SilverFir_r10_h40m"
-twigs = 3486
-leaf_area_m2 = 1042.3
-leaf_area_target_m2 = 1042.0
-plan = "unreal_scripts_silver_fir_trim15"
-bones = 3318
-target.dbh_m = { value = 0.493, p25 = 0.411, p75 = 0.697, inside = true, n = 0 }
-target.crown_base_m = { value = 24.0, p25 = 6.0, p75 = 15.09, inside = false, n = 0 }
-target.crown_radius_m = { value = 3.919, p25 = 4.406, p75 = 8.109, inside = false, n = 0 }
+twigs = 4590
+leaf_area_m2 = 1355.7
+leaf_area_target_m2 = 1354.5
+plan = "unreal_scripts_silver_fir_dbh_2026-11-13"
+bones = 3319
+target.dbh_m = { value = 0.566, p25 = 0.453, p75 = 0.74, inside = true, n = 0 }
+target.crown_base_m = { value = 24.0, p25 = 7.243, p75 = 15.94, inside = false, n = 0 }
+target.crown_radius_m = { value = 3.919, p25 = 3.177, p75 = 4.433, inside = true, n = 0 }
 
 [trees.small_leaved_linden.r07_h05m]
 species = "small_leaved_linden"
