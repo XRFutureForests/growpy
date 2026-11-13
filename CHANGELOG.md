@@ -23,6 +23,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The graph builder writes and reads back each setup's material and range.
 - Off unless a species names `trunk` and `branch`; it can't be combined with atlas
   `u_ranges`.
+- `growpy-pve-assets` builds `MI_<species>_bark_branch` beside the trunk bark when a
+  species has a pair (intake ids resolve to their instances through the material
+  catalog), and takes `--calibration` so a test can run from a calibration copy while
+  the shipped catalog keeps its barks.
 
 ### 2026-11-13 — Catalog print, kept live by the export
 

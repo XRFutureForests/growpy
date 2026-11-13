@@ -195,6 +195,10 @@ class SpeciesAssetSpec:
     # False: the source is a template only -- its values and switches, minus
     # the colour tint, onto the Grove pair above (``textures = "grove"``).
     bark_source_textures: bool = True
+    # Tile pair (XRFF-679): the bark instance whose textures and values the
+    # branch bark ``MI_<species>_bark_branch`` (generations 1+) copies. Empty:
+    # no branch material; every generation reads the trunk bark.
+    bark_branch_source_material: str = ""
 
     def __post_init__(self) -> None:
         if not self.prototypes:
@@ -364,6 +368,7 @@ def build_species_asset_spec(
     palette: str = "twigs",
     bark_source_material: str = "",
     bark_source_textures: bool = True,
+    bark_branch_source_material: str = "",
 ) -> SpeciesAssetSpec:
     """Resolve one species' palette and bark sources from disk.
 
@@ -440,6 +445,7 @@ def build_species_asset_spec(
         habit=get_species_growth_habit(species) or "broadleaf",
         bark_source_material=bark_source_material,
         bark_source_textures=bark_source_textures,
+        bark_branch_source_material=bark_branch_source_material,
     )
 
 
@@ -508,6 +514,7 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                 },
                 "bark_source_material": s.bark_source_material,
                 "bark_source_textures": s.bark_source_textures,
+                "bark_branch_source_material": s.bark_branch_source_material,
                 "foliage": _foliage_payload(s),
             }
             for s in plan.species
@@ -1030,6 +1037,14 @@ for spec in PLAN["species"]:
             failures.append(problem)
 
     failures.extend(build_bark_material(spec, master, bark_master))
+    # Tile pair (XRFF-679): generations 1+ read MI_<species>_bark_branch, built
+    # by the same routine -- same master, values and textures from its source.
+    if spec["bark_branch_source_material"]:
+        branch = dict(spec)
+        branch["bark_material"] = spec["bark_material"] + "_branch"
+        branch["bark_source_material"] = spec["bark_branch_source_material"]
+        branch["bark_source_textures"] = True
+        failures.extend(build_bark_material(branch, master, bark_master))
     failures.extend(audit_for_usd_stubs(spec["bark_folder"]))
 
     # Leaves: the same order, maps before the material that samples them.

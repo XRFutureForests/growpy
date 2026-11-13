@@ -417,6 +417,100 @@ class TestGeneratedScript:
         assert first == second
 
 
+class TestBarkTilePair:
+    """XRFF-679: trunk and branch bark sources, MI_<species>_bark_branch."""
+
+    @staticmethod
+    def _cal(trunk, branch):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(bark_trunk_source=trunk, bark_branch_source=branch)
+
+    @pytest.fixture
+    def catalog(self, tmp_path):
+        path = tmp_path / "catalog.toml"
+        path.write_text(
+            '[materials.t]\ninstance = "/Game/B/t/MI_t"\n'
+            '[materials.b]\ninstance = "/Game/B/b/MI_b"\n',
+            encoding="utf-8",
+        )
+        return path
+
+    def test_intake_ids_resolve_to_their_instances(self, catalog):
+        from growpy.tools.pve_assets import bark_pair_sources
+
+        assert bark_pair_sources(self._cal("t", "b"), catalog) == (
+            "/Game/B/t/MI_t",
+            "/Game/B/b/MI_b",
+        )
+
+    def test_an_atlas_trunk_names_its_material(self, catalog):
+        from growpy.config.pve_calibration import BarkAtlasStrip
+        from growpy.tools.pve_assets import bark_pair_sources
+
+        strip = BarkAtlasStrip(
+            material="/Game/MP/MI_x", u_range=(0.0, 0.7), y_scale=0.8
+        )
+        assert bark_pair_sources(self._cal(strip, "b"), catalog) == (
+            "/Game/MP/MI_x",
+            "/Game/B/b/MI_b",
+        )
+
+    def test_no_pair_means_no_sources(self, catalog):
+        from growpy.tools.pve_assets import bark_pair_sources
+
+        assert bark_pair_sources(self._cal(None, None), catalog) == ("", "")
+
+    def test_an_unknown_intake_id_is_refused(self, catalog):
+        from growpy.tools.pve_assets import bark_pair_sources
+
+        with pytest.raises(KeyError, match="nope"):
+            bark_pair_sources(self._cal("t", "nope"), catalog)
+
+    def test_the_branch_bark_is_built_after_the_trunk_bark(self, tmp_path):
+        spec = build_species_asset_spec(
+            "european_beech",
+            bark_source_material="/Game/B/t/MI_t",
+            bark_branch_source_material="/Game/B/b/MI_b",
+        )
+        script = generate_pve_asset_script(
+            tmp_path, PVEAssetPlan(species=(spec,))
+        ).read_text(encoding="utf-8")
+        ast.parse(script)
+        assert "'bark_branch_source_material': '/Game/B/b/MI_b'" in script
+        loop = script.split("for spec in PLAN[", 1)[1]
+        trunk = loop.index("build_bark_material(spec, master, bark_master)")
+        branch = loop.index("build_bark_material(branch, master, bark_master)")
+        assert trunk < branch
+        assert 'spec["bark_material"] + "_branch"' in loop
+
+    def test_a_sandbox_calibration_reaches_the_script(self, tmp_path):
+        # The tile-pair test runs from a calibration copy so the catalog's
+        # oak keeps its atlas until the owner switches it.
+        from growpy.tools.pve_assets import main
+
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        line = next(
+            ln for ln in shipped.splitlines()
+            if ln.startswith("bark_source_per_species.european_oak")
+        )
+        sandbox = tmp_path / "pve_calibration.toml"
+        sandbox.write_text(
+            shipped.replace(
+                line,
+                'bark_source_per_species.european_oak = { trunk = "fab_oak_bark", '
+                'branch = "fab_chestnut_bark_oak_branch" }',
+            ),
+            encoding="utf-8",
+        )
+        rc = main(["european_oak", "--output-dir", str(tmp_path),
+                   "--calibration", str(sandbox)])
+        script = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
+        assert rc == 0
+        assert "MI_fab_chestnut_bark_oak_branch'" in script
+        assert "MI_fab_oak_bark'" in script
+
+
 class TestCli:
     """growpy-pve-assets: the runnable form of the step."""
 

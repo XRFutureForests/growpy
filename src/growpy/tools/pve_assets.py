@@ -47,6 +47,41 @@ def _dataset_species(lookup: Path) -> list[str]:
         ]
 
 
+def bark_pair_sources(species_cal, catalog: Path | None = None) -> tuple[str, str]:
+    """UE paths of the trunk and branch bark sources of a tile pair (XRFF-679).
+
+    An intake id resolves to its instance in the material catalog; an atlas
+    strip names its material directly. ("", "") when the species has no pair.
+
+    Raises:
+        KeyError: If an intake id is not in the catalog -- the branch bark
+            would silently be missing and the graph build fail later.
+    """
+    from growpy.config.pve_calibration import BarkAtlasStrip
+    from growpy.tools.material_intake import CATALOG
+
+    trunk, branch = species_cal.bark_trunk_source, species_cal.bark_branch_source
+    if trunk is None:
+        return "", ""
+    import tomllib
+
+    path = catalog or CATALOG
+    materials = (
+        tomllib.loads(path.read_text(encoding="utf-8")).get("materials", {})
+        if path.is_file()
+        else {}
+    )
+
+    def instance(material_id: str) -> str:
+        if material_id not in materials:
+            raise KeyError(f"intake id {material_id!r} not in {path}")
+        return str(materials[material_id]["instance"])
+
+    if isinstance(trunk, BarkAtlasStrip):
+        return trunk.material, instance(branch)
+    return instance(trunk), instance(branch)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -84,6 +119,13 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("config/tree_asset_lookup.csv"),
         help="species table to read when no species are named",
     )
+    parser.add_argument(
+        "--calibration",
+        type=Path,
+        default=None,
+        help="PVE calibration to read (default: config/pve_calibration.toml); "
+        "a sandbox copy keeps test bark sources off the catalog",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -96,21 +138,25 @@ def main(argv: list[str] | None = None) -> int:
     from growpy.config.paths import get_species_growth_habit
     from growpy.config.pve_calibration import load_pve_calibration
 
-    calibration = load_pve_calibration()
+    calibration = load_pve_calibration(args.calibration)
     specs, skipped = [], []
     for name in names:
         try:
             habit = get_species_growth_habit(name)
             species_cal = calibration.for_species(name, habit)
+            trunk, branch = bark_pair_sources(species_cal)
             specs.append(
                 build_species_asset_spec(
                     name,
                     content_root=args.content_root,
-                    bark_source_material=species_cal.bark_material_source or "",
+                    bark_source_material=(
+                        trunk or species_cal.bark_material_source or ""
+                    ),
                     bark_source_textures=species_cal.bark_source_textures,
+                    bark_branch_source_material=branch,
                 )
             )
-        except FileNotFoundError as err:
+        except (FileNotFoundError, KeyError) as err:
             skipped.append((name, str(err)))
 
     for name, reason in skipped:
