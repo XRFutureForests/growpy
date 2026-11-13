@@ -257,7 +257,12 @@ def hub_note(rows, pdf_name: str) -> str:
     lines = [
         "---",
         "title: Tree catalog overview",
+        'summary: "Generated table of what stands behind every tree asset: the skeleton'
+        " ladder per stand radius, the rendered twig prototypes and the bark source and"
+        ' licence per species, with the print version of the catalog."',
+        "status: current",
         f"updated: {dt.date.today():%Y-%m-%d}",
+        f"last_reviewed: {dt.date.today():%Y-%m-%d}",
         "generated: growpy-catalog-print --publish after each export; do not edit",
         "---",
         "",
@@ -265,8 +270,8 @@ def hub_note(rows, pdf_name: str) -> str:
         "",
         "Structure (skeleton ladder per stand radius), twigs (rendered prototypes) and",
         "bark material (source, licence) behind every tree asset. The print version",
-        "below shows every skeleton, twig and bark; the same PDF sits beside the",
-        "catalog in the UE project (`Content/Generated/Trees/`).",
+        "(linked below) shows every skeleton, twig and bark; the same PDF sits beside",
+        "the catalog in the UE project (`Content/Generated/Trees/`).",
         "",
         "| Species | Structure (stand radius: heights) | Twig renders "
         "| Bark source | Bark licence |",
@@ -277,7 +282,7 @@ def hub_note(rows, pdf_name: str) -> str:
     ]
     lines += [
         "",
-        f"![[{pdf_name}]]",
+        f"Print version: [{pdf_name}](../Pics/{pdf_name})",
         "",
         "Related: [[04-LOGIC-TIER/tree-catalog-architecture-2026-11]]",
         "",
