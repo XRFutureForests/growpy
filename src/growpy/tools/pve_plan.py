@@ -62,6 +62,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--calibration", type=Path, default=None)
     parser.add_argument(
+        "--content-root",
+        default=None,
+        help=(
+            "UE folder for graphs, exports and the species' assets (default: "
+            "[unreal] pve_content_root, the catalog); a sandbox root keeps a "
+            "test plan off the catalog meshes"
+        ),
+    )
+    parser.add_argument(
         "--max-instances",
         type=int,
         default=60_000,
@@ -89,12 +98,13 @@ def main(argv: list[str] | None = None) -> int:
     if not forest_root.is_absolute():
         forest_root = get_project_root() / forest_root
     output_dir = args.output_dir or forest_root / "unreal_scripts"
+    content_root = args.content_root or config.unreal_pve_content_root
 
     plan = plan_pve_graphs(
         output_dir,
         forest_root,
-        content_root=config.unreal_pve_content_root,
-        graph_folder=f"{config.unreal_pve_content_root}/Graphs",
+        content_root=content_root,
+        graph_folder=f"{content_root}/Graphs",
         triangle_cap=config.unreal_pve_triangle_cap,
         nanite_shape_preservation=args.shape,
         collision_generation=args.collision,
