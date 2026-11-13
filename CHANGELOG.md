@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   sandbox level (run it three times; Nanite and textures stream in between calls).
 - `growpy-pve-export` rebuilds and publishes the print after every export that wrote
   at least one graph. `--no-catalog-print` skips it; a failed print only logs a warning.
+- **`growpy-catalog-backup`**: the catalog lives in the UE project (no version control)
+  and its skeletons in gitignored output, both on one disk. The tool mirrors the UE
+  catalog folder, the `r??` skeleton ladders (no USD exports, no plan copies), the plan
+  folders and the bark intake to the lab share (`40_SideProjects\tree_catalog\`), copies
+  only what changed and writes a sha256 manifest (owner, 2026-11-13). About 13 GB.
 
 ### 2026-11-13 — Beech: no crown floor on the new skeleton
 
