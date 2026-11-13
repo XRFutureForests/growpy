@@ -666,9 +666,10 @@ class SpeciesCalibration:
         return _interp(self.relative_start_by_height, height_m)
 
     def crown_floor_for(self, tree_id: str) -> float:
-        """Crown floor (fraction of height) for a tree, 0.0 when its radius
-        label (``r07`` of ``r07_h20m``) is not listed."""
-        return float(self.crown_floor.get(tree_id.split("_", 1)[0], 0.0))
+        """Crown floor (fraction of height) for a tree: its own id (``r10_h35m``)
+        first, then its radius label (``r10``); 0.0 when neither is listed."""
+        radius = self.crown_floor.get(tree_id.split("_", 1)[0], 0.0)
+        return float(self.crown_floor.get(tree_id, radius))
 
     def builds_from_row(self, tree_id: str) -> bool:
         """Whether ``tree_id`` builds from its measured row rather than offline."""

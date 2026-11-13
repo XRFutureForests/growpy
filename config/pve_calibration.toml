@@ -470,8 +470,16 @@ fullness = 1.5
 # the density by 1/(1-0.375) so the expected count and leaf area are the
 # same. Flat palette only -- a graded ladder cannot take a mask.
 mask_fraction = 0.375
-# No crown floor since 2026-11-13 (owner F1/F3): the release 1 skeleton (E69 t3p20_ds25)
+# No crown floor on the release 1 skeleton (owner F1/F3, 2026-11-13): E69 t3p20_ds25
 # grows a clean stem in Grove, so nothing below the crown needs cutting or gating.
+# One exception (owner, 2026-11-13): the r10 ladder (E72 seed 4, the lowest crown of
+# 5 seeds) keeps a clump of regrown shoots at the trunk base of its two tallest trees
+# (37 / 83 branches below 5 m after thinning; main crown base 15.5 m at h35). A floor
+# at 0.25 of height (8.8 / 10.1 m) drops every side branch lying wholly below it and
+# gates the foliage there; the r07 ladder and every other r10 tree stay uncut.
+[pve_calibration.species.european_beech.crown_floor]
+r10_h35m = 0.25
+r10_h40m = 0.25
 
 
 # Fitted instances law, used only to seed a solve:

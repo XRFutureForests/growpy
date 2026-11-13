@@ -133,6 +133,22 @@ class TestCalibration:
         assert cal.crown_floor_for("r10_h05m") == 0.3
         assert cal.crown_floor_for("r00_h25m") == 0.0
 
+    def test_a_tree_id_floor_beats_its_radius_label(self):
+        cal = SpeciesCalibration(
+            species="x",
+            relative_start=0.4,
+            fraction=0.06,
+            prototype_leaf_area_m2=None,
+            palette_flat_mean_triangles=None,
+            history_relative_start=0.0,
+            trees={},
+            crown_floor={"r10": 0.3, "r10_h35m": 0.25, "r07_h40m": 0.2},
+        )
+        assert cal.crown_floor_for("r10_h35m") == 0.25
+        assert cal.crown_floor_for("r10_h30m") == 0.3
+        assert cal.crown_floor_for("r07_h40m") == 0.2
+        assert cal.crown_floor_for("r07_h35m") == 0.0
+
     def test_a_floor_of_one_is_refused(self):
         with pytest.raises(ValueError, match="crown_floor"):
             SpeciesCalibration(
