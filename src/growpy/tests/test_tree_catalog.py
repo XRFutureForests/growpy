@@ -86,6 +86,23 @@ def test_check_reports_gaps_and_out_of_target_traits(tmp_path):
     assert tree_catalog.main(["check", "--manifest", str(out)]) == 1
 
 
+def test_a_planned_tree_missing_from_the_bones_dump_is_not_a_catalog_asset(tmp_path):
+    growth = tmp_path / "g.json"
+    growth.write_text("{}")
+    kept = _plan(tmp_path / "a", "r07_h20m", growth)
+    dropped = _plan(
+        tmp_path / "b", "r00_h20m", growth
+    )  # e.g. an r00 tree since dropped
+    bones = tmp_path / "bones.json"
+    bones.write_text(json.dumps({"SK_NorwaySpruce_r07_h20m": 2307}))
+    out = tmp_path / "tree_catalog.toml"
+
+    tree_catalog.build([kept, dropped], bones, [], out)
+
+    trees = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]["norway_spruce"]
+    assert set(trees) == {"r07_h20m"}
+
+
 def test_a_tree_without_scores_is_a_finding_not_a_gap(tmp_path):
     growth = tmp_path / "g.json"
     growth.write_text("{}")
