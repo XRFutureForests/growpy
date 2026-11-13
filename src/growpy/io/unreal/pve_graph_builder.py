@@ -637,6 +637,9 @@ class TreeChainSpec:
     # TrunkGenerationMaterialSetup each, X Range (0, k)); generations past the
     # end take the last entry. Empty keeps PVE's native single wrap.
     bark_wraps: tuple[int, ...] = ()
+    # Bark material per setup, aligned with bark_wraps (tile pair, XRFF-679).
+    # Empty: every setup takes the graph's bark_material.
+    bark_materials: tuple[str, ...] = ()
     # PVE Bone Reduction strength between MeshBuilder and distributor; 0 wires
     # no node. It thins the bones of the finished mesh only (geometry and
     # foliage placement unchanged), see SpeciesCalibration.bone_reduction_strength.
@@ -652,6 +655,11 @@ class TreeChainSpec:
             raise ValueError(
                 f"chain {self.mesh_name!r} bark_wraps must be whole numbers >= 1 "
                 f"(a fractional wrap leaves a seam), got {self.bark_wraps}"
+            )
+        if self.bark_materials and len(self.bark_materials) != len(self.bark_wraps):
+            raise ValueError(
+                f"chain {self.mesh_name!r} has {len(self.bark_materials)} bark "
+                f"materials for {len(self.bark_wraps)} wrap setups"
             )
         if not self.wind_settings:
             raise ValueError(
@@ -866,6 +874,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "static_mesh_name": static_twin_name(c.mesh_name),
                 "wind_settings": c.wind_settings,
                 "bark_wraps": list(c.bark_wraps),
+                "bark_materials": list(c.bark_materials),
                 "bone_reduction_strength": c.bone_reduction_strength,
                 "carve": c.carve,
                 "palette": _palette_payload(c.palette),
@@ -1219,8 +1228,17 @@ def build(spec):
         # per generation (bark_u_ranges). A Grove tile wraps k times: (0, k).
         ranges = spec["bark_u_ranges"] or [
             [0.0, float(w)] for w in chain["bark_wraps"]] or [None]
+        # A tile pair (XRFF-679) names one material per setup, trunk first;
+        # otherwise every setup takes the graph's bark.
+        setup_materials = []
+        for path in chain["bark_materials"]:
+            material = unreal.load_asset(path)
+            if material is None:
+                raise RuntimeError(
+                    "%s: bark material %s not found" % (chain["mesh_name"], path))
+            setup_materials.append(material)
         setups = []
-        for u_range in ranges:
+        for index, u_range in enumerate(ranges):
             setup = unreal.TrunkGenerationMaterialSetup()
             setp(
                 setup,
@@ -1230,7 +1248,8 @@ def build(spec):
                 ),
                 False,
             )
-            setup.set_editor_property("material", bark)
+            setup.set_editor_property(
+                "material", setup_materials[index] if setup_materials else bark)
             if spec["bark_y_scale"] is not None:
                 setp(setup, "y_scale", float(spec["bark_y_scale"]))
             if u_range is not None:
@@ -1257,6 +1276,15 @@ def build(spec):
                 "%s: bark X Range read back %s, wanted %s"
                 % (chain["mesh_name"], got, wanted or "native")
             )
+        if setup_materials:
+            got_materials = [
+                s.get_editor_property("material").get_path_name() for s in written]
+            wanted_materials = [m.get_path_name() for m in setup_materials]
+            if got_materials != wanted_materials:
+                raise RuntimeError(
+                    "%s: bark materials read back %s, wanted %s"
+                    % (chain["mesh_name"], got_materials, wanted_materials)
+                )
 
         # Bone Reduction (Epic's place for it, MeshBuilder -> BoneReduction ->
         # distributor): rebuilds the mesh's bone data only, so the distributor

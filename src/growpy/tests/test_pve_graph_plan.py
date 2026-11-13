@@ -862,6 +862,36 @@ class TestBarkWraps:
         assert bark_wraps_by_generation(stub, 1) == (1,)
 
 
+class TestBarkTilePair:
+    """XRFF-679: a trunk tile and a branch tile, wrapped at their real size."""
+
+    def test_each_generation_wraps_its_tile_at_its_base_circumference(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+
+        # trunk 2 pi 0.20 / 0.5 = 2.51 -> 3;
+        # limbs 2 pi 0.12 / 0.3 = 2.5 -> 3; twigs 2 pi 0.005 / 0.3 -> 1, end.
+        wraps, mats = bark_wraps_physical(
+            _skeleton(tmp_path, 0.12), ("T", "B"), (0.5, 0.3)
+        )
+        assert wraps == (3, 3, 1)
+        assert mats == ("T", "B", "B")
+
+    def test_thin_limbs_end_the_list_on_the_branch_tile(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+
+        assert bark_wraps_physical(
+            _skeleton(tmp_path, 0.02), ("T", "B"), (0.5, 0.3)
+        ) == ((3, 1), ("T", "B"))
+
+    def test_an_unreadable_skeleton_is_an_error_not_a_fallback(self, tmp_path):
+        from growpy.io.unreal.pve_graph_plan import bark_wraps_physical
+
+        stub = tmp_path / "stub.json"
+        stub.write_text("{}")
+        with pytest.raises((KeyError, ValueError)):
+            bark_wraps_physical(stub, ("T", "B"), (0.5, 0.3))
+
+
 class TestStepBaseScale:
     """XRFF-681: large twigs put small trees on the one-per-branch floor."""
 

@@ -149,6 +149,32 @@ class TestCalibration:
         assert cal.crown_floor_for("r07_h40m") == 0.2
         assert cal.crown_floor_for("r07_h35m") == 0.0
 
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"bark_generation_materials": ("T", "B"), "bark_tile_widths_m": (0.5,)},
+            {"bark_generation_materials": ("T",), "bark_tile_widths_m": (0.0,)},
+            {
+                "bark_generation_materials": ("T",),
+                "bark_tile_widths_m": (0.5,),
+                "bark_u_ranges": ((0.0, 0.5),),
+            },
+        ],
+    )
+    def test_a_bark_tile_pair_is_validated(self, kwargs):
+        # XRFF-679: one width per material, real widths, never on an atlas.
+        with pytest.raises(ValueError, match="species 'x'"):
+            SpeciesCalibration(
+                species="x",
+                relative_start=0.4,
+                fraction=0.06,
+                prototype_leaf_area_m2=None,
+                palette_flat_mean_triangles=None,
+                history_relative_start=0.0,
+                trees={},
+                **kwargs,
+            )
+
     def test_a_floor_of_one_is_refused(self):
         with pytest.raises(ValueError, match="crown_floor"):
             SpeciesCalibration(

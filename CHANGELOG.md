@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-13 — Bark tile pair: one material per branch generation (XRFF-679)
+
+#### Added
+
+- `bark_source_per_species.<species>` takes `generation_materials` (trunk-master
+  instances, trunk first; later generations take the last) and `tile_widths_m` (the
+  physical width of each tile). The plan then gives each branch generation its own
+  material and wraps it `round(2π r / width)` times around its base circumference
+  (`bark_wraps_physical`). That keeps the bark at its real scale instead of Grove's
+  `texture_repeat` ratio. The graph builder writes and reads back one material per
+  generation setup. Off unless a species names generation materials; it can't be
+  combined with atlas `u_ranges`.
+
 ### 2026-11-13 — Catalog print, kept live by the export
 
 #### Added

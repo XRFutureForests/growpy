@@ -364,6 +364,37 @@ def bark_wraps_by_generation(
     the last setup. A skeleton that cannot be read gets ``(texture_repeat, 1)``,
     what every tree of the 2026-10 catalog measured.
     """
+    fallback = (texture_repeat, 1) if texture_repeat > 1 else (1,)
+    try:
+        radii = _generation_base_radii(growth_json)
+    except (OSError, KeyError, ValueError) as exc:
+        logger.warning(
+            "%s: no skeleton for bark wraps (%s), using %s", growth_json, exc, fallback
+        )
+        return fallback
+    if radii is None:
+        return fallback
+    trunk_gen, trunk_radius, base_radii, last = radii
+    wraps = [texture_repeat] * max(1, trunk_gen)
+    for g in range(trunk_gen + 1, last + 1):
+        if wraps[-1] == 1:
+            break
+        if g in base_radii:
+            ratio = base_radii[g] / trunk_radius
+            k = max(1, round(texture_repeat * ratio))
+        else:
+            k = wraps[-1]
+        # A child is never wrapped more often than its parent generation.
+        wraps.append(min(k, wraps[-1]))
+    return tuple(wraps)
+
+
+def _generation_base_radii(
+    growth_json: Path | str,
+) -> tuple[int, float, dict[int, float], int] | None:
+    """(trunk generation, trunk base radius, median base radius per later
+    generation, last generation) in PVE's generation numbering, radii in cm;
+    None for a skeleton without radii or a trunk."""
     import statistics
 
     from growpy.io.unreal.pve_distributor_model import (
@@ -372,16 +403,9 @@ def bark_wraps_by_generation(
         _walk_order,
     )
 
-    fallback = (texture_repeat, 1) if texture_repeat > 1 else (1,)
-    try:
-        _, branch_points, parent, number, radii, gen_of_point = _load(growth_json)
-    except (OSError, KeyError, ValueError) as exc:
-        logger.warning(
-            "%s: no skeleton for bark wraps (%s), using %s", growth_json, exc, fallback
-        )
-        return fallback
+    _, branch_points, parent, number, radii, gen_of_point = _load(growth_json)
     if not radii or not branch_points or not branch_points[0]:
-        return fallback
+        return None
     order, roots = _walk_order(parent, number)
     generations = _branch_generations(
         branch_points, parent, number, order, gen_of_point
@@ -389,7 +413,7 @@ def bark_wraps_by_generation(
     trunk = roots[0] if roots else 0
     trunk_radius = radii[branch_points[trunk][0]]
     if trunk_radius <= 0.0:
-        return fallback
+        return None
     # A side branch's first point is its attach point on the parent and carries
     # the PARENT's radius (spruce h25: 10.8 cm there, 1.4 cm one node in), so
     # the branch's own first node is its second point.
@@ -397,18 +421,50 @@ def bark_wraps_by_generation(
     for b, pts in enumerate(branch_points):
         if len(pts) > 1 and b != trunk:
             base_radii.setdefault(generations[b], []).append(radii[pts[1]])
-    wraps = [texture_repeat] * max(1, generations[trunk])
-    for g in range(generations[trunk] + 1, max(generations, default=1) + 1):
-        if wraps[-1] == 1:
+    return (
+        generations[trunk],
+        trunk_radius,
+        {g: statistics.median(r) for g, r in base_radii.items()},
+        max(generations, default=1),
+    )
+
+
+def bark_wraps_physical(
+    growth_json: Path | str,
+    materials: tuple[str, ...],
+    tile_widths_m: tuple[float, ...],
+) -> tuple[tuple[int, ...], tuple[str, ...]]:
+    """Wraps and bark material per generation setup for a tile pair (XRFF-679).
+
+    The trunk generation takes ``materials[0]``, the first branch generation
+    ``materials[1]`` and so on; generations past the list take its last entry,
+    as PVE gives them the last setup. Each wraps ``max(1, round(2 pi r / w))``
+    times: ``r`` its base radius (the trunk's, the median of a later
+    generation's) and ``w`` the physical width of its tile, so the bark keeps
+    its real scale instead of Grove's ``texture_repeat`` ratio. The list ends
+    after the first single wrap on the last material. Raises on a skeleton
+    without radii: a tile pair has no sensible fallback.
+    """
+    radii = _generation_base_radii(growth_json)
+    if radii is None:
+        raise ValueError(f"{growth_json}: no skeleton radii for the bark tile pair")
+    trunk_gen, trunk_radius, base_radii, last = radii
+    n_trunk = max(1, trunk_gen)
+
+    def wraps_for(radius_cm: float, slot: int) -> int:
+        width = tile_widths_m[min(slot, len(tile_widths_m) - 1)]
+        return max(1, round(2.0 * math.pi * radius_cm / 100.0 / width))
+
+    wraps = [wraps_for(trunk_radius, 0)] * n_trunk
+    mats = [materials[0]] * n_trunk
+    radius = trunk_radius
+    for slot, g in enumerate(range(trunk_gen + 1, last + 1), 1):
+        radius = base_radii.get(g, radius)
+        wraps.append(wraps_for(radius, slot))
+        mats.append(materials[min(slot, len(materials) - 1)])
+        if wraps[-1] == 1 and slot >= len(materials) - 1:
             break
-        if g in base_radii:
-            ratio = statistics.median(base_radii[g]) / trunk_radius
-            k = max(1, round(texture_repeat * ratio))
-        else:
-            k = wraps[-1]
-        # A child is never wrapped more often than its parent generation.
-        wraps.append(min(k, wraps[-1]))
-    return tuple(wraps)
+    return tuple(wraps), tuple(mats)
 
 
 def prototype_leaf_areas(assets: SpeciesAssetSpec) -> tuple[float, ...]:
@@ -1186,11 +1242,23 @@ def plan_pve_graphs(
                 skipped.append(f"{species} {entry.tree_id}: {err}")
                 continue
             # The chain's own skeleton: a crown-floored tree reads a copy.
-            wraps = bark_wraps_by_generation(
-                planned.chain.growth_json, species_cal.bark_texture_repeat
-            )
+            bark_materials: tuple[str, ...] = ()
+            if species_cal.bark_generation_materials:
+                wraps, bark_materials = bark_wraps_physical(
+                    planned.chain.growth_json,
+                    species_cal.bark_generation_materials,
+                    species_cal.bark_tile_widths_m,
+                )
+                planned.detail["bark_materials"] = list(bark_materials)
+            else:
+                wraps = bark_wraps_by_generation(
+                    planned.chain.growth_json, species_cal.bark_texture_repeat
+                )
             planned = dataclasses.replace(
-                planned, chain=dataclasses.replace(planned.chain, bark_wraps=wraps)
+                planned,
+                chain=dataclasses.replace(
+                    planned.chain, bark_wraps=wraps, bark_materials=bark_materials
+                ),
             )
             planned.detail["bark_wraps"] = list(wraps)
             chains.append(planned.chain)

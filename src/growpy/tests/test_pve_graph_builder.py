@@ -252,6 +252,33 @@ class TestTreeChainSpec:
         assert "UpperBound=(Type=Exclusive,Value=%f)" in build
         assert "bark X Range read back" in build
 
+    def test_a_tile_pair_names_one_material_per_setup(self, tmp_path):
+        # XRFF-679: a trunk tile for generation 0, a branch tile for the rest.
+        chain = TreeChainSpec(
+            growth_json=Path("t.json"),
+            mesh_name="SK_Pair",
+            distributor=DistributorSpec(branch_density=3),
+            bark_wraps=(3, 2, 1),
+            bark_materials=("/Game/M/MI_trunk",) + ("/Game/M/MI_branch",) * 2,
+        )
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert "'bark_materials': ['/Game/M/MI_trunk', '/Game/M/MI_branch'" in body
+        build = body.split("def build(spec):", 1)[1]
+        assert "setup_materials[index] if setup_materials else bark" in build
+        assert "bark materials read back" in build
+
+    def test_bark_materials_must_match_the_wraps(self):
+        with pytest.raises(ValueError, match="bark materials"):
+            TreeChainSpec(
+                growth_json=Path("t.json"),
+                mesh_name="SK_X",
+                distributor=DistributorSpec(branch_density=3),
+                bark_wraps=(3, 1),
+                bark_materials=("/Game/M/MI_trunk",),
+            )
+
     def test_no_bark_wraps_keeps_the_native_single_setup(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])
         assert "'bark_wraps': []" in path.read_text(encoding="utf-8")

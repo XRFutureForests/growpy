@@ -571,8 +571,32 @@ class SpeciesCalibration:
     # True ("tiled = true"): the source's maps are a seamless tile (Baltic pine),
     # not an atlas, so they wrap like a Grove bark and need no u_ranges.
     bark_source_tiled: bool = False
+    # Tile pair (XRFF-679): one bark material per branch generation, trunk
+    # first (later generations take the last), each an instance on the trunk
+    # master, with the physical width of its tile in metres; the plan then
+    # wraps each generation round(2 pi r / width) times. Empty: one bark for
+    # every generation, wrapped by the Grove rule or the atlas u_ranges.
+    bark_generation_materials: tuple[str, ...] = ()
+    bark_tile_widths_m: tuple[float, ...] = ()
 
     def __post_init__(self) -> None:
+        if self.bark_generation_materials or self.bark_tile_widths_m:
+            if len(self.bark_generation_materials) != len(self.bark_tile_widths_m):
+                raise ValueError(
+                    f"species {self.species!r} names "
+                    f"{len(self.bark_generation_materials)} generation materials "
+                    f"but {len(self.bark_tile_widths_m)} tile widths"
+                )
+            if any(w <= 0.0 for w in self.bark_tile_widths_m):
+                raise ValueError(
+                    f"species {self.species!r} tile widths must be > 0 m, "
+                    f"got {self.bark_tile_widths_m}"
+                )
+            if self.bark_u_ranges:
+                raise ValueError(
+                    f"species {self.species!r} sets both atlas u_ranges and "
+                    "generation tiles; a setup can only take one"
+                )
         if (
             self.bark_material_source is not None
             and self.bark_source_textures
@@ -1050,6 +1074,10 @@ def _with_bark_source(
         ),
         bark_source_textures=textures == "source",
         bark_source_tiled=bool(entry.get("tiled", False)),
+        bark_generation_materials=tuple(
+            str(m) for m in entry.get("generation_materials", ())
+        ),
+        bark_tile_widths_m=tuple(float(w) for w in entry.get("tile_widths_m", ())),
     )
 
 
