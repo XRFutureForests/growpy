@@ -344,7 +344,8 @@ relative_start = 0.0
 relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
-fullness = 4.0
+# Release 1.1: half-size twigs at a lower leaf amount (round 3 photos, side gap {2.0: 0.242, 2.5: 0.221})
+fullness = 2.0
 
 [pve_calibration.species.norway_spruce.pose]
 orient = "RANDOM_ROLL"
@@ -383,7 +384,8 @@ relative_start = 0.0
 relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
-fullness = 4.0
+# Release 1.1: half-size twigs at a lower leaf amount (round 3 photos, side gap {2.0: 0.242, 2.5: 0.221})
+fullness = 2.0
 
 [pve_calibration.species.douglas_fir.pose]
 orient = "RANDOM_ROLL"
