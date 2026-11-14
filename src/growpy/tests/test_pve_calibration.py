@@ -916,6 +916,22 @@ class TestPerInstanceVariance:
             45.0,
         )
 
+    def test_droop_aims_random_roll_twigs_toward_world_down(self, shipped):
+        from dataclasses import replace
+
+        from growpy.io.unreal.pve_graph_plan import _pose_distributor
+
+        assert _pose({"droop": 0.93}).droop == 0.93
+        with pytest.raises(ValueError, match="droop"):
+            TwigPose(droop=1.5)
+        cal = shipped.for_species("norway_spruce")
+        spec = _pose_distributor(replace(cal, pose=replace(cal.pose, droop=0.93)), 81)
+        assert spec.face is None
+        assert (spec.aim.kind, spec.aim.vector2, spec.aim.axis, spec.aim.strength) == (
+            "aim", "AXIS_AIM", (0.0, 0.0, -1.0), 0.93,
+        )
+        assert [j.mode for j in spec.jitter] == ["ROLL"]  # the roll still follows
+
     def test_a_pose_base_scale_reaches_the_distributor_and_the_area(self, shipped):
         from dataclasses import replace
 

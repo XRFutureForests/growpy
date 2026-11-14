@@ -279,8 +279,15 @@ class TwigPose:
     # density is below this, the plan re-solves at 0.85x the base scale, down to 1.0.
     # 0 keeps the pose's base scale whatever the density.
     min_density: int = 0
+    # Droop (2026-11-14, owner: "double effort" on a natural look): strength of an
+    # aim entry that turns each twig toward world down, as MegaPlants' Norway spruce
+    # hangs its branchlets (AxisAim, axis (0, 0, -1), strength 0.93). Rotation only,
+    # applied before the jitter. 0 adds no entry.
+    droop: float = 0.0
 
     def __post_init__(self) -> None:
+        if not 0.0 <= self.droop <= 1.0:
+            raise ValueError(f"droop must be in [0, 1], got {self.droop}")
         if self.base_scale <= 0.0:
             raise ValueError(f"base_scale must be positive, got {self.base_scale}")
         if self.min_density < 0:
@@ -942,6 +949,7 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         scale_ramp=_pair(data.get("scale_ramp"), (1.0, 1.0)),
         base_scale=float(data.get("base_scale", 1.0)),
         min_density=int(data.get("min_density", 0)),
+        droop=float(data.get("droop", 0.0)),
     )
 
 

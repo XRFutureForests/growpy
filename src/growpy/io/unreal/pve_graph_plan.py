@@ -639,7 +639,14 @@ def _pose_distributor(
         # Tip Up = Apical first, then the aim entry flattens it -- except a
         # leader, which the WorldUpDot blend leaves pointing up.
         auto_align_end=True,
-        aim=None
+        aim=(
+            FoliageVectorSpec(
+                kind="aim", vector2="AXIS_AIM", axis=(0.0, 0.0, -1.0),
+                strength=calibration.pose.droop, affect_tip=True,
+            )
+            if calibration.pose.droop > 0.0
+            else None
+        )
         if roll
         else FoliageVectorSpec(
             kind="aim",
