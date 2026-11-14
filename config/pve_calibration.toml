@@ -105,13 +105,16 @@ bone_reduction_strength_per_species = { european_oak = 0.7, silver_fir = 1.0, no
 # project instance MI_XRFF_ScotsPine_Bark (Baltic textures and "Lower" values of
 # MI_Baltic_Pine_01_Bark on MA_Foliage_Trees; the original blends two barks on
 # TwoBarkBlend).
-bark_source_per_species.european_oak = { material = "/Game/Megaplant_Library/Tree_English_Oak/Materials/MI_English_Oak_Bark_01", y_scale = 1.0, u_ranges = [[0.003785, 0.503907], [0.511722, 0.761783], [0.769597, 0.894628]] }
+# Release 2 (owner, 2026-11-14: tiling bark): oak, maple and spruce take the trunk + branch
+# tile pairs judged in TilePairCheck (XRFF-679); spruce keeps its trunk atlas strip (no
+# spruce trunk tile). Release 1 was exported with the MegaPlants atlases above.
+bark_source_per_species.european_oak = { trunk = "fab_oak_bark", branch = "fab_chestnut_bark_oak_branch" }
 # Template only (textures = "grove"): the Grove bark keeps its textures and
 # tiling and takes the MegaPlants instance's normal/AO/roughness/specular values
 # and switches, without its colour tint. Hornbeam: the closest smooth grey bark.
 bark_source_per_species.european_beech = { material = "/Game/Megaplant_Library/Tree_Hornbeam/Materials/MI_Tree_Hornbeam_01_Bark", textures = "grove" }
-bark_source_per_species.sycamore_maple ={ material = "/Game/Megaplant_Library/Tree_Norway_Maple/Materials/MI_Norway_Maple_Bark_01", y_scale = 1.0, u_ranges = [[0.003785, 0.543956], [0.551770, 0.801831], [0.809646, 0.932234]] }
-bark_source_per_species.norway_spruce = { material = "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/MI_Norway_Spruce_Bark_01", y_scale = 0.8, u_ranges = [[0.003785, 0.710256], [0.718071, 0.843101], [0.850916, 0.913431], [0.921245, 0.987668]] }
+bark_source_per_species.sycamore_maple = { trunk = "grove_maple_a60", branch = "fab_beech_bark_maple_branch" }
+bark_source_per_species.norway_spruce = { trunk = { material = "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/MI_Norway_Spruce_Bark_01", u_range = [0.003785, 0.710256], y_scale = 0.8 }, branch = "fab_nordic_spruce_bark" }
 # Douglas fir: its own Megascans scan through the material intake (XRFF-679,
 # data/input/materials/fab_douglas_fir_bark), a seamless 1 x 2 m tile.
 bark_source_per_species.douglas_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark", tiled = true }

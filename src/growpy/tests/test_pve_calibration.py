@@ -980,7 +980,10 @@ class TestBarkSource:
         assert got.bark_y_scale == beech.bark_y_scale
 
     def test_the_conifers_leave_the_grove_moss_bark(self, shipped):
-        for sp in ("norway_spruce", "douglas_fir", "silver_fir", "scots_pine"):
+        for sp in ("douglas_fir", "silver_fir", "scots_pine"):
             assert shipped.for_species(sp, "conifer").bark_material_source, sp
         assert shipped.for_species("scots_pine", "conifer").bark_source_tiled
-        assert len(shipped.for_species("norway_spruce", "conifer").bark_u_ranges) == 4
+        # release 2: spruce is a tile pair, its trunk the first MegaPlants atlas strip
+        spruce = shipped.for_species("norway_spruce", "conifer")
+        assert spruce.bark_trunk_source.u_range == (0.003785, 0.710256)
+        assert spruce.bark_branch_source == "fab_nordic_spruce_bark"
