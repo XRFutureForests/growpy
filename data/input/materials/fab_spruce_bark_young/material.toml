@@ -1,0 +1,15 @@
+# Intake: Fab/Megascans 'Spruce Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_spruce_bark_young"
+species = "norway_spruce"
+bark_stage = "young"
+dbh_cm = [0.0, 20.0]
+tile_size_m = [1.0, 1.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:ugineitn"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-17 03:39:42", note = "Quixel Megascans 'Spruce Bark', scan area 1x1 m, relief 0.009 m" }
+maps_from = { normal = "Spruce_Bark_ugineitn_8K_Normal.jpg", albedo = "Spruce_Bark_ugineitn_8K_BaseColor.jpg", ao = "Spruce_Bark_ugineitn_8K_AO.jpg", roughness = "Spruce_Bark_ugineitn_8K_Roughness.jpg", height = "Spruce_Bark_ugineitn_8K_Displacement.jpg" }
+part = "trunk"

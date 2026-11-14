@@ -1,0 +1,15 @@
+# Intake: Fab/Megascans 'Beech Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_beech_bark_smooth"
+species = "european_beech"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:wmnkdi3lw"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-16 18:57:58", note = "Quixel Megascans 'Beech Bark', scan area 1x2 m, relief 0.007 m" }
+maps_from = { normal = "Beech_Bark_wmnkdi3lw_8K_Normal.jpg", albedo = "Beech_Bark_wmnkdi3lw_8K_BaseColor.jpg", roughness = "Beech_Bark_wmnkdi3lw_8K_Roughness.jpg", ao = "Beech_Bark_wmnkdi3lw_8K_AO.jpg", height = "Beech_Bark_wmnkdi3lw_8K_Displacement.jpg" }
+part = "trunk"

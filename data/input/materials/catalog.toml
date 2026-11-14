@@ -4,6 +4,19 @@
 # entries stay inside the UE project and are left out of any
 # published catalog.
 
+[materials.fab_ash_bark]
+species = "common_ash"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [2.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:vmgkdjxg"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_ash_bark/MI_fab_ash_bark"
+
 [materials.fab_beech_bark_maple_branch]
 species = "sycamore_maple"
 bark_stage = "mature"
@@ -29,6 +42,19 @@ licence = "Fab Standard License"
 redistributable = false
 part = "trunk"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir"
+
+[materials.fab_beech_bark_smooth]
+species = "european_beech"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:wmnkdi3lw"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_smooth/MI_fab_beech_bark_smooth"
 
 [materials.fab_chestnut_bark_oak_branch]
 species = "european_oak"
@@ -69,6 +95,19 @@ redistributable = false
 part = "branch"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_nordic_spruce_bark/MI_fab_nordic_spruce_bark"
 
+[materials.fab_nordic_spruce_detail_bark]
+species = "norway_spruce"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [0.5, 0.5]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:xkmicazn"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_nordic_spruce_detail_bark/MI_fab_nordic_spruce_detail_bark"
+
 [materials.fab_oak_bark]
 species = "european_oak"
 bark_stage = "mature"
@@ -81,6 +120,45 @@ licence = "Fab Standard License"
 redistributable = false
 part = "trunk"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_oak_bark/MI_fab_oak_bark"
+
+[materials.fab_pine_bark_orange_branch]
+species = "scots_pine"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [2.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:sf4nfh0b"
+licence = "Fab Standard License"
+redistributable = false
+part = "branch"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_pine_bark_orange_branch/MI_fab_pine_bark_orange_branch"
+
+[materials.fab_silver_birch_bark]
+species = "silver_birch"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:tdnifdqt"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_silver_birch_bark/MI_fab_silver_birch_bark"
+
+[materials.fab_spruce_bark_young]
+species = "norway_spruce"
+bark_stage = "young"
+dbh_cm = [0.0, 20.0]
+tile_size_m = [1.0, 1.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:ugineitn"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_spruce_bark_young/MI_fab_spruce_bark_young"
 
 [materials.grove_fir_70]
 species = "silver_fir"

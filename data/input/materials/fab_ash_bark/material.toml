@@ -1,0 +1,15 @@
+# Intake: Fab/Megascans 'Ash Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_ash_bark"
+species = "common_ash"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [2.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:vmgkdjxg"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-16 21:00:15", note = "Quixel Megascans 'Ash Bark', scan area 2x2 m, relief 0.06 m" }
+maps_from = { normal = "Ash_Bark_vmgkdjxg_8K_Normal.jpg", albedo = "Ash_Bark_vmgkdjxg_8K_BaseColor.jpg", roughness = "Ash_Bark_vmgkdjxg_8K_Roughness.jpg", ao = "Ash_Bark_vmgkdjxg_8K_AO.jpg", height = "Ash_Bark_vmgkdjxg_8K_Displacement.jpg" }
+part = "trunk"
