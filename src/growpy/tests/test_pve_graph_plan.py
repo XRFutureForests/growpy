@@ -99,13 +99,16 @@ def forest_root(tmp_path) -> Path:
     """A synthetic export laid out the way the pipeline lays one out."""
     calibration = load_pve_calibration()
     root = tmp_path / "forest"
+    # a real (tiny) skeleton: a tile-pair bark (beech since release 1.1) reads the radii
+    (tmp_path / "skeleton").mkdir()
+    skeleton = _skeleton(tmp_path / "skeleton", 0.08).read_text(encoding="utf-8")
     for species, title in SPECIES_TITLES.items():
         for tree_id in sorted(calibration.for_species(species).trees):
             radius, height = tree_id.split("_")
             directory = root / species / radius
             directory.mkdir(parents=True, exist_ok=True)
             name = f"{title}_{radius}_{height}_d20cm_d100_growth_data.json"
-            (directory / name).write_text("{}")
+            (directory / name).write_text(skeleton, encoding="utf-8")
     return root
 
 
@@ -558,9 +561,11 @@ class TestPlanEndToEnd:
     def test_every_chain_carries_grove_bark_wraps(self, tmp_path, forest_root):
         # 2026-10-07: the fixture's stub skeletons cannot be read, so each
         # chain takes the fallback every real catalog tree measured.
+        # A tile pair (beech since release 1.1) carries bark setups instead of wraps.
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
-        wraps = {c.bark_wraps for g in plan.graphs for c in g.chains}
+        wraps = {c.bark_wraps for g in plan.graphs for c in g.chains if not c.bark_setups}
         assert wraps == {(3, 1)}
+        assert all(c.bark_wraps == () for g in plan.graphs for c in g.chains if c.bark_setups)
 
     def test_the_measured_twig_pose_travels_with_the_densities(
         self, tmp_path, forest_root

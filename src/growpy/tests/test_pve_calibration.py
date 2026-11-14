@@ -907,12 +907,14 @@ class TestPerInstanceVariance:
         # a conifer on the defaults keeps its aimed pose ...
         shipped_spec = _pose_distributor(cal, 80)
         assert shipped_spec.aim is not None and shipped_spec.face is not None
-        # ... and the shipped spruce block is the owner-approved profile (E60)
+        # ... and the shipped spruce block is the owner-approved profile (E60), with the
+        # release 1.1 dressing: half-size twigs drooping toward the ground (round 2, s15d5)
         spruce = _pose_distributor(shipped.for_species("norway_spruce"), 81)
-        assert spruce.aim is None and spruce.face is None
+        assert spruce.face is None and spruce.aim.axis == (0.0, 0.0, -1.0)
+        assert spruce.aim.strength == 0.5
         assert (spruce.scale_ramp, spruce.base_scale, spruce.axil_angle) == (
             (1.89, 0.56),
-            3.0,
+            1.5,
             45.0,
         )
 
@@ -998,10 +1000,14 @@ class TestBarkSource:
         assert got.bark_y_scale == beech.bark_y_scale
 
     def test_the_conifers_leave_the_grove_moss_bark(self, shipped):
-        for sp in ("douglas_fir", "silver_fir", "scots_pine"):
+        for sp in ("douglas_fir", "silver_fir"):
             assert shipped.for_species(sp, "conifer").bark_material_source, sp
-        assert shipped.for_species("scots_pine", "conifer").bark_source_tiled
-        # release 2: spruce is a tile pair, its trunk the first MegaPlants atlas strip
+        # release 1.1: spruce and pine are tile pairs from the material intake
         spruce = shipped.for_species("norway_spruce", "conifer")
-        assert spruce.bark_trunk_source.u_range == (0.003785, 0.710256)
+        assert spruce.bark_trunk_source == "fab_nordic_spruce_detail_bark"
         assert spruce.bark_branch_source == "fab_nordic_spruce_bark"
+        pine = shipped.for_species("scots_pine", "conifer")
+        assert (pine.bark_trunk_source, pine.bark_branch_source) == (
+            "fab_pine_bark_plated",
+            "fab_pine_bark_orange_branch",
+        )

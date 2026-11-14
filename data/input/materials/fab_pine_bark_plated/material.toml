@@ -1,0 +1,15 @@
+# Intake: Fab/Megascans 'Pine Bark' (growpy-material-intake fab).
+# Maps rebuilt from the Fab launcher cache; only this file is tracked.
+id = "fab_pine_bark_plated"
+species = "scots_pine"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:tfdmafdu"
+licence = "Fab Standard License"
+redistributable = false
+capture = { place = "", date = "2024-04-17 10:29:21", note = "Quixel Megascans 'Pine Bark', scan area 1x2 m, relief 0.124 m" }
+maps_from = { normal = "Pine_Bark_tfdmafdu_8K_Normal.jpg", albedo = "Pine_Bark_tfdmafdu_8K_BaseColor.jpg", ao = "Pine_Bark_tfdmafdu_8K_AO.jpg", roughness = "Pine_Bark_tfdmafdu_8K_Roughness.jpg", height = "Pine_Bark_tfdmafdu_8K_Displacement.jpg" }
+part = "trunk"

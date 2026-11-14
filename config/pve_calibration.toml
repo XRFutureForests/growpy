@@ -112,14 +112,20 @@ bark_source_per_species.european_oak = { trunk = "fab_oak_bark", branch = "fab_c
 # Template only (textures = "grove"): the Grove bark keeps its textures and
 # tiling and takes the MegaPlants instance's normal/AO/roughness/specular values
 # and switches, without its colour tint. Hornbeam: the closest smooth grey bark.
-bark_source_per_species.european_beech = { material = "/Game/Megaplant_Library/Tree_Hornbeam/Materials/MI_Tree_Hornbeam_01_Bark", textures = "grove" }
+# Release 1.1 (owner Fab downloads 2026-11-14): beech wears its own smooth grey Megascans scan,
+# trunk and branches, in place of the MegaPlants hornbeam template.
+bark_source_per_species.european_beech = { trunk = "fab_beech_bark_smooth", branch = "fab_beech_bark_smooth" }
 bark_source_per_species.sycamore_maple = { trunk = "grove_maple_a60", branch = "fab_beech_bark_maple_branch" }
-bark_source_per_species.norway_spruce = { trunk = { material = "/Game/Megaplant_Library/Tree_Norway_Spruce/Materials/MI_Norway_Spruce_Bark_01", u_range = [0.003785, 0.710256], y_scale = 0.8 }, branch = "fab_nordic_spruce_bark" }
+# Release 1.1: a spruce trunk tile (Megascans Nordic forest detail scan, 0.5 m) replaces the
+# MegaPlants atlas strip, which also drops a MegaPlants dependency the XRFFTwin port lacks.
+bark_source_per_species.norway_spruce = { trunk = "fab_nordic_spruce_detail_bark", branch = "fab_nordic_spruce_bark" }
 # Douglas fir: its own Megascans scan through the material intake (XRFF-679,
 # data/input/materials/fab_douglas_fir_bark), a seamless 1 x 2 m tile.
 bark_source_per_species.douglas_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark", tiled = true }
 bark_source_per_species.silver_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir", tiled = true }
-bark_source_per_species.scots_pine = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/MI_XRFF_ScotsPine_Bark", tiled = true }
+# Release 1.1: Scots pine's two barks as a tile pair, brown plates on the stem and the thin
+# orange flaking bark on the branches (Megascans pine scans, owner downloads 2026-11-12/14).
+bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", branch = "fab_pine_bark_orange_branch" }
 
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
 # trunk profile; growpy divides emitted radii by it so a tape-measured DBH
@@ -349,7 +355,10 @@ randomize_scale = [0.85, 1.15]
 randomize_axil_angle = [0.0, 0.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
-base_scale = 3.0
+# Release 1.1 (round 2 look board, owner "a bit better"): twigs at half their former size,
+# hanging toward the ground (variant s15d5), so the crown reads less like a hedge.
+base_scale = 1.5
+droop = 0.5
 # Where base scale 3 would put a tree below 10 twigs per branch (the h05 saplings), the
 # plan steps the scale down until it is not: h05 lands on target instead of +36-67 %.
 min_density = 10
@@ -385,7 +394,10 @@ randomize_scale = [0.85, 1.15]
 randomize_axil_angle = [0.0, 0.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
-base_scale = 3.0
+# Release 1.1 (round 2 look board, owner "a bit better"): twigs at half their former size,
+# hanging toward the ground (variant s15d5), so the crown reads less like a hedge.
+base_scale = 1.5
+droop = 0.5
 min_density = 10
 
 [pve_calibration.species.douglas_fir.ladder]

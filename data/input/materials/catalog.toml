@@ -134,6 +134,19 @@ redistributable = false
 part = "branch"
 instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_pine_bark_orange_branch/MI_fab_pine_bark_orange_branch"
 
+[materials.fab_pine_bark_plated]
+species = "scots_pine"
+bark_stage = "mature"
+dbh_cm = [0, 200]
+tile_size_m = [1.0, 2.0]
+normal_convention = "opengl"
+source = "fab"
+source_ref = "megascans:tfdmafdu"
+licence = "Fab Standard License"
+redistributable = false
+part = "trunk"
+instance = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_pine_bark_plated/MI_fab_pine_bark_plated"
+
 [materials.fab_silver_birch_bark]
 species = "silver_birch"
 bark_stage = "mature"
