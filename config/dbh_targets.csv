@@ -30,10 +30,10 @@ silver_fir,28.7,0.4064,measured,n 22; row h30
 silver_fir,35.0,0.4943,allometry,fewer than 10 trees; n 4 measured; slope b 0.986 through h30 at 28.70 m
 silver_fir,40.0,0.5638,allometry,fewer than 10 trees; n 0 measured; slope b 0.986 through h30 at 28.70 m
 silver_fir,45.0,0.6333,allometry,fewer than 10 trees; n 0 measured; slope b 0.986 through h30 at 28.70 m
-douglas_fir,5.0,0.0183,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h25 at 26.65 m
-douglas_fir,10.0,0.0604,allometry,fewer than 10 trees; n 0 measured; slope b 1.724 through h25 at 26.65 m
-douglas_fir,15.0,0.1215,allometry,fewer than 10 trees; n 2 measured; slope b 1.724 through h25 at 26.65 m
-douglas_fir,20.0,0.1995,allometry,fewer than 10 trees; n 3 measured; slope b 1.724 through h25 at 26.65 m
+douglas_fir,5.0,0.0392,yield_table,yield table (release 2; 2026-11-14): NW-FVA Douglas fir tables; all site indices; h <= 27 m; n 58; d = a*h^1.224; replaces the extrapolation of the 17-37 m fit (h/d up to 273)
+douglas_fir,10.0,0.0913,yield_table,yield table (release 2; 2026-11-14): NW-FVA Douglas fir tables; all site indices; h <= 27 m; n 58; d = a*h^1.224; replaces the extrapolation of the 17-37 m fit (h/d up to 273)
+douglas_fir,15.0,0.1500,yield_table,yield table (release 2; 2026-11-14): NW-FVA Douglas fir tables; all site indices; h <= 27 m; n 58; d = a*h^1.224; replaces the extrapolation of the 17-37 m fit (h/d up to 273)
+douglas_fir,20.0,0.2133,yield_table,yield table (release 2; 2026-11-14): NW-FVA Douglas fir tables; all site indices; h <= 27 m; n 58; d = a*h^1.224; replaces the extrapolation of the 17-37 m fit (h/d up to 273)
 douglas_fir,26.65,0.3273,measured,n 10; row h25
 douglas_fir,30.95,0.5091,measured,n 31; row h30; pooled with a neighbour (median 0.509)
 douglas_fir,34.4,0.5091,measured,n 20; row h35; pooled with a neighbour (median 0.509)
