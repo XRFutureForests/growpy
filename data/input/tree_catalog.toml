@@ -235,84 +235,99 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07
 twigs = 815
 leaf_area_m2 = 33.5
 leaf_area_target_m2 = 33.4
-plan = "unreal_scripts_douglas_fir_trim15"
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 987
+target.dbh_m = { value = 0.07, p25 = 0.018, p75 = 0.023, inside = false, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
+target.crown_radius_m = { value = 2.11, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
 
 [trees.douglas_fir.r07_h10m]
 species = "douglas_fir"
 tree_id = "r07_h10m"
 radius = 7
 height_m = 10.3
-dbh_cm = 16.5
+dbh_cm = 6.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h10m_d17cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h10m_d06cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h10m"
-twigs = 1701
-leaf_area_m2 = 159.8
-leaf_area_target_m2 = 161.2
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 1337
+leaf_area_m2 = 25.9
+leaf_area_target_m2 = 26.2
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 2138
+target.dbh_m = { value = 0.063, p25 = 0.059, p75 = 0.076, inside = true, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
+target.crown_radius_m = { value = 3.259, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
 
 [trees.douglas_fir.r07_h15m]
 species = "douglas_fir"
 tree_id = "r07_h15m"
 radius = 7
 height_m = 15.1
-dbh_cm = 23.8
+dbh_cm = 12.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h15m_d24cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h15m_d12cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h15m"
-twigs = 1524
-leaf_area_m2 = 321.7
-leaf_area_target_m2 = 323.9
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 1578
+twigs = 1179
+leaf_area_m2 = 90.6
+leaf_area_target_m2 = 91.8
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 1579
+target.dbh_m = { value = 0.122, p25 = 0.119, p75 = 0.152, inside = true, n = 2 }
+target.crown_base_m = { value = 5.0, p25 = 2.467, p75 = 7.451, inside = true, n = 2 }
+target.crown_radius_m = { value = 3.215, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
 
 [trees.douglas_fir.r07_h20m]
 species = "douglas_fir"
 tree_id = "r07_h20m"
 radius = 7
 height_m = 20.2
-dbh_cm = 31.3
+dbh_cm = 20.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h20m_d31cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h20m_d20cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h20m"
-twigs = 2033
-leaf_area_m2 = 546.4
-leaf_area_target_m2 = 543.7
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 904
+twigs = 794
+leaf_area_m2 = 237.8
+leaf_area_target_m2 = 238.4
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 907
+target.dbh_m = { value = 0.203, p25 = 0.195, p75 = 0.25, inside = true, n = 3 }
+target.crown_base_m = { value = 9.0, p25 = 2.842, p75 = 8.581, inside = false, n = 3 }
+target.crown_radius_m = { value = 3.282, p25 = 2.786, p75 = 3.444, inside = true, n = 3 }
 
 [trees.douglas_fir.r07_h25m]
 species = "douglas_fir"
 tree_id = "r07_h25m"
 radius = 7
 height_m = 25.3
-dbh_cm = 38.8
+dbh_cm = 29.9
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h25m_d39cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h25m_d30cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h25m"
-twigs = 3087
-leaf_area_m2 = 818.1
-leaf_area_target_m2 = 817.9
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 488
+twigs = 1895
+leaf_area_m2 = 500.0
+leaf_area_target_m2 = 499.0
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 489
+target.dbh_m = { value = 0.299, p25 = 0.281, p75 = 0.338, inside = true, n = 10 }
+target.crown_base_m = { value = 15.0, p25 = 2.75, p75 = 11.88, inside = false, n = 10 }
+target.crown_radius_m = { value = 3.31, p25 = 2.892, p75 = 3.68, inside = true, n = 10 }
 
 [trees.douglas_fir.r07_h30m]
 species = "douglas_fir"
@@ -330,8 +345,11 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07
 twigs = 4051
 leaf_area_m2 = 1112.5
 leaf_area_target_m2 = 1114.1
-plan = "unreal_scripts_douglas_fir_trim15"
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 376
+target.dbh_m = { value = 0.456, p25 = 0.455, p75 = 0.551, inside = true, n = 31 }
+target.crown_base_m = { value = 19.0, p25 = 3.5, p75 = 10.0, inside = false, n = 31 }
+target.crown_radius_m = { value = 3.266, p25 = 3.834, p75 = 4.512, inside = false, n = 31 }
 
 [trees.douglas_fir.r07_h35m]
 species = "douglas_fir"
@@ -349,46 +367,55 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07
 twigs = 5449
 leaf_area_m2 = 1492.5
 leaf_area_target_m2 = 1491.9
-plan = "unreal_scripts_douglas_fir_trim15"
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 317
+target.dbh_m = { value = 0.532, p25 = 0.469, p75 = 0.563, inside = true, n = 20 }
+target.crown_base_m = { value = 25.5, p25 = 4.625, p75 = 11.25, inside = false, n = 20 }
+target.crown_radius_m = { value = 3.325, p25 = 3.577, p75 = 4.668, inside = false, n = 20 }
 
 [trees.douglas_fir.r07_h40m]
 species = "douglas_fir"
 tree_id = "r07_h40m"
 radius = 7
 height_m = 40.3
-dbh_cm = 60.7
+dbh_cm = 66.9
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h40m_d61cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h40m_d67cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h40m"
-twigs = 6945
-leaf_area_m2 = 1913.0
-leaf_area_target_m2 = 1914.2
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 285
+twigs = 8321
+leaf_area_m2 = 2304.1
+leaf_area_target_m2 = 2304.4
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 284
+target.dbh_m = { value = 0.668, p25 = 0.645, p75 = 0.827, inside = true, n = 0 }
+target.crown_base_m = { value = 29.5, p25 = 3.994, p75 = 12.06, inside = false, n = 1 }
+target.crown_radius_m = { value = 3.258, p25 = 4.13, p75 = 5.105, inside = false, n = 1 }
 
 [trees.douglas_fir.r07_h45m]
 species = "douglas_fir"
 tree_id = "r07_h45m"
 radius = 7
 height_m = 45.1
-dbh_cm = 67.5
+dbh_cm = 81.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h45m_d67cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h45m_d81cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h45m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h45m"
-twigs = 8461
-leaf_area_m2 = 2343.8
-leaf_area_target_m2 = 2345.2
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 11887
+leaf_area_m2 = 3333.9
+leaf_area_target_m2 = 3333.7
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 268
+target.dbh_m = { value = 0.812, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
+target.crown_base_m = { value = 36.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
+target.crown_radius_m = { value = 3.362, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h05m]
 species = "douglas_fir"
@@ -406,122 +433,143 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10
 twigs = 873
 leaf_area_m2 = 33.8
 leaf_area_target_m2 = 34.5
-plan = "unreal_scripts_douglas_fir_trim15"
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 1011
+target.dbh_m = { value = 0.071, p25 = 0.018, p75 = 0.023, inside = false, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
+target.crown_radius_m = { value = 2.129, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h10m]
 species = "douglas_fir"
 tree_id = "r10_h10m"
 radius = 10
 height_m = 10.3
-dbh_cm = 17.9
+dbh_cm = 6.4
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h10m_d18cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h10m_d06cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h10m"
-twigs = 1973
-leaf_area_m2 = 188.2
-leaf_area_target_m2 = 188.8
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 1602
+leaf_area_m2 = 31.4
+leaf_area_target_m2 = 26.2
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 2544
+target.dbh_m = { value = 0.063, p25 = 0.059, p75 = 0.076, inside = true, n = 0 }
+target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
+target.crown_radius_m = { value = 4.003, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h15m]
 species = "douglas_fir"
 tree_id = "r10_h15m"
 radius = 10
 height_m = 15.1
-dbh_cm = 26.6
+dbh_cm = 12.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h15m_d27cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h15m_d12cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h15m"
-twigs = 1908
-leaf_area_m2 = 402.4
-leaf_area_target_m2 = 400.0
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 2238
+twigs = 1614
+leaf_area_m2 = 91.1
+leaf_area_target_m2 = 91.8
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 2239
+target.dbh_m = { value = 0.122, p25 = 0.119, p75 = 0.152, inside = true, n = 2 }
+target.crown_base_m = { value = 1.5, p25 = 2.467, p75 = 7.451, inside = false, n = 2 }
+target.crown_radius_m = { value = 4.505, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
 
 [trees.douglas_fir.r10_h20m]
 species = "douglas_fir"
 tree_id = "r10_h20m"
 radius = 10
 height_m = 20.2
-dbh_cm = 35.0
+dbh_cm = 20.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h20m_d35cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h20m_d20cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h20m"
-twigs = 2341
-leaf_area_m2 = 670.7
-leaf_area_target_m2 = 673.2
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 1281
+twigs = 800
+leaf_area_m2 = 240.6
+leaf_area_target_m2 = 238.4
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 1280
+target.dbh_m = { value = 0.203, p25 = 0.195, p75 = 0.25, inside = true, n = 3 }
+target.crown_base_m = { value = 6.0, p25 = 2.842, p75 = 8.581, inside = true, n = 3 }
+target.crown_radius_m = { value = 4.519, p25 = 2.786, p75 = 3.444, inside = false, n = 3 }
 
 [trees.douglas_fir.r10_h25m]
 species = "douglas_fir"
 tree_id = "r10_h25m"
 radius = 10
 height_m = 25.3
-dbh_cm = 43.5
+dbh_cm = 29.9
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h25m_d44cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h25m_d30cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h25m"
-twigs = 3875
-leaf_area_m2 = 1017.1
-leaf_area_target_m2 = 1017.9
-plan = "unreal_scripts_douglas_fir_trim15"
-bones = 702
+twigs = 1719
+leaf_area_m2 = 498.9
+leaf_area_target_m2 = 499.0
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+bones = 704
+target.dbh_m = { value = 0.299, p25 = 0.281, p75 = 0.338, inside = true, n = 10 }
+target.crown_base_m = { value = 11.5, p25 = 2.75, p75 = 11.88, inside = true, n = 10 }
+target.crown_radius_m = { value = 4.608, p25 = 2.892, p75 = 3.68, inside = false, n = 10 }
 
 [trees.douglas_fir.r10_h30m]
 species = "douglas_fir"
 tree_id = "r10_h30m"
 radius = 10
 height_m = 30.1
-dbh_cm = 51.3
+dbh_cm = 46.9
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h30m_d51cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h30m_d47cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h30m"
-twigs = 5341
-leaf_area_m2 = 1391.5
-leaf_area_target_m2 = 1390.2
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 4395
+leaf_area_m2 = 1175.0
+leaf_area_target_m2 = 1172.7
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 560
+target.dbh_m = { value = 0.469, p25 = 0.455, p75 = 0.551, inside = true, n = 31 }
+target.crown_base_m = { value = 16.0, p25 = 3.5, p75 = 10.0, inside = false, n = 31 }
+target.crown_radius_m = { value = 4.475, p25 = 3.834, p75 = 4.512, inside = true, n = 31 }
 
 [trees.douglas_fir.r10_h35m]
 species = "douglas_fir"
 tree_id = "r10_h35m"
 radius = 10
 height_m = 35.2
-dbh_cm = 59.5
+dbh_cm = 53.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h35m_d59cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h35m_d53cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h35m"
-twigs = 6866
-leaf_area_m2 = 1844.9
-leaf_area_target_m2 = 1844.6
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 5656
+leaf_area_m2 = 1477.7
+leaf_area_target_m2 = 1478.8
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 396
+target.dbh_m = { value = 0.529, p25 = 0.469, p75 = 0.563, inside = true, n = 20 }
+target.crown_base_m = { value = 21.5, p25 = 4.625, p75 = 11.25, inside = false, n = 20 }
+target.crown_radius_m = { value = 4.422, p25 = 3.577, p75 = 4.668, inside = true, n = 20 }
 
 [trees.douglas_fir.r10_h40m]
 species = "douglas_fir"
@@ -539,27 +587,33 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10
 twigs = 8864
 leaf_area_m2 = 2346.9
 leaf_area_target_m2 = 2348.2
-plan = "unreal_scripts_douglas_fir_trim15"
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 354
+target.dbh_m = { value = 0.675, p25 = 0.645, p75 = 0.827, inside = true, n = 0 }
+target.crown_base_m = { value = 27.0, p25 = 3.994, p75 = 12.06, inside = false, n = 1 }
+target.crown_radius_m = { value = 4.401, p25 = 4.13, p75 = 5.105, inside = true, n = 1 }
 
 [trees.douglas_fir.r10_h45m]
 species = "douglas_fir"
 tree_id = "r10_h45m"
 radius = 10
 height_m = 45.1
-dbh_cm = 75.2
+dbh_cm = 81.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h45m_d75cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h45m_d81cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h45m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h45m"
-twigs = 10588
-leaf_area_m2 = 2878.1
-leaf_area_target_m2 = 2879.4
-plan = "unreal_scripts_douglas_fir_trim15"
+twigs = 12185
+leaf_area_m2 = 3333.4
+leaf_area_target_m2 = 3333.7
+plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
 bones = 321
+target.dbh_m = { value = 0.811, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
+target.crown_base_m = { value = 33.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
+target.crown_radius_m = { value = 4.327, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
 
 [trees.european_beech.r07_h05m]
 species = "european_beech"
@@ -1516,95 +1570,110 @@ species = "scots_pine"
 tree_id = "r07_h05m"
 radius = 7
 height_m = 5.23
-dbh_cm = 9.2
+dbh_cm = 4.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h05m_d09cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h05m"
-twigs = 408
-leaf_area_m2 = 24.8
-leaf_area_target_m2 = 24.9
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 352
+leaf_area_m2 = 11.5
+leaf_area_target_m2 = 7.0
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 536
+target.dbh_m = { value = 0.044, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
+target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
+target.crown_radius_m = { value = 1.388, p25 = 0.328, p75 = 0.484, inside = false, n = 4 }
 
 [trees.scots_pine.r07_h10m]
 species = "scots_pine"
 tree_id = "r07_h10m"
 radius = 7
 height_m = 10.17
-dbh_cm = 17.6
+dbh_cm = 10.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h10m_d18cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h10m_d10cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h10m"
-twigs = 401
-leaf_area_m2 = 77.5
-leaf_area_target_m2 = 76.8
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 411
+leaf_area_m2 = 30.0
+leaf_area_target_m2 = 30.0
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 546
+target.dbh_m = { value = 0.103, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
+target.crown_base_m = { value = 5.0, p25 = 5.0, p75 = 7.5, inside = true, n = 90 }
+target.crown_radius_m = { value = 2.114, p25 = 0.86, p75 = 1.429, inside = false, n = 90 }
 
 [trees.scots_pine.r07_h15m]
 species = "scots_pine"
 tree_id = "r07_h15m"
 radius = 7
 height_m = 15.1
-dbh_cm = 23.9
+dbh_cm = 15.4
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h15m_d24cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h15m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h15m"
-twigs = 295
-leaf_area_m2 = 132.0
-leaf_area_target_m2 = 130.8
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 262
+leaf_area_m2 = 61.7
+leaf_area_target_m2 = 61.0
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 298
+target.dbh_m = { value = 0.154, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
+target.crown_base_m = { value = 10.5, p25 = 7.5, p75 = 11.0, inside = true, n = 643 }
+target.crown_radius_m = { value = 1.781, p25 = 1.12, p75 = 1.81, inside = true, n = 643 }
 
 [trees.scots_pine.r07_h20m]
 species = "scots_pine"
 tree_id = "r07_h20m"
 radius = 7
 height_m = 20.16
-dbh_cm = 29.9
+dbh_cm = 23.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h20m_d30cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h20m_d23cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h20m"
-twigs = 316
-leaf_area_m2 = 194.1
-leaf_area_target_m2 = 193.5
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 286
+leaf_area_m2 = 123.8
+leaf_area_target_m2 = 123.0
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 343
+target.dbh_m = { value = 0.231, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
+target.crown_base_m = { value = 14.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
+target.crown_radius_m = { value = 2.236, p25 = 1.477, p75 = 2.343, inside = true, n = 932 }
 
 [trees.scots_pine.r07_h25m]
 species = "scots_pine"
 tree_id = "r07_h25m"
 radius = 7
 height_m = 25.27
-dbh_cm = 35.0
+dbh_cm = 32.4
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h25m_d35cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r07/Scots_Pine_r07_h25m_d32cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h25m"
-twigs = 418
-leaf_area_m2 = 256.3
-leaf_area_target_m2 = 254.9
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 365
+leaf_area_m2 = 223.1
+leaf_area_target_m2 = 222.1
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 340
+target.dbh_m = { value = 0.324, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
+target.crown_base_m = { value = 17.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
+target.crown_radius_m = { value = 2.151, p25 = 1.964, p75 = 2.93, inside = true, n = 619 }
 
 [trees.scots_pine.r07_h30m]
 species = "scots_pine"
@@ -1622,122 +1691,143 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 542
 leaf_area_m2 = 325.6
 leaf_area_target_m2 = 326.2
-plan = "unreal_scripts_scots_pine_trim15"
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 410
+target.dbh_m = { value = 0.404, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
+target.crown_base_m = { value = 19.5, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
+target.crown_radius_m = { value = 2.455, p25 = 2.777, p75 = 3.76, inside = false, n = 428 }
 
 [trees.scots_pine.r10_h05m]
 species = "scots_pine"
 tree_id = "r10_h05m"
 radius = 10
 height_m = 5.04
-dbh_cm = 9.9
+dbh_cm = 4.3
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h05m_d10cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h05m"
-twigs = 440
-leaf_area_m2 = 27.6
-leaf_area_target_m2 = 28.1
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 363
+leaf_area_m2 = 12.4
+leaf_area_target_m2 = 6.5
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 551
+target.dbh_m = { value = 0.041, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
+target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
+target.crown_radius_m = { value = 1.685, p25 = 0.328, p75 = 0.484, inside = false, n = 4 }
 
 [trees.scots_pine.r10_h10m]
 species = "scots_pine"
 tree_id = "r10_h10m"
 radius = 10
 height_m = 10.12
-dbh_cm = 19.7
+dbh_cm = 10.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h10m_d20cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h10m_d10cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h10m"
-twigs = 669
-leaf_area_m2 = 93.6
-leaf_area_target_m2 = 93.3
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 568
+leaf_area_m2 = 30.1
+leaf_area_target_m2 = 29.7
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 783
+target.dbh_m = { value = 0.102, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
+target.crown_base_m = { value = 3.5, p25 = 5.0, p75 = 7.5, inside = false, n = 90 }
+target.crown_radius_m = { value = 2.651, p25 = 0.86, p75 = 1.429, inside = false, n = 90 }
 
 [trees.scots_pine.r10_h15m]
 species = "scots_pine"
 tree_id = "r10_h15m"
 radius = 10
 height_m = 15.24
-dbh_cm = 27.5
+dbh_cm = 15.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h15m_d28cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h15m_d16cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h15m"
-twigs = 720
-leaf_area_m2 = 167.3
-leaf_area_target_m2 = 167.1
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 704
+leaf_area_m2 = 61.8
+leaf_area_target_m2 = 61.9
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 857
+target.dbh_m = { value = 0.156, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
+target.crown_base_m = { value = 6.5, p25 = 7.5, p75 = 11.0, inside = false, n = 643 }
+target.crown_radius_m = { value = 3.072, p25 = 1.12, p75 = 1.81, inside = false, n = 643 }
 
 [trees.scots_pine.r10_h20m]
 species = "scots_pine"
 tree_id = "r10_h20m"
 radius = 10
 height_m = 20.12
-dbh_cm = 34.3
+dbh_cm = 23.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h20m_d34cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h20m_d23cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h20m"
-twigs = 779
-leaf_area_m2 = 243.4
-leaf_area_target_m2 = 245.9
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 742
+leaf_area_m2 = 121.4
+leaf_area_target_m2 = 122.2
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 903
+target.dbh_m = { value = 0.23, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
+target.crown_base_m = { value = 7.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
+target.crown_radius_m = { value = 3.508, p25 = 1.477, p75 = 2.343, inside = false, n = 932 }
 
 [trees.scots_pine.r10_h25m]
 species = "scots_pine"
 tree_id = "r10_h25m"
 radius = 10
 height_m = 25.18
-dbh_cm = 40.9
+dbh_cm = 32.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h25m_d41cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h25m_d32cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h25m"
-twigs = 756
-leaf_area_m2 = 330.2
-leaf_area_target_m2 = 334.4
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 692
+leaf_area_m2 = 217.9
+leaf_area_target_m2 = 220.5
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 889
+target.dbh_m = { value = 0.322, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
+target.crown_base_m = { value = 6.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
+target.crown_radius_m = { value = 3.935, p25 = 1.964, p75 = 2.93, inside = false, n = 619 }
 
 [trees.scots_pine.r10_h30m]
 species = "scots_pine"
 tree_id = "r10_h30m"
 radius = 10
 height_m = 29.43
-dbh_cm = 48.4
+dbh_cm = 39.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h30m_d48cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/scots_pine/r10/Scots_Pine_r10_h30m_d39cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/scots_pine/MI_scots_pine_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h30m"
-twigs = 745
-leaf_area_m2 = 447.4
-leaf_area_target_m2 = 448.2
-plan = "unreal_scripts_scots_pine_trim15"
+twigs = 720
+leaf_area_m2 = 311.6
+leaf_area_target_m2 = 309.6
+plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
 bones = 1099
+target.dbh_m = { value = 0.392, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
+target.crown_base_m = { value = 4.0, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
+target.crown_radius_m = { value = 4.206, p25 = 2.777, p75 = 3.76, inside = false, n = 428 }
 
 [trees.silver_birch.r07_h05m]
 species = "silver_birch"
