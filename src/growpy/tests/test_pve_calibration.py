@@ -931,6 +931,8 @@ class TestPerInstanceVariance:
             "aim", "AXIS_AIM", (0.0, 0.0, -1.0), 0.93,
         )
         assert [j.mode for j in spec.jitter] == ["ROLL"]  # the roll still follows
+        lift = _pose_distributor(replace(cal, pose=replace(cal.pose, droop=-0.44)), 81)
+        assert (lift.aim.axis, lift.aim.strength) == ((0.0, 0.0, 1.0), 0.44)
 
     def test_a_pose_base_scale_reaches_the_distributor_and_the_area(self, shipped):
         from dataclasses import replace

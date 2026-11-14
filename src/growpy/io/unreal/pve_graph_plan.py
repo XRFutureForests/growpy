@@ -641,10 +641,11 @@ def _pose_distributor(
         auto_align_end=True,
         aim=(
             FoliageVectorSpec(
-                kind="aim", vector2="AXIS_AIM", axis=(0.0, 0.0, -1.0),
-                strength=calibration.pose.droop, affect_tip=True,
+                kind="aim", vector2="AXIS_AIM",
+                axis=(0.0, 0.0, -1.0 if calibration.pose.droop > 0.0 else 1.0),
+                strength=abs(calibration.pose.droop), affect_tip=True,
             )
-            if calibration.pose.droop > 0.0
+            if calibration.pose.droop != 0.0
             else None
         )
         if roll

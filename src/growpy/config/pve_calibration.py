@@ -282,12 +282,13 @@ class TwigPose:
     # Droop (2026-11-14, owner: "double effort" on a natural look): strength of an
     # aim entry that turns each twig toward world down, as MegaPlants' Norway spruce
     # hangs its branchlets (AxisAim, axis (0, 0, -1), strength 0.93). Rotation only,
-    # applied before the jitter. 0 adds no entry.
+    # applied before the jitter. 0 adds no entry. Negative lifts toward world up
+    # instead, as MegaPlants' Baltic pine turns its shoots up (AxisAim, 0.44).
     droop: float = 0.0
 
     def __post_init__(self) -> None:
-        if not 0.0 <= self.droop <= 1.0:
-            raise ValueError(f"droop must be in [0, 1], got {self.droop}")
+        if not -1.0 <= self.droop <= 1.0:
+            raise ValueError(f"droop must be in [-1, 1], got {self.droop}")
         if self.base_scale <= 0.0:
             raise ValueError(f"base_scale must be positive, got {self.base_scale}")
         if self.min_density < 0:
