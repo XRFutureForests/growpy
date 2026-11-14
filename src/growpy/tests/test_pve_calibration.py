@@ -157,8 +157,8 @@ class TestShippedCalibration:
         for name in PROFILE_CONIFERS:  # C1-C4: spruce profile, default fullness
             cal = shipped.for_species(name, habit="conifer")
             assert not cal.derived and cal.pose.orient == "RANDOM_ROLL", name
-            # release 1.1: Douglas fir's half-size twigs come at half the leaf amount
-            assert cal.fullness == (2.0 if name == "douglas_fir" else 4.0), name
+            # release 1.1: spruce's and Douglas fir's half-size twigs come at half the leaf amount
+            assert cal.fullness == (2.0 if name in ("norway_spruce", "douglas_fir") else 4.0), name
             assert cal.phyllotaxy_formation == "DISTICHOUS", name
         # XRFF-681: spruce left the defaults for its own Greenleaf-style block
         spruce = shipped.for_species("norway_spruce", habit="conifer")
