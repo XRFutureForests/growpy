@@ -553,6 +553,12 @@ class SpeciesCalibration:
     # builder. The plan finds each tree's Carve value for this fraction and solves
     # the twig density on the trimmed skeleton (pve_carve_model). 0 wires no node.
     carve_trim: float = 0.0
+    # Branch sag (2026-11-14, owner: "double effort" on a natural look): PVE's
+    # Gravity node, phototropic mode, after the Carve node -- MegaPlants' Norway
+    # spruce runs it at 0.3 so the laterals sag and turn up at the tip. It bends the
+    # skeleton the mesh, bones and twigs read; lengths stay, so the leaf-area solve
+    # is unaffected. 0 wires no node.
+    gravity: float = 0.0
     # Crown floor by stand radius label (2026-09-21): the fraction of the
     # tree's height below which no foliage is placed and side branches lying
     # wholly under the line are dropped from the skeleton the chain reads.
@@ -682,6 +688,11 @@ class SpeciesCalibration:
                     f"species {self.species!r} relative_start_by_height values "
                     f"must be in [0, 1), got {ramp}"
                 )
+        if not 0.0 <= self.gravity <= 1.0:
+            raise ValueError(
+                f"species {self.species!r} gravity must be in [0, 1], "
+                f"got {self.gravity}"
+            )
         if not 0.0 <= self.carve_trim < 1.0:
             raise ValueError(
                 f"species {self.species!r} carve_trim must be in [0, 1), "
@@ -1052,6 +1063,7 @@ def _species(
         relative_start_by_height=_ramp(data.get("relative_start_by_height")),
         max_base_scale=float(data.get("max_base_scale", 1.0)),
         carve_trim=float(data.get("carve_trim", 0.0)),
+        gravity=float(data.get("gravity", 0.0)),
         crown_floor={
             str(k): float(v) for k, v in (data.get("crown_floor") or {}).items()
         },

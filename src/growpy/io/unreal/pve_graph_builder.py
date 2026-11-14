@@ -662,8 +662,16 @@ class TreeChainSpec:
     # PVE Carve (radius basis) between importer and MeshBuilder; 0 wires no node.
     # The plan sets it per tree from SpeciesCalibration.carve_trim.
     carve: float = 0.0
+    # PVE Gravity (phototropic) after the Carve node; 0 wires no node. The plan sets
+    # it from SpeciesCalibration.gravity.
+    gravity: float = 0.0
 
     def __post_init__(self) -> None:
+        if not 0.0 <= self.gravity <= 1.0:
+            raise ValueError(
+                f"chain {self.mesh_name!r} gravity must be in [0, 1], "
+                f"got {self.gravity}"
+            )
         if not self.mesh_name:
             raise ValueError("mesh_name must not be empty")
         if any(not isinstance(k, int) or k < 1 for k in self.bark_wraps):
@@ -899,6 +907,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 ],
                 "bone_reduction_strength": c.bone_reduction_strength,
                 "carve": c.carve,
+                "gravity": c.gravity,
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1210,6 +1219,25 @@ def build(spec):
                 )
             carve_edges.append((import_node, "Out", carve_node, "In"))
             skeleton = carve_node
+        # Gravity (phototropic) sags the laterals after the trim, as MegaPlants' spruce.
+        if chain.get("gravity", 0.0) > 0.0:
+            gravity_node, gravity_settings = graph.add_node_of_type(
+                unreal.PVGravitySettings
+            )
+            gravity_node.set_node_position(240, row + 120)
+            params = gravity_settings.get_editor_property("gravity_settings")
+            mode = type(params.get_editor_property("mode"))
+            params.set_editor_property("mode", getattr(mode, "PHOTOTROPIC"))
+            params.set_editor_property("gravity", float(chain["gravity"]))
+            gravity_settings.set_editor_property("gravity_settings", params)
+            got = gravity_settings.get_editor_property("gravity_settings")
+            if abs(got.get_editor_property("gravity") - chain["gravity"]) > 1e-6:
+                raise RuntimeError(
+                    "%s: gravity read back as %s, wanted %s"
+                    % (chain["mesh_name"], got, chain["gravity"])
+                )
+            carve_edges.append((skeleton, "Out", gravity_node, "In"))
+            skeleton = gravity_node
 
         radius_node, radius_settings = graph.add_node_of_type(
             unreal.PVMeshBuilderBranchRadiusSettings
@@ -1474,7 +1502,9 @@ def build(spec):
         len(c["layers"]) for c in spec["chains"]
     ) + (len(spec["chains"]) if spec["static_export_folder"] else 0) + sum(
         1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0
-    ) + sum(1 for c in spec["chains"] if c["carve"] > 0.0)
+    ) + sum(1 for c in spec["chains"] if c["carve"] > 0.0) + sum(
+        1 for c in spec["chains"] if c.get("gravity", 0.0) > 0.0
+    )
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(

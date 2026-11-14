@@ -105,3 +105,25 @@ def test_a_trimmed_chain_wires_a_carve_node_before_the_mesher(tmp_path):
         TreeChainSpec(
             Path("t.json"), "SK_T", DistributorSpec(branch_density=1), carve=1.5
         )
+
+
+def test_a_sagging_chain_wires_a_gravity_node_after_the_carve(tmp_path):
+    chain = TreeChainSpec(
+        Path("data/tmp/tree.json"),
+        "SK_Test",
+        DistributorSpec(branch_density=17),
+        carve=0.0035,
+        gravity=0.3,
+    )
+    body = generate_pve_graph_builder_script(tmp_path, [_graph(chains=(chain,))])
+    body = body.read_text(encoding="utf-8")
+    assert "'gravity': 0.3" in body
+    assert "unreal.PVGravitySettings" in body and '"PHOTOTROPIC"' in body
+    assert 'c.get("gravity", 0.0) > 0.0' in body  # the extra edge is counted
+    assert _species(gravity=0.3).gravity == 0.3
+    with pytest.raises(ValueError, match="gravity"):
+        _species(gravity=1.5)
+    with pytest.raises(ValueError, match="gravity"):
+        TreeChainSpec(
+            Path("t.json"), "SK_T", DistributorSpec(branch_density=1), gravity=-0.1
+        )
