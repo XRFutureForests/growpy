@@ -29,6 +29,32 @@ def test_bark_source_flags_fab_materials_as_project_only():
     assert cp.bark_source("ash", cal, MATERIALS)[0] == "Grove bark texture"
 
 
+def test_renders_go_on_white_and_unused_twigs_are_left_out(tmp_path):
+    from PIL import Image
+
+    folder = tmp_path / "sp"
+    folder.mkdir()
+    Image.new("RGB", (2, 1), (200, 0, 0)).save(folder / "twig_a", format="PNG")
+    mask = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    mask.putpixel((0, 0), (0, 0, 0, 255))  # nothing drawn at the left pixel
+    mask.save(folder / "twig_a_mask", format="PNG")
+    out = cp.on_white(folder / "twig_a")
+    assert out[0, 0].tolist() == [255, 255, 255] and out[0, 1].tolist() == [200, 0, 0]
+    (folder / "index.json").write_text(
+        json.dumps(
+            {
+                "twigs": [
+                    {"name": "a", "png": "twig_a", "used": True},
+                    {"name": "b", "png": "twig_b", "used": False},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    items, unused = cp.twig_items(tmp_path, "sp")
+    assert [p.name for p, _ in items] == ["twig_a"] and unused == ["b"]
+
+
 def _growth_json(path, height):
     path.write_text(
         json.dumps(

@@ -7,7 +7,8 @@
   prototypes with renders, the bark source and its licence -- the completeness check.
 * Structure: per species one page, each stand radius a row of side views at true scale.
 * Twigs: per species one page of prototype renders, with leaf area, size and triangles.
-* Materials: every species' bark on a 40 cm stem section, with source and licence.
+* Materials: every species' bark on its own catalog trunk, with source and licence.
+* Renders sit on white: each view has a subject-only mask capture beside it.
 
 Twig and bark renders come from ue_scripts/capture_catalog_previews.py (run in the
 editor); structure is drawn here from the growth JSONs. Missing renders show as gaps,
@@ -178,11 +179,27 @@ def structure_page(pdf, sp, forest):
     plt.close(fig)
 
 
-def image_grid(pdf, title, items):
-    """items: (image path or None, caption); 4 x 3 per page."""
+def on_white(path: Path) -> np.ndarray:
+    """The render on a white background, using its ``<name>_mask`` capture (the
+    subject alone; alpha = inverse opacity, 1 where nothing was drawn); as is
+    without one."""
+    rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.float32)
+    mask = path.with_name(path.name + "_mask")
+    try:  # a capture cut short leaves an empty mask: print the render as is
+        alpha = np.asarray(Image.open(mask).convert("RGBA"), dtype=np.float32)[..., 3:]
+    except (OSError, ValueError):
+        return rgb.astype(np.uint8)
+    alpha /= 255.0
+    return (rgb * (1.0 - alpha) + 255.0 * alpha).astype(np.uint8)
+
+
+def image_grid(pdf, title, items, note=""):
+    """items: (image path or None, caption); 4 x 3 per page; note under each page."""
     for start in range(0, max(len(items), 1), 12):
         fig, axes = plt.subplots(3, 4, figsize=A4_LANDSCAPE)
         fig.suptitle(title, fontsize=12, x=0.05, ha="left")
+        if note:
+            fig.text(0.05, 0.02, note, fontsize=7, color="0.35", wrap=True)
         for ax, item in zip(
             axes.flat, items[start : start + 12] + [None] * 12, strict=False
         ):
@@ -191,7 +208,7 @@ def image_grid(pdf, title, items):
                 continue
             path, caption = item
             if path is not None and path.is_file():
-                ax.imshow(np.asarray(Image.open(path).convert("RGB")))
+                ax.imshow(on_white(path))
             else:
                 ax.text(
                     0.5,
@@ -208,17 +225,21 @@ def image_grid(pdf, title, items):
 
 
 def twig_items(previews: Path, sp: str):
+    """(items of the twigs a catalog tree uses, names of the unused ones)."""
     idx = previews / sp / "index.json"
     if not idx.is_file():
-        return []
-    items = []
+        return [], []
+    items, unused = [], []
     for t in json.loads(idx.read_text(encoding="utf-8"))["twigs"]:
+        if not t.get("used", True):  # an index from before the flag lists all
+            unused.append(t["name"])
+            continue
         la = leaf_area(t["name"])
         size = " x ".join(f"{v:.0f}" for v in t.get("size_cm", [])) + " cm"
         tri = f", {t['triangles'] / 1000:.0f}k tri" if t.get("triangles") else ""
         area = f", {la:.3f} m2 leaves" if la is not None else ""
         items.append((previews / sp / t["png"], f"{t['name']}\n{size}{area}{tri}"))
-    return items
+    return items, unused
 
 
 def overview_rows(species, forest, previews, calibration, materials):
@@ -233,12 +254,7 @@ def overview_rows(species, forest, previews, calibration, materials):
             )
             or "none"
         )
-        idx = previews / sp / "index.json"
-        twigs = (
-            len(json.loads(idx.read_text(encoding="utf-8"))["twigs"])
-            if idx.is_file()
-            else 0
-        )
+        twigs = len(twig_items(previews, sp)[0])  # the twigs catalog trees use
         src, lic = bark_source(sp, calibration, materials)
         rows.append(
             (
@@ -335,14 +351,25 @@ def build(previews: Path, out: Path, forest: Path = FOREST) -> int:
         for sp in species:
             structure_page(pdf, sp, forest)
         for sp in species:
-            image_grid(pdf, f"Twigs: {sp.replace('_', ' ')}", twig_items(previews, sp))
+            items, unused = twig_items(previews, sp)
+            note = (
+                "Not used by any catalog tree (left out): " + ", ".join(unused)
+                if unused
+                else ""
+            )
+            image_grid(pdf, f"Twigs: {sp.replace('_', ' ')}", items, note)
         bark = []
         for sp in species:
             src, lic = bark_source(sp, calibration, materials)
             bark.append(
                 (previews / sp / "bark", f"{sp.replace('_', ' ')}\n{src}\n{lic}")
             )
-        image_grid(pdf, "Materials: bark on a 40 cm stem section", bark)
+        image_grid(
+            pdf,
+            "Materials: bark on each species' catalog trunk (r07, nearest 20 m), "
+            "eye height",
+            bark,
+        )
         pages = pdf.get_pagecount()
     return pages
 
