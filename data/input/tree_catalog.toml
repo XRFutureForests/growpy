@@ -224,88 +224,88 @@ species = "douglas_fir"
 tree_id = "r07_h05m"
 radius = 7
 height_m = 5.2
-dbh_cm = 7.2
+dbh_cm = 4.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h05m_d07cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h05m"
-twigs = 815
-leaf_area_m2 = 33.5
-leaf_area_target_m2 = 33.4
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 654
+leaf_area_m2 = 10.2
+leaf_area_target_m2 = 5.7
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 987
-target.dbh_m = { value = 0.07, p25 = 0.018, p75 = 0.023, inside = false, n = 0 }
+target.dbh_m = { value = 0.04, p25 = 0.038, p75 = 0.041, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
-target.crown_radius_m = { value = 2.11, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
+target.crown_radius_m = { value = 2.095, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
 
 [trees.douglas_fir.r07_h10m]
 species = "douglas_fir"
 tree_id = "r07_h10m"
 radius = 7
 height_m = 10.3
-dbh_cm = 6.3
+dbh_cm = 9.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h10m_d06cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h10m_d09cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h10m"
-twigs = 1337
-leaf_area_m2 = 25.9
-leaf_area_target_m2 = 26.2
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 1434
+leaf_area_m2 = 28.0
+leaf_area_target_m2 = 27.9
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 2138
-target.dbh_m = { value = 0.063, p25 = 0.059, p75 = 0.076, inside = true, n = 0 }
+target.dbh_m = { value = 0.094, p25 = 0.088, p75 = 0.096, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
-target.crown_radius_m = { value = 3.259, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
+target.crown_radius_m = { value = 3.263, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
 
 [trees.douglas_fir.r07_h15m]
 species = "douglas_fir"
 tree_id = "r07_h15m"
 radius = 7
 height_m = 15.1
-dbh_cm = 12.3
+dbh_cm = 15.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h15m_d12cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h15m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h15m"
-twigs = 1179
-leaf_area_m2 = 90.6
-leaf_area_target_m2 = 91.8
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 1318
+leaf_area_m2 = 68.1
+leaf_area_target_m2 = 68.1
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 1579
-target.dbh_m = { value = 0.122, p25 = 0.119, p75 = 0.152, inside = true, n = 2 }
+target.dbh_m = { value = 0.151, p25 = 0.144, p75 = 0.157, inside = true, n = 2 }
 target.crown_base_m = { value = 5.0, p25 = 2.467, p75 = 7.451, inside = true, n = 2 }
-target.crown_radius_m = { value = 3.215, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
+target.crown_radius_m = { value = 3.226, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
 
 [trees.douglas_fir.r07_h20m]
 species = "douglas_fir"
 tree_id = "r07_h20m"
 radius = 7
 height_m = 20.2
-dbh_cm = 20.3
+dbh_cm = 21.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h20m_d20cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h20m_d22cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h20m"
-twigs = 794
-leaf_area_m2 = 237.8
-leaf_area_target_m2 = 238.4
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 2012
+leaf_area_m2 = 135.2
+leaf_area_target_m2 = 134.8
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 907
-target.dbh_m = { value = 0.203, p25 = 0.195, p75 = 0.25, inside = true, n = 3 }
+target.dbh_m = { value = 0.216, p25 = 0.205, p75 = 0.224, inside = true, n = 3 }
 target.crown_base_m = { value = 9.0, p25 = 2.842, p75 = 8.581, inside = false, n = 3 }
-target.crown_radius_m = { value = 3.282, p25 = 2.786, p75 = 3.444, inside = true, n = 3 }
+target.crown_radius_m = { value = 3.277, p25 = 2.786, p75 = 3.444, inside = true, n = 3 }
 
 [trees.douglas_fir.r07_h25m]
 species = "douglas_fir"
@@ -320,10 +320,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h25m"
-twigs = 1895
-leaf_area_m2 = 500.0
-leaf_area_target_m2 = 499.0
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 3769
+leaf_area_m2 = 249.3
+leaf_area_target_m2 = 249.5
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 489
 target.dbh_m = { value = 0.299, p25 = 0.281, p75 = 0.338, inside = true, n = 10 }
 target.crown_base_m = { value = 15.0, p25 = 2.75, p75 = 11.88, inside = false, n = 10 }
@@ -342,10 +342,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h30m"
-twigs = 4051
-leaf_area_m2 = 1112.5
-leaf_area_target_m2 = 1114.1
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 7947
+leaf_area_m2 = 557.9
+leaf_area_target_m2 = 557.0
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 376
 target.dbh_m = { value = 0.456, p25 = 0.455, p75 = 0.551, inside = true, n = 31 }
 target.crown_base_m = { value = 19.0, p25 = 3.5, p75 = 10.0, inside = false, n = 31 }
@@ -364,10 +364,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h35m"
-twigs = 5449
-leaf_area_m2 = 1492.5
-leaf_area_target_m2 = 1491.9
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 10602
+leaf_area_m2 = 745.6
+leaf_area_target_m2 = 746.0
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 317
 target.dbh_m = { value = 0.532, p25 = 0.469, p75 = 0.563, inside = true, n = 20 }
 target.crown_base_m = { value = 25.5, p25 = 4.625, p75 = 11.25, inside = false, n = 20 }
@@ -386,10 +386,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h40m"
-twigs = 8321
-leaf_area_m2 = 2304.1
-leaf_area_target_m2 = 2304.4
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 16316
+leaf_area_m2 = 1136.1
+leaf_area_target_m2 = 1152.2
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 284
 target.dbh_m = { value = 0.668, p25 = 0.645, p75 = 0.827, inside = true, n = 0 }
 target.crown_base_m = { value = 29.5, p25 = 3.994, p75 = 12.06, inside = false, n = 1 }
@@ -408,10 +408,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h45m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h45m"
-twigs = 11887
-leaf_area_m2 = 3333.9
-leaf_area_target_m2 = 3333.7
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 16314
+leaf_area_m2 = 1145.9
+leaf_area_target_m2 = 1666.8
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 268
 target.dbh_m = { value = 0.812, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
 target.crown_base_m = { value = 36.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
@@ -422,31 +422,31 @@ species = "douglas_fir"
 tree_id = "r10_h05m"
 radius = 10
 height_m = 5.2
-dbh_cm = 7.3
+dbh_cm = 4.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h05m_d07cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h05m"
-twigs = 873
-leaf_area_m2 = 33.8
-leaf_area_target_m2 = 34.5
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 676
+leaf_area_m2 = 10.2
+leaf_area_target_m2 = 5.7
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 1011
-target.dbh_m = { value = 0.071, p25 = 0.018, p75 = 0.023, inside = false, n = 0 }
+target.dbh_m = { value = 0.04, p25 = 0.038, p75 = 0.041, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
-target.crown_radius_m = { value = 2.129, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
+target.crown_radius_m = { value = 2.12, p25 = 1.268, p75 = 1.567, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h10m]
 species = "douglas_fir"
 tree_id = "r10_h10m"
 radius = 10
 height_m = 10.3
-dbh_cm = 6.4
+dbh_cm = 9.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h10m_d06cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h10m_d09cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
@@ -454,56 +454,56 @@ mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h10m"
 twigs = 1602
 leaf_area_m2 = 31.4
-leaf_area_target_m2 = 26.2
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+leaf_area_target_m2 = 27.9
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 2544
-target.dbh_m = { value = 0.063, p25 = 0.059, p75 = 0.076, inside = true, n = 0 }
+target.dbh_m = { value = 0.094, p25 = 0.088, p75 = 0.096, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
-target.crown_radius_m = { value = 4.003, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
+target.crown_radius_m = { value = 4.015, p25 = 1.88, p75 = 2.323, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h15m]
 species = "douglas_fir"
 tree_id = "r10_h15m"
 radius = 10
 height_m = 15.1
-dbh_cm = 12.3
+dbh_cm = 15.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h15m_d12cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h15m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h15m"
-twigs = 1614
-leaf_area_m2 = 91.1
-leaf_area_target_m2 = 91.8
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 1806
+leaf_area_m2 = 68.6
+leaf_area_target_m2 = 68.1
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 2239
-target.dbh_m = { value = 0.122, p25 = 0.119, p75 = 0.152, inside = true, n = 2 }
+target.dbh_m = { value = 0.151, p25 = 0.144, p75 = 0.157, inside = true, n = 2 }
 target.crown_base_m = { value = 1.5, p25 = 2.467, p75 = 7.451, inside = false, n = 2 }
-target.crown_radius_m = { value = 4.505, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
+target.crown_radius_m = { value = 4.511, p25 = 2.366, p75 = 2.925, inside = false, n = 2 }
 
 [trees.douglas_fir.r10_h20m]
 species = "douglas_fir"
 tree_id = "r10_h20m"
 radius = 10
 height_m = 20.2
-dbh_cm = 20.3
+dbh_cm = 21.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h20m_d20cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h20m_d22cm_full_growth_data.json"
 twig_set = "twigs"
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h20m"
-twigs = 800
-leaf_area_m2 = 240.6
-leaf_area_target_m2 = 238.4
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 1853
+leaf_area_m2 = 133.6
+leaf_area_target_m2 = 134.8
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 1280
-target.dbh_m = { value = 0.203, p25 = 0.195, p75 = 0.25, inside = true, n = 3 }
+target.dbh_m = { value = 0.216, p25 = 0.205, p75 = 0.224, inside = true, n = 3 }
 target.crown_base_m = { value = 6.0, p25 = 2.842, p75 = 8.581, inside = true, n = 3 }
-target.crown_radius_m = { value = 4.519, p25 = 2.786, p75 = 3.444, inside = false, n = 3 }
+target.crown_radius_m = { value = 4.531, p25 = 2.786, p75 = 3.444, inside = false, n = 3 }
 
 [trees.douglas_fir.r10_h25m]
 species = "douglas_fir"
@@ -518,10 +518,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h25m"
-twigs = 1719
-leaf_area_m2 = 498.9
-leaf_area_target_m2 = 499.0
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 3831
+leaf_area_m2 = 250.3
+leaf_area_target_m2 = 249.5
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 704
 target.dbh_m = { value = 0.299, p25 = 0.281, p75 = 0.338, inside = true, n = 10 }
 target.crown_base_m = { value = 11.5, p25 = 2.75, p75 = 11.88, inside = true, n = 10 }
@@ -540,10 +540,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h30m"
-twigs = 4395
-leaf_area_m2 = 1175.0
-leaf_area_target_m2 = 1172.7
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 8785
+leaf_area_m2 = 586.4
+leaf_area_target_m2 = 586.4
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 560
 target.dbh_m = { value = 0.469, p25 = 0.455, p75 = 0.551, inside = true, n = 31 }
 target.crown_base_m = { value = 16.0, p25 = 3.5, p75 = 10.0, inside = false, n = 31 }
@@ -562,10 +562,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h35m"
-twigs = 5656
-leaf_area_m2 = 1477.7
-leaf_area_target_m2 = 1478.8
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 11019
+leaf_area_m2 = 739.7
+leaf_area_target_m2 = 739.4
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 396
 target.dbh_m = { value = 0.529, p25 = 0.469, p75 = 0.563, inside = true, n = 20 }
 target.crown_base_m = { value = 21.5, p25 = 4.625, p75 = 11.25, inside = false, n = 20 }
@@ -584,10 +584,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h40m"
-twigs = 8864
-leaf_area_m2 = 2346.9
-leaf_area_target_m2 = 2348.2
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 16320
+leaf_area_m2 = 1113.9
+leaf_area_target_m2 = 1174.1
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 354
 target.dbh_m = { value = 0.675, p25 = 0.645, p75 = 0.827, inside = true, n = 0 }
 target.crown_base_m = { value = 27.0, p25 = 3.994, p75 = 12.06, inside = false, n = 1 }
@@ -606,10 +606,10 @@ material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h45m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h45m"
-twigs = 12185
-leaf_area_m2 = 3333.4
-leaf_area_target_m2 = 3333.7
-plan = "unreal_scripts_douglas_fir_dbh_2026-11-14"
+twigs = 16317
+leaf_area_m2 = 1119.7
+leaf_area_target_m2 = 1666.8
+plan = "unreal_scripts_douglas_fir_r11_2026-11-14"
 bones = 321
 target.dbh_m = { value = 0.811, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
 target.crown_base_m = { value = 33.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
@@ -631,7 +631,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 371
 leaf_area_m2 = 6.0
 leaf_area_target_m2 = 5.3
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 2736
 target.dbh_m = { value = 0.038, p25 = 0.029, p75 = 0.038, inside = true, n = 1 }
 target.crown_base_m = { value = 1.5, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
@@ -653,7 +653,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 1942
 leaf_area_m2 = 31.7
 leaf_area_target_m2 = 32.0
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 8752
 target.dbh_m = { value = 0.102, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
 target.crown_base_m = { value = 2.0, p25 = 0.5, p75 = 1.5, inside = false, n = 19 }
@@ -675,7 +675,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 3104
 leaf_area_m2 = 50.6
 leaf_area_target_m2 = 50.4
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 7715
 target.dbh_m = { value = 0.129, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 2.5, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -697,7 +697,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 5566
 leaf_area_m2 = 90.8
 leaf_area_target_m2 = 90.8
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 6555
 target.dbh_m = { value = 0.177, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
 target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
@@ -719,7 +719,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 12414
 leaf_area_m2 = 202.5
 leaf_area_target_m2 = 202.4
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 6896
 target.dbh_m = { value = 0.27, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
 target.crown_base_m = { value = 11.0, p25 = 5.5, p75 = 10.5, inside = false, n = 87 }
@@ -741,7 +741,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 25309
 leaf_area_m2 = 412.8
 leaf_area_target_m2 = 412.9
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 6075
 target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
 target.crown_base_m = { value = 17.0, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
@@ -763,7 +763,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 40008
 leaf_area_m2 = 652.5
 leaf_area_target_m2 = 676.6
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 6134
 target.dbh_m = { value = 0.511, p25 = 0.406, p75 = 0.54, inside = true, n = 4 }
 target.crown_base_m = { value = 23.0, p25 = 12.21, p75 = 20.73, inside = false, n = 4 }
@@ -785,7 +785,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 40022
 leaf_area_m2 = 652.8
 leaf_area_target_m2 = 931.4
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 8184
 target.dbh_m = { value = 0.605, p25 = 0.487, p75 = 0.647, inside = true, n = 0 }
 target.crown_base_m = { value = 26.5, p25 = 16.58, p75 = 28.16, inside = true, n = 0 }
@@ -807,7 +807,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 329
 leaf_area_m2 = 5.4
 leaf_area_target_m2 = 5.3
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 1879
 target.dbh_m = { value = 0.04, p25 = 0.029, p75 = 0.038, inside = false, n = 1 }
 target.crown_base_m = { value = 1.5, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
@@ -829,7 +829,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 1912
 leaf_area_m2 = 31.2
 leaf_area_target_m2 = 31.8
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 11756
 target.dbh_m = { value = 0.101, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
 target.crown_base_m = { value = 1.5, p25 = 0.5, p75 = 1.5, inside = true, n = 19 }
@@ -851,7 +851,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 3284
 leaf_area_m2 = 53.6
 leaf_area_target_m2 = 53.1
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 11099
 target.dbh_m = { value = 0.133, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 3.0, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -873,7 +873,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 5536
 leaf_area_m2 = 90.3
 leaf_area_target_m2 = 90.0
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 9404
 target.dbh_m = { value = 0.176, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
 target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
@@ -895,7 +895,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 12196
 leaf_area_m2 = 198.9
 leaf_area_target_m2 = 198.4
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 8855
 target.dbh_m = { value = 0.267, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
 target.crown_base_m = { value = 10.5, p25 = 5.5, p75 = 10.5, inside = true, n = 87 }
@@ -917,7 +917,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 25219
 leaf_area_m2 = 411.3
 leaf_area_target_m2 = 411.2
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 8388
 target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
 target.crown_base_m = { value = 14.5, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
@@ -939,7 +939,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 40028
 leaf_area_m2 = 652.8
 leaf_area_target_m2 = 670.6
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 7739
 
 [trees.european_beech.r10_h40m]
@@ -958,7 +958,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 40019
 leaf_area_m2 = 652.7
 leaf_area_target_m2 = 952.0
-plan = "unreal_scripts_european_beech_dbh_2026-11-13"
+plan = "unreal_scripts_european_beech_r11_2026-11-14"
 bones = 7741
 
 [trees.european_oak.r07_h05m]
@@ -1226,10 +1226,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h05m"
-twigs = 849
-leaf_area_m2 = 34.0
-leaf_area_target_m2 = 34.0
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 878
+leaf_area_m2 = 16.9
+leaf_area_target_m2 = 17.0
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 1004
 target.dbh_m = { value = 0.064, p25 = 0.039, p75 = 0.048, inside = false, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.27, p75 = 2.129, inside = false, n = 0 }
@@ -1248,10 +1248,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h10m"
-twigs = 927
-leaf_area_m2 = 161.6
-leaf_area_target_m2 = 162.3
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 1821
+leaf_area_m2 = 81.8
+leaf_area_target_m2 = 81.1
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 1221
 target.dbh_m = { value = 0.15, p25 = 0.139, p75 = 0.276, inside = true, n = 14 }
 target.crown_base_m = { value = 2.0, p25 = 3.125, p75 = 6.125, inside = false, n = 14 }
@@ -1270,10 +1270,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h15m"
-twigs = 1474
-leaf_area_m2 = 223.7
-leaf_area_target_m2 = 225.2
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 2077
+leaf_area_m2 = 111.9
+leaf_area_target_m2 = 112.6
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 1868
 target.dbh_m = { value = 0.18, p25 = 0.153, p75 = 0.212, inside = true, n = 54 }
 target.crown_base_m = { value = 5.5, p25 = 4.5, p75 = 7.5, inside = true, n = 54 }
@@ -1292,10 +1292,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h20m"
-twigs = 1850
-leaf_area_m2 = 400.6
-leaf_area_target_m2 = 398.5
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 2691
+leaf_area_m2 = 199.2
+leaf_area_target_m2 = 199.2
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2309
 target.dbh_m = { value = 0.244, p25 = 0.218, p75 = 0.281, inside = true, n = 215 }
 target.crown_base_m = { value = 9.0, p25 = 5.0, p75 = 9.0, inside = true, n = 215 }
@@ -1314,10 +1314,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h25m"
-twigs = 1958
-leaf_area_m2 = 594.7
-leaf_area_target_m2 = 596.1
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 3957
+leaf_area_m2 = 297.9
+leaf_area_target_m2 = 298.1
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2214
 target.dbh_m = { value = 0.303, p25 = 0.276, p75 = 0.338, inside = true, n = 299 }
 target.crown_base_m = { value = 13.0, p25 = 5.5, p75 = 9.5, inside = false, n = 299 }
@@ -1336,10 +1336,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h30m"
-twigs = 3478
-leaf_area_m2 = 1016.7
-leaf_area_target_m2 = 1015.1
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 6997
+leaf_area_m2 = 507.0
+leaf_area_target_m2 = 507.6
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2161
 target.dbh_m = { value = 0.404, p25 = 0.366, p75 = 0.453, inside = true, n = 161 }
 target.crown_base_m = { value = 18.0, p25 = 7.0, p75 = 11.5, inside = false, n = 161 }
@@ -1358,10 +1358,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h35m"
-twigs = 4928
-leaf_area_m2 = 1440.2
-leaf_area_target_m2 = 1437.9
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 9947
+leaf_area_m2 = 719.3
+leaf_area_target_m2 = 719.0
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2123
 target.dbh_m = { value = 0.487, p25 = 0.432, p75 = 0.512, inside = true, n = 88 }
 target.crown_base_m = { value = 22.5, p25 = 10.5, p75 = 14.5, inside = false, n = 88 }
@@ -1380,10 +1380,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r07_h40m"
-twigs = 6650
-leaf_area_m2 = 1975.4
-leaf_area_target_m2 = 1973.6
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 13286
+leaf_area_m2 = 986.5
+leaf_area_target_m2 = 986.8
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2199
 target.dbh_m = { value = 0.578, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
 target.crown_base_m = { value = 27.0, p25 = 12.25, p75 = 15.75, inside = false, n = 16 }
@@ -1402,10 +1402,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h05m"
-twigs = 632
-leaf_area_m2 = 34.8
-leaf_area_target_m2 = 34.5
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 663
+leaf_area_m2 = 17.4
+leaf_area_target_m2 = 17.3
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 877
 target.dbh_m = { value = 0.064, p25 = 0.039, p75 = 0.048, inside = false, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.27, p75 = 2.129, inside = false, n = 0 }
@@ -1424,10 +1424,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h10m"
-twigs = 1257
-leaf_area_m2 = 167.1
-leaf_area_target_m2 = 168.0
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 1843
+leaf_area_m2 = 84.5
+leaf_area_target_m2 = 84.0
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 1457
 target.dbh_m = { value = 0.152, p25 = 0.139, p75 = 0.276, inside = true, n = 14 }
 target.crown_base_m = { value = 1.0, p25 = 3.125, p75 = 6.125, inside = false, n = 14 }
@@ -1446,10 +1446,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h15m"
-twigs = 2003
-leaf_area_m2 = 225.3
-leaf_area_target_m2 = 225.2
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 2115
+leaf_area_m2 = 113.2
+leaf_area_target_m2 = 112.6
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2600
 target.dbh_m = { value = 0.179, p25 = 0.153, p75 = 0.212, inside = true, n = 54 }
 target.crown_base_m = { value = 3.0, p25 = 4.5, p75 = 7.5, inside = false, n = 54 }
@@ -1468,10 +1468,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h20m"
-twigs = 2498
-leaf_area_m2 = 392.5
-leaf_area_target_m2 = 391.6
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 2592
+leaf_area_m2 = 194.6
+leaf_area_target_m2 = 195.8
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 3634
 target.dbh_m = { value = 0.241, p25 = 0.218, p75 = 0.281, inside = true, n = 215 }
 target.crown_base_m = { value = 5.5, p25 = 5.0, p75 = 9.0, inside = true, n = 215 }
@@ -1490,10 +1490,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h25m"
-twigs = 2933
-leaf_area_m2 = 643.3
-leaf_area_target_m2 = 645.6
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 4328
+leaf_area_m2 = 324.0
+leaf_area_target_m2 = 322.8
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 3706
 target.dbh_m = { value = 0.317, p25 = 0.276, p75 = 0.338, inside = true, n = 299 }
 target.crown_base_m = { value = 8.5, p25 = 5.5, p75 = 9.5, inside = true, n = 299 }
@@ -1512,10 +1512,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h30m"
-twigs = 3391
-leaf_area_m2 = 1020.9
-leaf_area_target_m2 = 1021.0
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 6840
+leaf_area_m2 = 510.5
+leaf_area_target_m2 = 510.5
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 3381
 target.dbh_m = { value = 0.405, p25 = 0.366, p75 = 0.453, inside = true, n = 161 }
 target.crown_base_m = { value = 13.5, p25 = 7.0, p75 = 11.5, inside = false, n = 161 }
@@ -1534,10 +1534,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h35m"
-twigs = 4778
-leaf_area_m2 = 1422.9
-leaf_area_target_m2 = 1423.0
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 9655
+leaf_area_m2 = 711.9
+leaf_area_target_m2 = 711.5
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 3159
 target.dbh_m = { value = 0.485, p25 = 0.432, p75 = 0.512, inside = true, n = 88 }
 target.crown_base_m = { value = 18.5, p25 = 10.5, p75 = 14.5, inside = false, n = 88 }
@@ -1556,10 +1556,10 @@ material = "/Game/Generated/Trees/Materials/norway_spruce/MI_norway_spruce_bark"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/norway_spruce/SM_NorwaySpruce_r10_h40m"
-twigs = 6749
-leaf_area_m2 = 1993.1
-leaf_area_target_m2 = 1991.4
-plan = "unreal_scripts_norway_spruce_dbh_2026-11-13"
+twigs = 13850
+leaf_area_m2 = 996.8
+leaf_area_target_m2 = 995.7
+plan = "unreal_scripts_norway_spruce_r11_2026-11-14"
 bones = 2969
 target.dbh_m = { value = 0.581, p25 = 0.527, p75 = 0.567, inside = false, n = 16 }
 target.crown_base_m = { value = 23.0, p25 = 12.25, p75 = 15.75, inside = false, n = 16 }
@@ -1581,7 +1581,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 352
 leaf_area_m2 = 11.5
 leaf_area_target_m2 = 7.0
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 536
 target.dbh_m = { value = 0.044, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
@@ -1603,7 +1603,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 411
 leaf_area_m2 = 30.0
 leaf_area_target_m2 = 30.0
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 546
 target.dbh_m = { value = 0.103, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 5.0, p25 = 5.0, p75 = 7.5, inside = true, n = 90 }
@@ -1625,7 +1625,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 262
 leaf_area_m2 = 61.7
 leaf_area_target_m2 = 61.0
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 298
 target.dbh_m = { value = 0.154, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 10.5, p25 = 7.5, p75 = 11.0, inside = true, n = 643 }
@@ -1647,7 +1647,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 286
 leaf_area_m2 = 123.8
 leaf_area_target_m2 = 123.0
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 343
 target.dbh_m = { value = 0.231, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 14.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
@@ -1669,7 +1669,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 365
 leaf_area_m2 = 223.1
 leaf_area_target_m2 = 222.1
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 340
 target.dbh_m = { value = 0.324, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 17.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
@@ -1691,7 +1691,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h
 twigs = 542
 leaf_area_m2 = 325.6
 leaf_area_target_m2 = 326.2
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 410
 target.dbh_m = { value = 0.404, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 19.5, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
@@ -1713,7 +1713,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 363
 leaf_area_m2 = 12.4
 leaf_area_target_m2 = 6.5
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 551
 target.dbh_m = { value = 0.041, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
@@ -1735,7 +1735,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 568
 leaf_area_m2 = 30.1
 leaf_area_target_m2 = 29.7
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 783
 target.dbh_m = { value = 0.102, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 3.5, p25 = 5.0, p75 = 7.5, inside = false, n = 90 }
@@ -1757,7 +1757,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 704
 leaf_area_m2 = 61.8
 leaf_area_target_m2 = 61.9
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 857
 target.dbh_m = { value = 0.156, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 6.5, p25 = 7.5, p75 = 11.0, inside = false, n = 643 }
@@ -1779,7 +1779,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 742
 leaf_area_m2 = 121.4
 leaf_area_target_m2 = 122.2
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 903
 target.dbh_m = { value = 0.23, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 7.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
@@ -1801,7 +1801,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 692
 leaf_area_m2 = 217.9
 leaf_area_target_m2 = 220.5
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 889
 target.dbh_m = { value = 0.322, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 6.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
@@ -1823,7 +1823,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h
 twigs = 720
 leaf_area_m2 = 311.6
 leaf_area_target_m2 = 309.6
-plan = "unreal_scripts_scots_pine_dbh_2026-11-14"
+plan = "unreal_scripts_scots_pine_r11_2026-11-14"
 bones = 1099
 target.dbh_m = { value = 0.392, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 4.0, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
