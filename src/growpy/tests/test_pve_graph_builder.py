@@ -475,7 +475,8 @@ class TestGenerateScript:
 
         import pytest
 
-        body = generate_pve_graph_builder_script(tmp_path, [_graph()]).read_text(encoding="utf-8")
+        path = generate_pve_graph_builder_script(tmp_path, [_graph()])
+        body = path.read_text(encoding="utf-8")
         loop = "built = []" + body.split("built = []", 1)[1]
         eal = mock.Mock(does_asset_exist=lambda p: p.endswith("/PVG_X"))
         spec = {"graph_folder": "/Game/G", "graph_name": "PVG_X"}
@@ -483,7 +484,8 @@ class TestGenerateScript:
         def build(_spec):
             raise RuntimeError("bark material did not resolve")
 
-        ns = {"GRAPHS": [spec], "build": build, "eal": eal, "editors": mock.Mock(), "unreal": mock.Mock()}
+        ns = {"GRAPHS": [spec], "build": build, "eal": eal}
+        ns.update(editors=mock.Mock(), unreal=mock.Mock())
         with pytest.raises(RuntimeError, match="bark material"):
             exec(loop, ns)
         eal.delete_asset.assert_called_once_with("/Game/G/PVG_X")
