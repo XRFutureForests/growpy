@@ -67,8 +67,54 @@ def _parse_value(text: str):
         return text
 
 
+# per-species surround tables growpy's config loader reads (config/core.py)
+CREATABLE_TABLES = (
+    "surround.freeze_height_per_species",
+    "surround.freeze_height_per_species_radius",
+    "surround.grow_per_species",
+    "surround.height_per_species",
+    "surround.density_per_species",
+    "surround.density_per_species_radius",
+)
+
+
+def set_table_key(text: str, section: str, key: str, value: str) -> str:
+    """Set ``key = value`` inside ``[section]`` (added after its header if absent)."""
+    lines = text.splitlines(keepends=True)
+    head = f"[{section}]"
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == head), None)
+    if start is None:
+        # a per-species table the config loader reads (core.py) may be absent from the
+        # file (cleared 2026-09-18); only those may be created, anything else is a typo
+        if ".".join(section.split(".")[:2]) not in CREATABLE_TABLES:
+            raise SystemExit(f"table [{section}] not found -- refusing to guess")
+        eol = "\r\n" if text.endswith("\r\n") else "\n"
+        return text.rstrip() + f"{eol}{eol}{head}{eol}{key} = {value}{eol}"
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].lstrip().startswith("[")),
+        len(lines),
+    )
+    eol = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    for i in range(start + 1, end):
+        if lines[i].split("=", 1)[0].strip() == key and "=" in lines[i]:
+            lines[i] = f"{key} = {value}{eol}"
+            return "".join(lines)
+    lines.insert(start + 1, f"{key} = {value}{eol}")
+    return "".join(lines)
+
+
+# --table SECTION.KEY=VALUE: the config file each top-level section lives in
+TABLE_FILES = {"surround": "surround.toml", "export": "forest.toml",
+               "forest": "forest.toml", "unreal": "unreal.toml"}  # fmt: skip
+
+
 def build_seed_config(
-    cfg: Path, seed: int, out_dir: Path, radii: list[float] | None
+    cfg: Path,
+    seed: int,
+    out_dir: Path,
+    radii: list[float] | None,
+    full_export: bool = False,
+    tables: dict | None = None,
 ) -> None:
     if cfg.exists():
         shutil.rmtree(cfg)
@@ -82,15 +128,29 @@ def build_seed_config(
     text = _set_scalar(text, "output_dir", '"' + out_dir.as_posix() + '"')
     general.write_text(text, encoding="utf-8")
 
-    forest = cfg / "forest.toml"
-    text = _set_scalar(forest.read_text(encoding="utf-8"), "mode", '"growth_json_only"')
-    forest.write_text(text, encoding="utf-8")
+    if not full_export:  # full export keeps the production mode and its export cut
+        forest = cfg / "forest.toml"
+        text = _set_scalar(
+            forest.read_text(encoding="utf-8"), "mode", '"growth_json_only"'
+        )
+        forest.write_text(text, encoding="utf-8")
 
-    unreal = cfg / "unreal.toml"
-    text = _strip_tables(unreal.read_text(encoding="utf-8"), THINNING_TABLES)
-    text = _set_scalar(text, "min_branch_radius_fraction", "0.0")
-    text = _set_scalar(text, "min_point_spacing", "0.0")
-    unreal.write_text(text, encoding="utf-8")
+        unreal = cfg / "unreal.toml"
+        text = _strip_tables(unreal.read_text(encoding="utf-8"), THINNING_TABLES)
+        text = _set_scalar(text, "min_branch_radius_fraction", "0.0")
+        text = _set_scalar(text, "min_point_spacing", "0.0")
+        unreal.write_text(text, encoding="utf-8")
+
+    for dotted, value in (tables or {}).items():
+        section, _, key = dotted.rpartition(".")
+        top = section.split(".", 1)[0]
+        if top not in TABLE_FILES or not key:
+            raise SystemExit(f"--table {dotted}: unknown section {top!r}")
+        path = cfg / TABLE_FILES[top]
+        path.write_text(
+            set_table_key(path.read_text(encoding="utf-8"), section, key, value),
+            encoding="utf-8",
+        )
 
     if radii:
         surround = cfg / "surround.toml"
@@ -102,7 +162,14 @@ def build_seed_config(
         surround.write_text(text, encoding="utf-8")
 
 
-def verify_seed_config(cfg: Path, seed: int, out_dir: Path, root: Path) -> dict:
+def verify_seed_config(
+    cfg: Path,
+    seed: int,
+    out_dir: Path,
+    root: Path,
+    full_export: bool = False,
+    tables: dict | None = None,
+) -> dict:
     """Read the seed's config back through growpy itself and refuse to run if it is not
     what was meant (A35 in ``sweep_surround_density``: a sweep once edited the wrong
     table and produced plausible nonsense)."""
@@ -116,6 +183,8 @@ def verify_seed_config(cfg: Path, seed: int, out_dir: Path, root: Path) -> dict:
         "  'per_species_seed': c.random_seed_per_species,\n"
         "  'mode': c.export_mode, 'output_dir': str(c.output_dir),\n"
         "  'radii': c.surround_radii,\n"
+        "  'freeze': c.surround_freeze_height_per_species,\n"
+        "  'freeze_r': c.surround_freeze_height_per_species_radius,\n"
         "  'fraction': s.get('min_branch_radius_fraction'),\n"
         "  'spacing': s.get('min_point_spacing'),\n"
         "  'tables': [k for k in s if k.endswith('_per_species') and s[k]]}))\n"
@@ -135,15 +204,25 @@ def verify_seed_config(cfg: Path, seed: int, out_dir: Path, root: Path) -> dict:
     problems = []
     if got["seed"] != seed or got["per_species_seed"]:
         problems.append(f"seed {got['seed']} / per species {got['per_species_seed']}")
-    if got["mode"] != "growth_json_only":
-        problems.append(f"export mode {got['mode']}")
+    if (got["mode"] == "growth_json_only") == full_export:
+        problems.append(f"export mode {got['mode']} (full export {full_export})")
     if Path(got["output_dir"]).resolve() != out_dir.resolve():
         problems.append(f"output_dir {got['output_dir']}")
-    if got["fraction"] or got["spacing"] or got["tables"]:
+    if not full_export and (got["fraction"] or got["spacing"] or got["tables"]):
         problems.append(
             f"thinning on: fraction {got['fraction']}, spacing {got['spacing']}, "
             f"tables {got['tables']}"
         )
+    for dotted, value in (tables or {}).items():  # read the freeze values back
+        parts = dotted.split(".")
+        if parts[:2] == ["surround", "freeze_height_per_species"]:
+            seen = got["freeze"].get(parts[2])
+        elif parts[:2] == ["surround", "freeze_height_per_species_radius"]:
+            seen = got["freeze_r"].get(parts[2], {}).get(parts[3])
+        else:
+            continue
+        if seen is None or float(seen) != float(value):
+            problems.append(f"--table {dotted}={value} reads back as {seen}")
     if problems:
         raise SystemExit(f"{cfg} is wrong:\n  " + "\n  ".join(problems))
     return got
@@ -230,6 +309,20 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=REPO / "data" / "output" / "regrow",
     )
+    parser.add_argument(
+        "--full-export",
+        action="store_true",
+        help="production export mode and export cut (twig placements, USD), not the "
+        "unthinned growth JSON only: for crown metrics on what ships",
+    )
+    parser.add_argument(
+        "--table",
+        action="append",
+        default=[],
+        metavar="SECTION.KEY=VALUE",
+        help="config table value, e.g. "
+        "surround.freeze_height_per_species_radius.norway_spruce.r07=20",
+    )
     parser.add_argument("--dry-run", action="store_true", help="configs only, no run")
     args = parser.parse_args(argv)
 
@@ -239,6 +332,7 @@ def main(argv: list[str] | None = None) -> int:
         key, _, value = item.partition("=")
         overrides[key.strip()] = _parse_value(value.strip())
     radii = [float(r) for r in args.radii.split(",")] if args.radii else None
+    tables = dict(t.split("=", 1) for t in args.table)
     arm_dir = (args.out_root / species_key(args.species) / args.arm).resolve()
     seed_dirs = [arm_dir / f"seed{s}" for s in seeds]
 
@@ -246,10 +340,14 @@ def main(argv: list[str] | None = None) -> int:
     root = arm_dir / "root" if overrides else REPO
     knobs = build_sandbox(root, args.species, overrides) if overrides else {}
     for seed, seed_dir in zip(seeds, seed_dirs, strict=True):
-        build_seed_config(seed_dir / "config", seed, seed_dir / "forest", radii)
+        build_seed_config(
+            seed_dir / "config", seed, seed_dir / "forest", radii,
+            args.full_export, tables,
+        )  # fmt: skip
         got = verify_seed_config(
-            seed_dir / "config", seed, seed_dir / "forest", root
-        )
+            seed_dir / "config", seed, seed_dir / "forest", root, args.full_export,
+            tables,
+        )  # fmt: skip
         print(f"seed {seed}: {got}")
     record = {
         "species": args.species,
@@ -257,6 +355,8 @@ def main(argv: list[str] | None = None) -> int:
         "seeds": seeds,
         "preset_overrides": knobs,
         "radii": radii or "production",
+        "full_export": args.full_export,
+        "tables": tables,
         "max_height": args.max_height,
         "started": datetime.now().isoformat(timespec="seconds"),
     }
