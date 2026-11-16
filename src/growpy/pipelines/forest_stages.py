@@ -786,6 +786,8 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
 
     settings = _growth_data_json_settings()
     fraction = _min_branch_radius_fraction_for(settings, ctx.species_name)
+    # 0 = no bound on the fraction's cut (only beech is tabled, owner 2026-11-16)
+    cap = _per_species_setting(settings, "max_branch_cut_radius", ctx.species_name, 0)
     spacing = _min_point_spacing_for(settings, ctx.species_name)
     crown_base_cut = _crown_base_cut_for(
         settings, ctx.species_name, ctx.twig_placements
@@ -805,6 +807,7 @@ def _emit_growth_data_json(ctx: TreeExportContext) -> bool:
                 min_branch_radius_fraction=fraction,
                 min_point_spacing=spacing,
                 crown_base_cut_m=crown_base_cut,
+                max_branch_cut_radius=cap or None,
             )
     except Exception as err:
         logger.warning(

@@ -281,3 +281,21 @@ class TestCrownBaseCut:
             1.5,
             2.5,
         ]
+
+
+def test_max_branch_cut_radius_bounds_the_fraction_cut(monkeypatch):
+    """Owner 2026-11-16: beech is cut at 0.07 x trunk base radius, at most 12.5 mm."""
+    from growpy.io.unreal import pve_growth_data_exporter as m
+
+    seen = []
+    monkeypatch.setattr(m, "_trunk_base_radius", lambda data: 0.30)
+    monkeypatch.setattr(
+        m, "_decimate_growth_data", lambda data, t: seen.append(t) or data
+    )
+    pts = [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0)]
+    skel = _make_skeleton(points=pts, poly_lines=[[0, 1]])
+    m.build_growth_data_json(skel, min_branch_radius_fraction=0.07)
+    m.build_growth_data_json(
+        skel, min_branch_radius_fraction=0.07, max_branch_cut_radius=0.0125
+    )
+    assert [round(t, 4) for t in seen] == [0.021, 0.0125]

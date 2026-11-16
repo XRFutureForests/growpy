@@ -584,6 +584,7 @@ def build_growth_data_json(
     min_branch_radius_fraction: float = 0.0,
     min_point_spacing: float = 0.0,
     crown_base_cut_m: float | None = None,
+    max_branch_cut_radius: float | None = None,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -621,6 +622,10 @@ def build_growth_data_json(
             (metres, with its subtree) before resampling -- the measured crown
             base of the tree's own twig assembly, so a conifer's self-pruned
             stubs carry no foliage (XRFF-476). None keeps every branch.
+        max_branch_cut_radius: Upper bound in metres on the fraction's cut, so a
+            big tree is not cut above the largest compound part that replaces
+            what is removed (beech: 0.07 x base radius, at most 12.5 mm, i.e. a
+            25 mm cut diameter; owner 2026-11-16). None: no bound.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -782,9 +787,10 @@ def build_growth_data_json(
     }
     threshold = min_branch_radius
     if min_branch_radius_fraction > 0.0:
-        threshold = max(
-            threshold, _trunk_base_radius(built) * min_branch_radius_fraction
-        )
+        cut = _trunk_base_radius(built) * min_branch_radius_fraction
+        if max_branch_cut_radius is not None:
+            cut = min(cut, max_branch_cut_radius)
+        threshold = max(threshold, cut)
     built = _decimate_growth_data(built, threshold)
     if crown_base_cut_m is not None:
         built = _prune_below_height(built, crown_base_cut_m)
@@ -803,6 +809,7 @@ def generate_growth_data_from_grove(
     min_branch_radius_fraction: float = 0.0,
     min_point_spacing: float = 0.0,
     crown_base_cut_m: float | None = None,
+    max_branch_cut_radius: float | None = None,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -826,6 +833,8 @@ def generate_growth_data_from_grove(
             this path length apart. See ``build_growth_data_json``.
         crown_base_cut_m: Drop side branches attached below this height. See
             ``build_growth_data_json``.
+        max_branch_cut_radius: Upper bound on the fraction's cut, metres. See
+            ``build_growth_data_json``.
 
     Returns:
         The generated growth-data dictionary.
@@ -843,6 +852,7 @@ def generate_growth_data_from_grove(
         min_branch_radius_fraction=min_branch_radius_fraction,
         min_point_spacing=min_point_spacing,
         crown_base_cut_m=crown_base_cut_m,
+        max_branch_cut_radius=max_branch_cut_radius,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

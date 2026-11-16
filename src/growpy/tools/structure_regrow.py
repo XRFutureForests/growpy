@@ -53,6 +53,7 @@ THINNING_TABLES = (
     "unreal.growth_data_json.min_branch_radius_fraction_per_species",
     "unreal.growth_data_json.min_point_spacing_per_species",
     "unreal.growth_data_json.crown_base_cut_margin_per_species",
+    "unreal.growth_data_json.max_branch_cut_radius_per_species",
 )
 
 

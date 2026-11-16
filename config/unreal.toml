@@ -262,10 +262,23 @@ common_ash = 0.02
 # and <= 22,342 at h25 (the 0.06 catalog opened at 27,526-29,828), keeping
 # 3,322-4,403 branches over 6-7 generations. Measured offline on the
 # undecimated run, data/tmp/subset_2026-09-16/gate_grid_beech.txt.
-european_beech = 0.03
+# 2026-11-16 (owner, after the 20 m cut sheet): 0.07, so the skeleton keeps the limbs that
+# carry the crown's shape and the twig catalog's compounds replace everything thinner.
+# E90 per-diameter table: a 20-25 m Grove beech carried 564-877 second-order axes under
+# 0.65 cm and 37-70 at 0.65-1.5 cm, against 7.5 and 21.5 on destructively measured
+# Belgian beech. Cut diameter about 15 mm at 20 m; bounded at 25 mm by
+# max_branch_cut_radius_per_species below (the largest compound size, L 12-25 mm).
+european_beech = 0.07
 european_oak = 0.02
 silver_birch = 0.02
 small_leaved_linden = 0.02
+
+# --- per-species bound on that cut, metres of radius (owner 2026-11-16) ---
+# The fraction scales with the trunk, so a 35-40 m beech would be cut at 4-5 cm.
+# The cut is bounded by the largest twig-catalog compound (L bin, 12-25 mm cut
+# diameter): 0.0125 m radius = 25 mm. Not listed: no bound.
+[unreal.growth_data_json.max_branch_cut_radius_per_species]
+european_beech = 0.0125
 
 # --- per-species point spacing (XRFF-471, 2026-09-16) ---
 # Overrides [unreal.growth_data_json] min_point_spacing above, keyed by
