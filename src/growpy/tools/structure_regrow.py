@@ -21,10 +21,11 @@ The radius set stays the production one unless ``--radii`` is given: Grove's RNG
 global, so another radius set changes every radius's draws (A28 in
 ``sweep_surround_density``).
 
-A ``--set <knob>_curve=<json>`` ramp goes through the per-cycle curve path, which on its own
-perturbs growth from the first milestone (E96, 2026-11-16: a constant 10 -> 10 m distance
-curve already differs from the plain control at h05). Compare a curve arm against a
-constant-curve control (start = end, same easing), never against the plain control.
+A ``surround_*`` curve (``--set surround_distance_curve=...``) perturbs growth like a reseed
+even at a constant value (E96, 2026-11-16: a constant 10 -> 10 m distance curve already
+differs from the plain control at h05); ``bend_mass_curve`` is clean (E89b: a constant curve
+gives 16 of 16 trees bit-identical to the control). Give each new curve key one
+constant-curve control (start = end, same easing) before reading its effect.
 
 Preset knobs (``--set key=value``, shallow, as ``config/preset_patches.json``) go into a
 sandbox project root (``GROWPY_PROJECT_ROOT``): ``data/assets/presets`` is copied and
