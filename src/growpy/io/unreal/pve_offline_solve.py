@@ -44,6 +44,7 @@ from growpy.io.unreal.pve_graph_builder import (
     ConditionSpec,
     DistributorSpec,
     FoliageLayer,
+    PaletteAttributes,
     PaletteEntry,
 )
 
@@ -503,6 +504,87 @@ def _tier_index(names: Sequence[str], tier: str) -> int:
     return matches[0]
 
 
+def size_bin_targets(
+    growth_json: Path, spec: CompoundSpec, names: Sequence[str]
+) -> tuple[float | None, ...]:
+    """Scale target per fill part so the picker's nearest-target rule splits
+    host branches exactly at the size-bin edges; ``None`` for a part whose bin
+    no host of this tree reaches (its upper edge is under the thinnest host).
+
+    The picker takes the entry nearest the sample's normalised radius, so the
+    split between two bins falls at the midpoint of their targets. In the
+    tree's own Scale range (0 = thinnest host), targets are chained from the
+    first reachable bin's middle, or 0 if that lies below the thinnest host:
+    t1 = 2 * edge - t0, and so on.
+    """
+    from growpy.io.unreal.pve_distributor_model import scale_range_cm
+
+    lo_cm, hi_cm = scale_range_cm(
+        growth_json, spec.fill_relative_start, spec.fill_relative_end
+    )
+
+    def norm(mm: float) -> float:
+        return (mm / 20.0 - lo_cm) / (hi_cm - lo_cm)
+
+    bins = [b for b in spec.size_bins_mm if norm(b[2]) > 0.0]
+    if not bins:
+        raise ValueError(
+            f"{growth_json}: every host is thicker than {spec.size_bins_mm}"
+        )
+    by_bin = {bins[0][0]: max(norm((bins[0][1] + bins[0][2]) / 2.0), 0.0)}
+    for (_, _, edge), (name, lo, hi) in zip(bins, bins[1:], strict=False):
+        t = 2.0 * norm(edge) - by_bin[next(reversed(by_bin))]
+        if not norm(lo) <= t < norm(hi) or t > 1.0:
+            raise ValueError(
+                f"size bins {spec.size_bins_mm}: no chained target fits "
+                f"bin {name!r} "
+                f"on {growth_json} ({t:.3f} of its Scale range); make the bins more even"
+            )
+        by_bin[name] = t
+    return tuple(
+        next((t for b, t in by_bin.items() if f"_{b}_p" in n), None) for n in names
+    )
+
+
+def solve_compound_spacing(
+    growth_json: Path,
+    base: DistributorSpec,
+    names: Sequence[str],
+    meshes: Sequence[str],
+    areas: Sequence[float],
+    spec: CompoundSpec,
+    longest_branch_m: float,
+    target_m2: float,
+) -> CompoundLayout:
+    """The compound layout whose fill spacing lands its predicted leaf area
+    nearest ``target_m2`` (bisection on log spacing; area falls with spacing).
+    When the tip caps and apex alone exceed the target, the widest spacing
+    (density 2) is returned and a warning names the overshoot."""
+    span = spec.fill_relative_end - spec.fill_relative_start
+
+    def at(spacing: float) -> CompoundLayout:
+        return compound_layout(
+            growth_json, base, names, meshes, areas,
+            dataclasses.replace(spec, fill_spacing_m=spacing), longest_branch_m,
+        )  # fmt: skip
+
+    lo, hi = math.log(0.02), math.log(max(longest_branch_m * span / 2.0, 0.03))
+    best = at(math.exp(hi))
+    if best.area_m2 > target_m2:
+        logger.warning(
+            "%s: caps + apex + sparsest fill give %.1f m2 over the %.1f m2 target",
+            growth_json, best.area_m2, target_m2,
+        )  # fmt: skip
+        return best
+    for _ in range(14):
+        mid = (lo + hi) / 2.0
+        layout = at(math.exp(mid))
+        if abs(layout.area_m2 - target_m2) < abs(best.area_m2 - target_m2):
+            best = layout
+        lo, hi = (mid, hi) if layout.area_m2 > target_m2 else (lo, mid)
+    return best
+
+
 def compound_layout(
     growth_json: Path,
     base: DistributorSpec,
@@ -528,7 +610,13 @@ def compound_layout(
     )
     from growpy.io.unreal.pve_graph_plan import graded_palette
 
-    fill_idx = [_tier_index(names, t) for t in spec.fill_tiers]
+    if spec.size_bins_mm:
+        bins = [b[0] for b in spec.size_bins_mm]
+        fill_idx = [
+            i for i, n in enumerate(names) if any(f"_{b}_p" in n for b in bins)
+        ]
+    else:
+        fill_idx = [_tier_index(names, t) for t in spec.fill_tiers]
     fill_meshes = [meshes[i] for i in fill_idx]
     fill_areas = [areas[i] for i in fill_idx]
     span = spec.fill_relative_end - spec.fill_relative_start
@@ -543,10 +631,22 @@ def compound_layout(
         generation_band=(spec.fill_generation_start, None),
     )
     fill_placements = simulate_placements(growth_json, fill_probe)
-    targets = quantile_targets(
-        [p.branch_scale for p in fill_placements], len(fill_meshes)
-    )
-    palette = graded_palette(fill_meshes, fill_areas, targets)
+    if spec.size_bins_mm:
+        # targets in name order, not graded_palette's leaf-area order
+        targets = size_bin_targets(growth_json, spec, [names[i] for i in fill_idx])
+        fill_idx = [i for i, t in zip(fill_idx, targets, strict=True) if t is not None]
+        targets = [t for t in targets if t is not None]
+        fill_meshes = [meshes[i] for i in fill_idx]
+        fill_areas = [areas[i] for i in fill_idx]
+        palette = tuple(
+            PaletteEntry(mesh=m, attributes=PaletteAttributes(scale=t))
+            for m, t in zip(fill_meshes, targets, strict=True)
+        )
+    else:
+        targets = quantile_targets(
+            [p.branch_scale for p in fill_placements], len(fill_meshes)
+        )
+        palette = graded_palette(fill_meshes, fill_areas, targets)
     conditions = ConditionSpec(
         scale=ConditionInfluence(weight=spec.scale_weight),
         minimum_candidates=spec.minimum_candidates,

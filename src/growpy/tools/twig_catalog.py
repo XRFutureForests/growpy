@@ -3,6 +3,7 @@
     growpy-twig-catalog seed european_beech [norway_spruce ...]   # entries from today's palettes
     growpy-twig-catalog build                                     # check every entry, write catalog.toml
     growpy-twig-catalog check
+    growpy-twig-catalog palette european_beech                    # sized compounds -> one PVE palette
 
 An entry is a folder ``data/input/twigs/<id>/`` with a small tracked ``twig.toml``:
 
@@ -165,6 +166,53 @@ def entries_for(species: str, palette: str, catalog: Path = CATALOG) -> list[str
     )
 
 
+def merge_palette(species: str, root: Path = ROOT, assets: Path = ASSETS) -> Path:
+    """Write ``compound_parts/<species>_pve_palette.json`` from the catalog's sized compounds.
+
+    Every compound entry with a size bin of :data:`SIZE_BINS_MM` is copied in as
+    ``<species>_compound_<bin>_pNN`` (static, skeletal and leaf-area files), so one PVE palette
+    holds all bins and the plan's ``size_bins_mm`` fill picks one per host branch (XRFF-685).
+    The manifest it replaces, if unbinned, is kept beside it as ``*.unbinned.json``.
+    """
+    import shutil
+
+    bins = SIZE_BINS_MM[species]
+    out_dir = assets / "compound_parts"
+    picked = []
+    for folder in sorted(root.iterdir()):
+        if not (folder / "twig.toml").is_file():
+            continue
+        e = read_entry(folder)
+        if e.get("species") == species and e.get("part_kind") == "compound" and e.get("size_bin") in bins:
+            picked.append(e)  # fmt: skip
+    if not picked:
+        raise FileNotFoundError(f"no sized compound entries for {species} under {root}")
+    prototypes = []
+    for e in sorted(picked, key=lambda e: (list(bins).index(e["size_bin"]), e["source_ref"])):
+        src = assets / e["source_ref"]
+        tier = src.name.removeprefix(f"{species}_compound_").removesuffix("_static.usda")
+        bake = json.loads((src.parent / f"{species}_pve_palette.json").read_text(encoding="utf-8"))
+        proto = next(p for p in bake["prototypes"] if Path(p["file"]).name == src.name)
+        name = f"{species}_compound_{e['size_bin']}_{tier}"
+        for suffix in ("_static.usda", "_skeletal.usda", "_leaf_area_geom.json"):
+            part = src.parent / f"{species}_compound_{tier}{suffix}"
+            if part.is_file():
+                shutil.copy2(part, out_dir / f"{name}{suffix}")
+        prototypes.append({
+            **proto, "name": name, "file": f"{name}_static.usda",
+            "skeletal_file": f"{name}_skeletal.usda", "size_bin": e["size_bin"],
+            "cut_diameter_mm": list(bins[e["size_bin"]]), "catalog_id": e["id"],
+        })  # fmt: skip
+    manifest = out_dir / f"{species}_pve_palette.json"
+    if manifest.is_file() and "size_bins_mm" not in json.loads(manifest.read_text(encoding="utf-8")):
+        shutil.copy2(manifest, manifest.with_suffix(".unbinned.json"))
+    manifest.write_text(json.dumps({
+        "schema": 1, "species": species, "size_bins_mm": {k: list(v) for k, v in bins.items()},
+        "merged_by": "growpy-twig-catalog palette", "prototypes": prototypes,
+    }, indent=1), encoding="utf-8")  # fmt: skip
+    return manifest
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -172,7 +220,12 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("species", nargs="+", help="standardized names, e.g. european_beech")
     sub.add_parser("build", help="check every entry and write catalog.toml")
     sub.add_parser("check", help="list entry problems")
+    p = sub.add_parser("palette", help="merge a species' sized compounds into its PVE palette")
+    p.add_argument("species", help="a species of SIZE_BINS_MM, e.g. european_beech")
     args = parser.parse_args(argv)
+    if args.command == "palette":
+        print(merge_palette(args.species))
+        return 0
     if args.command == "seed":
         for sp in args.species:
             made = 0

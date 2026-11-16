@@ -428,6 +428,13 @@ class CompoundSpec:
     layer puts one small part on every branch end; an APEX layer puts one
     mid-size part on the leader. Tiers are named by the bake's ``pNN`` suffix,
     ascending in span.
+
+    ``size_bins_mm`` (XRFF-685, owner 2026-11-16) replaces the span grading:
+    the fill wears every part named ``<bin>_pNN`` (the twig catalog's merged
+    palette) and picks the bin whose cut-diameter range holds the host branch
+    diameter; ``fill_tiers`` is then unused. ``solve_to_target`` solves the fill
+    spacing so the tree's predicted leaf area lands on its Forrester target
+    (times fullness) instead of keeping ``fill_spacing_m``.
     """
 
     fill_relative_start: float = 0.15
@@ -440,8 +447,18 @@ class CompoundSpec:
     scale_weight: float = 1.0
     minimum_candidates: int = 1
     cutoff_threshold: float = 0.1
+    size_bins_mm: tuple[tuple[str, float, float], ...] = ()
+    solve_to_target: bool = False
 
     def __post_init__(self) -> None:
+        edges = [(lo, hi) for _, lo, hi in self.size_bins_mm]
+        if any(lo >= hi for lo, hi in edges) or any(
+            a[1] != b[0] for a, b in zip(edges, edges[1:], strict=False)
+        ):
+            raise ValueError(
+                "size_bins_mm must be ascending, contiguous ranges, "
+                f"got {self.size_bins_mm}"
+            )
         if not 0.0 <= self.fill_relative_start < self.fill_relative_end <= 1.0:
             raise ValueError(
                 "compound fill needs 0 <= fill_relative_start < fill_relative_end "
@@ -1029,6 +1046,18 @@ def _compound(data: dict[str, Any] | None) -> CompoundSpec | None:
     for key in ("cap_tier", "apex_tier"):
         if key in data:
             kwargs[key] = None if data[key] in ("", None) else str(data[key])
+    if "solve_to_target" in data:
+        kwargs["solve_to_target"] = bool(data["solve_to_target"])
+    if "size_bins_mm" in data:
+        kwargs["size_bins_mm"] = tuple(
+            sorted(
+                (
+                    (str(k), float(v[0]), float(v[1]))
+                    for k, v in data["size_bins_mm"].items()
+                ),
+                key=lambda b: b[1],
+            )
+        )
     return CompoundSpec(**kwargs)
 
 

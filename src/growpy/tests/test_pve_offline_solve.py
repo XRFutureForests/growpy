@@ -14,7 +14,11 @@ from pathlib import Path
 import pytest
 
 from growpy.config.pve_calibration import CompoundSpec, LadderSpec
-from growpy.io.unreal.pve_distributor_model import simulate_placements
+from growpy.io.unreal.pve_distributor_model import (
+    pick_candidates,
+    scale_range_cm,
+    simulate_placements,
+)
 from growpy.io.unreal.pve_graph_builder import DistributorSpec, PaletteEntry
 from growpy.io.unreal.pve_graph_plan import _leader_layer
 from growpy.io.unreal.pve_offline_solve import (
@@ -24,6 +28,8 @@ from growpy.io.unreal.pve_offline_solve import (
     leader_tier_index,
     mean_triangles_per_prototype,
     quantile_targets,
+    size_bin_targets,
+    solve_compound_spacing,
     solve_flat,
     solve_graded,
     tree_stats,
@@ -392,6 +398,50 @@ class TestCompoundLayout:
         )
         assert layout.area_m2 > 0
 
+    def test_size_bins_pick_the_bin_holding_the_host_diameter(self, tmp_path):
+        # every side branch of _tree is 40 mm thick: S (0-30) is unreachable and
+        # dropped, all fill picks are M whatever the leaf areas (graded_palette
+        # would sort by those); the S cap still resolves
+        path = _tree(tmp_path)
+        names = ["x_compound_S_p00", "x_compound_M_p00", "x_compound_L_p00"]
+        meshes = tuple(f"/G/SM_{n}" for n in names)
+        spec = CompoundSpec(
+            size_bins_mm=(("S", 0.0, 30.0), ("M", 30.0, 60.0), ("L", 60.0, 90.0)),
+            cap_tier="S_p00",
+            apex_tier="M_p00",
+        )
+        layout = compound_layout(
+            path, _base(), names, meshes, (0.9, 0.5, 0.1), spec, longest_branch_m=12.0
+        )
+        assert [e.mesh for e in layout.palette] == list(meshes[1:])
+        # each pick is the bin holding its host diameter (near a branch base the
+        # host radius blends into the trunk's, so a few picks are L)
+        lo, hi = scale_range_cm(path, spec.fill_relative_start, spec.fill_relative_end)
+        picks = {"M": 0, "L": 0}
+        for p in simulate_placements(path, layout.distributor):
+            (i,) = pick_candidates(
+                {"scale": p.branch_scale}, layout.palette, layout.distributor.conditions
+            )
+            want = "M" if (lo + p.branch_scale * (hi - lo)) * 20 < 60.0 else "L"
+            assert "ML"[i] == want or abs((lo + p.branch_scale * (hi - lo)) * 20 - 60) < 1
+            picks[want] += 1
+        assert picks["M"] > picks["L"] > 0
+        assert layout.layers[0].palette == (PaletteEntry(mesh=meshes[0]),)
+
+    def test_size_bins_split_at_their_edges(self, tmp_path):
+        # thinnest host 40 mm: S starts at 0, M is chained so the split is the 50 mm edge
+        path = _tree(tmp_path)
+        spec = CompoundSpec(size_bins_mm=(("S", 0.0, 50.0), ("M", 50.0, 100.0)))
+        lo, hi = scale_range_cm(path, spec.fill_relative_start, spec.fill_relative_end)
+        t_s, t_m = size_bin_targets(path, spec, ["a_S_p00", "a_M_p00"])
+        assert t_s == 0.0
+        assert lo + (t_s + t_m) / 2 * (hi - lo) == pytest.approx(50.0 / 20.0)
+
+    def test_size_bins_that_no_chained_target_fits_are_refused(self, tmp_path):
+        spec = CompoundSpec(size_bins_mm=(("S", 0.0, 50.0), ("M", 50.0, 52.0)))
+        with pytest.raises(ValueError, match="no chained target fits"):
+            size_bin_targets(_tree(tmp_path), spec, ["a_S_p00", "a_M_p00"])
+
     def test_an_unknown_tier_is_refused(self, tmp_path):
         path = _tree(tmp_path)
         names = ["x_compound_p00", "x_compound_p01"]
@@ -456,3 +506,21 @@ class TestRandomizeScaleInTheSolve:
         assert scaled.instance_area_m2 == pytest.approx(0.02 * 4.0)
         assert scaled.instances < plain.instances
         assert abs(scaled.error) < 0.10
+
+
+class TestSolveCompoundSpacing:
+    def _args(self, tmp_path):
+        names = [f"t_compound_p0{i}" for i in range(3)]
+        return (_tree(tmp_path), _base(), names, tuple(f"/G/{n}" for n in names),
+                (0.01, 0.02, 0.03), CompoundSpec(cap_tier=None, apex_tier=None), 12.0)  # fmt: skip
+
+    def test_lands_the_fill_on_the_leaf_area_target(self, tmp_path):
+        args = self._args(tmp_path)
+        free = compound_layout(*args)
+        solved = solve_compound_spacing(*args, free.area_m2 / 2.0)
+        assert solved.area_m2 == pytest.approx(free.area_m2 / 2.0, rel=0.15)
+        assert solved.distributor.branch_density < free.distributor.branch_density
+
+    def test_an_unreachable_target_returns_the_sparsest_fill(self, tmp_path):
+        solved = solve_compound_spacing(*self._args(tmp_path), 1e-6)
+        assert solved.distributor.branch_density == 2

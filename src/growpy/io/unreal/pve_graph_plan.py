@@ -867,6 +867,7 @@ def _offline_chain(
         forrester_target,
         leader_span,
         leader_tier_index,
+        solve_compound_spacing,
         solve_flat,
         solve_graded,
         tree_stats,
@@ -914,15 +915,11 @@ def _offline_chain(
         detail.update(carve_trim=calibration.carve_trim, carve=carve)
 
     if calibration.palette == "compound":
-        layout = compound_layout(
-            solve_path,
-            base,
-            names,
-            meshes,
-            palette_areas,
-            calibration.compound,
-            stats.longest_branch_m,
-        )
+        args = (solve_path, base, names, meshes, palette_areas, calibration.compound)
+        if calibration.compound.solve_to_target:
+            layout = solve_compound_spacing(*args, stats.longest_branch_m, target_m2)
+        else:
+            layout = compound_layout(*args, stats.longest_branch_m)
         chain = TreeChainSpec(
             growth_json=entry.path,
             mesh_name=f"{mesh_prefix}_{entry.tree_id}",

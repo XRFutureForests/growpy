@@ -48,3 +48,29 @@ def test_build_writes_the_catalog_and_entries_for_finds_a_palette(tmp_path):
         "european_beech__c_m1"
     ]
     assert tc.entries_for("european_beech", "twigs", catalog) == []
+
+
+def test_merge_palette_renames_parts_by_bin_and_keeps_the_unbinned_manifest(tmp_path):
+    import json
+
+    root, assets = tmp_path / "twigs", tmp_path / "assets"
+    (assets / "compound_parts").mkdir(parents=True)
+    old = assets / "compound_parts" / "european_beech_pve_palette.json"
+    old.write_text(json.dumps({"prototypes": []}))
+    for b in ("S", "M"):
+        bake = assets / f"bake_{b}"
+        bake.mkdir()
+        for suffix in ("_static.usda", "_skeletal.usda", "_leaf_area_geom.json"):
+            (bake / f"european_beech_compound_p01{suffix}").write_text(b)
+        (bake / "european_beech_pve_palette.json").write_text(json.dumps({"prototypes": [
+            {"name": "european_beech_compound_p01", "file": "european_beech_compound_p01_static.usda",
+             "leaf_area_m2": 0.1}]}))  # fmt: skip
+        tc.write_entry(_entry(id=f"european_beech__cut{b}_p01", size_bin=b,
+                              source_ref=f"bake_{b}/european_beech_compound_p01_static.usda"), root)  # fmt: skip
+    manifest = tc.merge_palette("european_beech", root, assets)
+    d = json.loads(manifest.read_text())
+    assert [p["name"] for p in d["prototypes"]] == [
+        "european_beech_compound_S_p01", "european_beech_compound_M_p01"]  # fmt: skip
+    assert d["prototypes"][1]["cut_diameter_mm"] == [6.0, 12.0]
+    assert (manifest.parent / "european_beech_compound_M_p01_skeletal.usda").read_text() == "M"
+    assert old.with_suffix(".unbinned.json").is_file()

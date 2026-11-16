@@ -358,6 +358,16 @@ def _normalised_point_scales(
     points inside the placement span of every branch that has a length."""
     if radii_cm is None:
         return None
+    lo, hi = _scale_range(branch_points, lfr, radii_cm, relative_start, relative_end)
+    if not hi > lo:
+        return [0.0] * len(radii_cm)
+    return [
+        (min(max(r, lo), hi) - lo) / (hi - lo) for r in radii_cm
+    ]
+
+
+def _scale_range(branch_points, lfr, radii_cm, relative_start, relative_end):
+    """(lo, hi) radius in cm that ``_normalised_point_scales`` maps to 0 and 1."""
     lo, hi = math.inf, -math.inf
     for pts in branch_points:
         if len(pts) < 2:
@@ -370,11 +380,37 @@ def _normalised_point_scales(
             if relative_start <= gradient <= relative_end:
                 lo = min(lo, radii_cm[p])
                 hi = max(hi, radii_cm[p])
-    if not hi > lo:
-        return [0.0] * len(radii_cm)
-    return [
-        (min(max(r, lo), hi) - lo) / (hi - lo) for r in radii_cm
-    ]
+    return lo, hi
+
+
+def _lengths_from_root(positions, branch_points, order, root_set):
+    """Cumulative length from the root at every point, in metres."""
+    lfr = [0.0] * len(positions)
+    for branch in order:
+        pts = branch_points[branch]
+        if not pts:
+            continue
+        if branch in root_set:
+            lfr[pts[0]] = 0.0
+        for i in range(1, len(pts)):
+            lfr[pts[i]] = lfr[pts[i - 1]] + _dist(
+                positions[pts[i]], positions[pts[i - 1]]
+            ) * 0.01
+    return lfr
+
+
+def scale_range_cm(
+    growth_json: Path | str, relative_start: float, relative_end: float
+) -> tuple[float, float]:
+    """The radii (cm) a distributor over this span normalises its Scale
+    condition to 0 and 1, so an absolute branch diameter can be turned into a
+    palette entry's Scale target."""
+    positions, branch_points, parent, number, radii_cm, _ = _load(growth_json)
+    if radii_cm is None:
+        raise ValueError(f"{growth_json}: no radii, the Scale condition reads none")
+    order, roots = _walk_order(parent, number)
+    lfr = _lengths_from_root(positions, branch_points, order, set(roots))
+    return _scale_range(branch_points, lfr, radii_cm, relative_start, relative_end)
 
 
 def _normalised_heights(positions):
@@ -499,19 +535,7 @@ def simulate_placements(
     )
     order, roots = _walk_order(parent, number)
     root_set = set(roots)
-
-    # Cumulative length from the root, in metres.
-    lfr = [0.0] * len(positions)
-    for branch in order:
-        pts = branch_points[branch]
-        if not pts:
-            continue
-        if branch in root_set:
-            lfr[pts[0]] = 0.0
-        for i in range(1, len(pts)):
-            lfr[pts[i]] = lfr[pts[i - 1]] + _dist(
-                positions[pts[i]], positions[pts[i - 1]]
-            ) * 0.01
+    lfr = _lengths_from_root(positions, branch_points, order, root_set)
 
     # Plant gradient: 1 at the seed, 0 at every tip.
     pg = [0.0] * len(positions)
