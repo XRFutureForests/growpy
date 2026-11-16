@@ -61,7 +61,7 @@ def test_merge_palette_renames_parts_by_bin_and_keeps_the_unbinned_manifest(tmp_
         bake = assets / f"bake_{b}"
         bake.mkdir()
         for suffix in ("_static.usda", "_skeletal.usda", "_leaf_area_geom.json"):
-            (bake / f"european_beech_compound_p01{suffix}").write_text(b)
+            (bake / f"european_beech_compound_p01{suffix}").write_text(b + " def Xform \"european_beech_compound_p01\"")
         (bake / "european_beech_pve_palette.json").write_text(json.dumps({"prototypes": [
             {"name": "european_beech_compound_p01", "file": "european_beech_compound_p01_static.usda",
              "leaf_area_m2": 0.1}]}))  # fmt: skip
@@ -72,5 +72,8 @@ def test_merge_palette_renames_parts_by_bin_and_keeps_the_unbinned_manifest(tmp_
     assert [p["name"] for p in d["prototypes"]] == [
         "european_beech_compound_S_p01", "european_beech_compound_M_p01"]  # fmt: skip
     assert d["prototypes"][1]["cut_diameter_mm"] == [6.0, 12.0]
-    assert (manifest.parent / "european_beech_compound_M_p01_skeletal.usda").read_text() == "M"
+    # the prim is renamed with the file: UE names the imported mesh after it
+    assert (manifest.parent / "european_beech_compound_M_p01_skeletal.usda").read_text() == (
+        'M def Xform "european_beech_compound_M_p01"')
+    assert (manifest.parent / "european_beech_compound_M_p01_leaf_area_geom.json").read_text().startswith("M ")
     assert old.with_suffix(".unbinned.json").is_file()

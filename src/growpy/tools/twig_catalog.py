@@ -196,7 +196,12 @@ def merge_palette(species: str, root: Path = ROOT, assets: Path = ASSETS) -> Pat
         name = f"{species}_compound_{e['size_bin']}_{tier}"
         for suffix in ("_static.usda", "_skeletal.usda", "_leaf_area_geom.json"):
             part = src.parent / f"{species}_compound_{tier}{suffix}"
-            if part.is_file():
+            if part.suffix == ".usda" and part.is_file():
+                # UE's USD import names the mesh after the prim, so the prims take the binned name too
+                text = part.read_text(encoding="utf-8")
+                old = f"{species}_compound_{tier}"
+                (out_dir / f"{name}{suffix}").write_text(text.replace(old, name), encoding="utf-8")
+            elif part.is_file():
                 shutil.copy2(part, out_dir / f"{name}{suffix}")
         prototypes.append({
             **proto, "name": name, "file": f"{name}_static.usda",
