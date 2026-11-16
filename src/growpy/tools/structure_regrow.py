@@ -185,12 +185,13 @@ def build_sandbox(root: Path, species: str, overrides: dict) -> dict:
     shutil.copytree(data / "assets" / "presets", presets)
     path = presets / f"{species_key(species)}.seed.json"
     preset = json.loads(path.read_text(encoding="utf-8"))
-    missing = [k for k in overrides if k not in preset]
+    # a "<knob>_curve" ramp (preset_overrides.py) may be added for a knob the preset has
+    missing = [k for k in overrides if k not in preset and k.removesuffix("_curve") not in preset]
     if missing:
         raise SystemExit(
             f"{path.name} has no key(s) {missing}: refusing to add new ones"
         )
-    before = {k: preset[k] for k in overrides}
+    before = {k: preset.get(k) for k in overrides}
     preset.update(overrides)
     path.write_text(json.dumps(preset, indent=2), encoding="utf-8")
     return {"before": before, "after": overrides}
