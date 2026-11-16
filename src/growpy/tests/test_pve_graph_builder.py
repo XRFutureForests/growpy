@@ -469,6 +469,25 @@ class TestGenerateScript:
         assert "PVGrowthDataJsonImporterSettings" in body
         assert "PVPresetLoaderSettings" not in body  # the deprecated 5.8 no-op
 
+    def test_a_failed_build_leaves_no_graph_asset(self, tmp_path):
+        # growpy-pve-export waits forever on a half-built graph (2026-11-16)
+        from unittest import mock
+
+        import pytest
+
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()]).read_text(encoding="utf-8")
+        loop = "built = []" + body.split("built = []", 1)[1]
+        eal = mock.Mock(does_asset_exist=lambda p: p.endswith("/PVG_X"))
+        spec = {"graph_folder": "/Game/G", "graph_name": "PVG_X"}
+
+        def build(_spec):
+            raise RuntimeError("bark material did not resolve")
+
+        ns = {"GRAPHS": [spec], "build": build, "eal": eal, "editors": mock.Mock(), "unreal": mock.Mock()}
+        with pytest.raises(RuntimeError, match="bark material"):
+            exec(loop, ns)
+        eal.delete_asset.assert_called_once_with("/Game/G/PVG_X")
+
     def test_embeds_chain_settings(self, tmp_path):
         path = generate_pve_graph_builder_script(
             tmp_path, [_graph(chains=(_chain("SK_Beech_r05", density=42),))]

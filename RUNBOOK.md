@@ -459,3 +459,11 @@ must stay below 2048, or the editor asserts.
 **A watchdog kills a working Voxelize export**
 A Voxelize export can log nothing for more than five minutes (ash h20). Only treat an editor
 as hung after 20 minutes of log silence.
+
+**`growpy-pve-export` waits forever at 0 % CPU**
+A graph asset exists, but its build script raised before finishing it. The export only fails
+fast ("PVEXPORT_ERROR asset not found") when no asset exists at all. Generated graph scripts
+now delete a graph whose build raised; for scripts generated before 2026-11-16, read the build
+log for the `RuntimeError`, delete the `PVG_*` asset by hand, fix the cause and rebuild. A
+force-killed editor leaves `Saved/Autosaves/PackageRestoreData.json`, and the next headless
+start then sits on the "Restore Packages" dialog: set that file aside before an unattended start.

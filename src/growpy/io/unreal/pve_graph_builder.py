@@ -1666,7 +1666,17 @@ def configure_distributor(dist_settings, d):
 
 built = []
 for graph_spec in GRAPHS:
-    built.append(build(graph_spec))
+    try:
+        built.append(build(graph_spec))
+    except Exception:
+        # a half-built graph makes growpy-pve-export wait forever (2026-11-16); leave none behind
+        for n in (graph_spec["graph_name"], graph_spec["graph_name"] + "_b"):
+            stale = "%s/%s" % (graph_spec["graph_folder"], n)
+            if eal.does_asset_exist(stale):
+                editors.close_all_editors_for_asset(eal.load_asset(stale))
+                eal.delete_asset(stale)
+                unreal.log_warning("[PVE] deleted half-built graph %s" % stale)
+        raise
 
 unreal.log("[PVE] built %d graph(s):" % len(built))
 for path in built:
