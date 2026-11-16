@@ -1258,15 +1258,22 @@ def plan_pve_graphs(
             skipped.append(f"{species}: {err} ({len(entries)} tree(s) skipped)")
             continue
         try:
+            # the graphs read MI_<species>_bark_branch/_young when the species has a
+            # tile pair, so the asset script must build them (as growpy-pve-assets does)
+            from growpy.tools.pve_assets import bark_pair_sources, bark_young_source
+
+            trunk, branch = bark_pair_sources(species_cal)
             assets = build_species_asset_spec(
                 species,
                 content_root=content_root,
                 palette=species_cal.palette,
-                bark_source_material=species_cal.bark_material_source or "",
+                bark_source_material=trunk or species_cal.bark_material_source or "",
                 bark_source_textures=species_cal.bark_source_textures,
+                bark_branch_source_material=branch,
+                bark_young_source_material=bark_young_source(species_cal),
             )
             palette_areas = prototype_leaf_areas(assets)
-        except FileNotFoundError as err:
+        except (FileNotFoundError, KeyError) as err:
             skipped.append(f"{species}: {err}")
             continue
 
