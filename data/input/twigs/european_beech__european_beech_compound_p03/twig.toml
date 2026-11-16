@@ -1,0 +1,12 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "european_beech__european_beech_compound_p03"
+species = "european_beech"
+part_kind = "compound"
+size_bin = "-"
+cut_diameter_mm = [0.0, 30.0]
+source = "compound"
+source_ref = "compound_parts/european_beech_compound_p03_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.6479555240392509
+faces = 403958
+span_m = 1.1768904620759548

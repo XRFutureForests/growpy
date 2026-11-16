@@ -1,0 +1,11 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "norway_spruce__pacific_silver_fir_foliage_a"
+species = "norway_spruce"
+part_kind = "twig"
+size_bin = "-"
+cut_diameter_mm = []
+source = "grove"
+source_ref = "twigs/pacific_silver_fir_twig/pacific_silver_fir_foliage_a_static.usda"
+licence = "The Grove 2.3 twig library (licensed to the lab; not redistributed)"
+leaf_area_m2 = 0.013621074250067533
+faces = 8673

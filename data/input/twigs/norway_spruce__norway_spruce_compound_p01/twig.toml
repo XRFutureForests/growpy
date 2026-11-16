@@ -1,0 +1,12 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "norway_spruce__norway_spruce_compound_p01"
+species = "norway_spruce"
+part_kind = "compound"
+size_bin = "-"
+cut_diameter_mm = [0.0, 30.0]
+source = "compound"
+source_ref = "compound_parts/norway_spruce_compound_p01_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.21351062626971137
+faces = 209160
+span_m = 0.5538412276552507

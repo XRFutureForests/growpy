@@ -1,0 +1,12 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "douglas_fir__douglas_fir_compound_p03"
+species = "douglas_fir"
+part_kind = "compound"
+size_bin = "-"
+cut_diameter_mm = [0.0, 30.0]
+source = "compound"
+source_ref = "compound_parts/douglas_fir_compound_p03_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.7472871919439898
+faces = 731478
+span_m = 1.1337150814599597

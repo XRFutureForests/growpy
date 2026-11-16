@@ -1,0 +1,11 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "scots_pine__scots_pine_foliage"
+species = "scots_pine"
+part_kind = "twig"
+size_bin = "-"
+cut_diameter_mm = []
+source = "grove"
+source_ref = "twigs/scots_pine_twig/scots_pine_foliage_static.usda"
+licence = "The Grove 2.3 twig library (licensed to the lab; not redistributed)"
+leaf_area_m2 = 0.07357693137687048
+faces = 87517

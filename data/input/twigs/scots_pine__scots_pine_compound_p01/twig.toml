@@ -1,0 +1,12 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "scots_pine__scots_pine_compound_p01"
+species = "scots_pine"
+part_kind = "compound"
+size_bin = "-"
+cut_diameter_mm = [0.0, 30.0]
+source = "compound"
+source_ref = "compound_parts/scots_pine_compound_p01_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.6272686682426338
+faces = 933486
+span_m = 0.555842164419202

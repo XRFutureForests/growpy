@@ -1,0 +1,11 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "european_beech__european_beech_foliage_d"
+species = "european_beech"
+part_kind = "twig"
+size_bin = "-"
+cut_diameter_mm = []
+source = "grove"
+source_ref = "twigs/european_beech_twig/european_beech_foliage_d_static.usda"
+licence = "The Grove 2.3 twig library (licensed to the lab; not redistributed)"
+leaf_area_m2 = 0.02026456505542514
+faces = 9598

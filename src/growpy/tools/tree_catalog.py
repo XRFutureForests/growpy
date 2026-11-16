@@ -169,6 +169,13 @@ def bark_sources(species: str, materials: dict[str, str]):
     return bark, bark, cal
 
 
+def twig_entries_for(species: str, palette: str | None) -> list[str]:
+    """Twig catalog ids (XRFF-684) this tree wears with its PVE palette."""
+    from growpy.tools.twig_catalog import entries_for
+
+    return entries_for(species, palette) if palette else []
+
+
 def entry(
     row: dict,
     materials: dict[str, str],
@@ -193,6 +200,7 @@ def entry(
         "generator": "grove",
         "growth_json": growth.as_posix(),
         "twig_set": row.get("palette"),
+        "twig_entries": twig_entries_for(row["species"], row.get("palette")) or None,
         "material": materials.get(bark, bark),
         "bark_trunk": trunk,
         "bark_branch": branch,

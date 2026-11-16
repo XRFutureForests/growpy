@@ -1,0 +1,11 @@
+# Seeded by growpy-twig-catalog seed from today's palette.
+id = "silver_fir__pacific_silver_fir_foliage_c"
+species = "silver_fir"
+part_kind = "twig"
+size_bin = "-"
+cut_diameter_mm = []
+source = "grove"
+source_ref = "twigs/pacific_silver_fir_twig/pacific_silver_fir_foliage_c_static.usda"
+licence = "The Grove 2.3 twig library (licensed to the lab; not redistributed)"
+leaf_area_m2 = 0.007661079316049958
+faces = 8446
