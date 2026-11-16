@@ -160,6 +160,175 @@ licence = "The Grove 2.3 twig library (licensed to the lab; not redistributed)"
 leaf_area_m2 = 0.029425424887454876
 faces = 34240
 
+[twigs.european_beech__cutL_p00]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_L/european_beech_compound_p00_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.162
+faces = 100988
+span_m = 0.36
+twigs = 16
+
+[twigs.european_beech__cutL_p01]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_L/european_beech_compound_p01_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.2227
+faces = 139250
+span_m = 0.56
+twigs = 22
+
+[twigs.european_beech__cutL_p02]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_L/european_beech_compound_p02_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.2632
+faces = 164029
+span_m = 0.83
+twigs = 26
+
+[twigs.european_beech__cutL_p03]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_L/european_beech_compound_p03_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.2632
+faces = 164734
+span_m = 1.14
+twigs = 26
+
+[twigs.european_beech__cutL_p04]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_L/european_beech_compound_p04_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.2734
+faces = 170670
+span_m = 1.59
+twigs = 27
+
+[twigs.european_beech__cutM_p00]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_M/european_beech_compound_p00_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.1417
+faces = 88414
+span_m = 0.34
+twigs = 14
+
+[twigs.european_beech__cutM_p01]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_M/european_beech_compound_p01_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.162
+faces = 100973
+span_m = 0.55
+twigs = 16
+
+[twigs.european_beech__cutM_p02]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_M/european_beech_compound_p02_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.162
+faces = 101114
+span_m = 0.81
+twigs = 16
+
+[twigs.european_beech__cutM_p03]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_M/european_beech_compound_p03_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.162
+faces = 101111
+span_m = 1.08
+twigs = 16
+
+[twigs.european_beech__cutM_p04]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_M/european_beech_compound_p04_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.1721
+faces = 107800
+span_m = 1.55
+twigs = 17
+
+[twigs.european_beech__cutS_p00]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "S"
+cut_diameter_mm = [0.0, 6.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_S/european_beech_compound_p00_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.0607
+faces = 38154
+span_m = 0.39
+twigs = 6
+
+[twigs.european_beech__cutS_p01]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "S"
+cut_diameter_mm = [0.0, 6.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_S/european_beech_compound_p01_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.081
+faces = 50665
+span_m = 0.49
+twigs = 8
+
+[twigs.european_beech__cutS_p02]
+species = "european_beech"
+part_kind = "compound"
+size_bin = "S"
+cut_diameter_mm = [0.0, 6.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-16c/european_beech_S/european_beech_compound_p02_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.0709
+faces = 44597
+span_m = 0.85
+twigs = 7
+
 [twigs.european_beech__european_beech_compound_p00]
 species = "european_beech"
 part_kind = "compound"
