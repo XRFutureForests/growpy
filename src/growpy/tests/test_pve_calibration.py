@@ -1012,3 +1012,31 @@ class TestBarkSource:
             "fab_pine_bark_plated",
             "fab_pine_bark_orange_branch",
         )
+
+
+def test_young_bark_needs_a_tile_pair_and_picks_thin_trees(tmp_path):
+    from growpy.io.unreal.pve_graph_plan import intake_dbh, young_bark
+
+    with pytest.raises(ValueError, match="young bark"):
+        _species(bark_young_source="y")
+    sp = _species(bark_trunk_source="t", bark_branch_source="b", bark_young_source="y")
+    cat = tmp_path / "catalog.toml"
+    cat.write_text("[materials.y]\ndbh_cm = [0, 20]\n[materials.t]\ndbh_cm = [0, 9]\n")
+    ranges = intake_dbh(cat)
+    assert (young_bark(sp, 19.9, ranges), young_bark(sp, 20.0, ranges)) == (True, False)
+    assert young_bark(_species(), 5.0, ranges) is False  # no young bark: never
+    with pytest.raises(KeyError):
+        young_bark(sp, 5.0, {})
+
+
+def test_shipped_young_spruce_and_scanned_ash_birch_barks():
+    from growpy.config.pve_calibration import load_pve_calibration
+
+    shipped = load_pve_calibration()
+    assert shipped.for_species("norway_spruce", "conifer").bark_young_source == (
+        "fab_spruce_bark_young"
+    )
+    scans = (("common_ash", "fab_ash_bark"), ("silver_birch", "fab_silver_birch_bark"))
+    for sp, intake in scans:
+        got = shipped.for_species(sp, "broadleaf")
+        assert intake in got.bark_material_source and got.bark_source_tiled, sp

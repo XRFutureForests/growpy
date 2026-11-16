@@ -82,6 +82,26 @@ def bark_pair_sources(species_cal, catalog: Path | None = None) -> tuple[str, st
     return instance(trunk), instance(branch)
 
 
+def bark_young_source(species_cal, catalog: Path | None = None) -> str:
+    """UE path of the species' young bark source; "" when it has none.
+
+    Raises:
+        KeyError: If the intake id is not in the catalog.
+    """
+    import tomllib
+
+    from growpy.tools.material_intake import CATALOG
+
+    young = getattr(species_cal, "bark_young_source", None)
+    if young is None:
+        return ""
+    path = catalog or CATALOG
+    materials = tomllib.loads(path.read_text(encoding="utf-8")).get("materials", {})
+    if young not in materials:
+        raise KeyError(f"intake id {young!r} not in {path}")
+    return str(materials[young]["instance"])
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -154,6 +174,7 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     bark_source_textures=species_cal.bark_source_textures,
                     bark_branch_source_material=branch,
+                    bark_young_source_material=bark_young_source(species_cal),
                 )
             )
         except (FileNotFoundError, KeyError) as err:

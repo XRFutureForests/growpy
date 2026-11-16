@@ -458,6 +458,30 @@ def intake_tiles(
     return tiles
 
 
+def intake_dbh(catalog: Path = INTAKE_CATALOG) -> dict[str, tuple[float, float]]:
+    """Intake id -> its dbh_cm range (the bark stage it is for)."""
+    import tomllib
+
+    if not catalog.is_file():
+        return {}
+    materials = tomllib.loads(catalog.read_text(encoding="utf-8")).get("materials", {})
+    return {
+        mid: (float(e["dbh_cm"][0]), float(e["dbh_cm"][1]))
+        for mid, e in materials.items()
+        if "dbh_cm" in e
+    }
+
+
+def young_bark(species_cal, dbh_cm: float, ranges: dict) -> bool:
+    """True when this tree is thin enough for the species' young bark."""
+    young = species_cal.bark_young_source
+    if young is None:
+        return False
+    if young not in ranges:
+        raise KeyError(f"young bark {young!r} is not in the intake catalog")
+    return dbh_cm < ranges[young][1]
+
+
 def bark_tile_pair_setups(
     growth_json: Path | str,
     trunk_source: object,
@@ -1317,12 +1341,19 @@ def plan_pve_graphs(
             wraps: tuple[int, ...] = ()
             bark_setups: tuple[BarkSetup, ...] = ()
             if species_cal.bark_trunk_source is not None:
+                trunk_source, trunk_material = (
+                    species_cal.bark_trunk_source,
+                    assets.bark_material,
+                )
+                if young_bark(species_cal, planned.detail["dbh_cm"], intake_dbh()):
+                    trunk_source = species_cal.bark_young_source
+                    trunk_material = f"{assets.bark_material}_young"
                 bark_setups = bark_tile_pair_setups(
                     planned.chain.growth_json,
-                    species_cal.bark_trunk_source,
+                    trunk_source,
                     species_cal.bark_branch_source,
                     intake_tiles(),
-                    assets.bark_material,
+                    trunk_material,
                     f"{assets.bark_material}_branch",
                     species_cal.bark_texture_repeat,
                     species_cal.bark_y_scale

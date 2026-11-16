@@ -117,3 +117,28 @@ def test_a_tree_without_scores_is_a_finding_not_a_gap(tmp_path):
     assert missing == []
     assert out_of_target == ["norway_spruce.r10_h05m: no target-sheet result"]
     assert tree_catalog.main(["check", "--manifest", str(out)]) == 0
+
+
+def test_build_records_bark_sources_settings_and_check_flags_stale_trees(tmp_path):
+    import os
+
+    growth = tmp_path / "Norway_Spruce_r07_h20m_d27cm_full_growth_data.json"
+    growth.write_text("{}")
+    patches = tmp_path / "preset_patches.json"
+    patch = {"_README": ["x"], "norway_spruce": {"grow_nodes": 2, "_why": "y"}}
+    patches.write_text(json.dumps(patch))
+    os.utime(growth, (1_700_000_000, 1_700_000_000))  # grown before the patch file
+    out = tmp_path / "tree_catalog.toml"
+
+    plan = _plan(tmp_path / "p", "r07_h20m", growth)
+    tree_catalog.build([plan], None, [], out, patches)
+
+    trees = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]
+    tree = trees["norway_spruce"]["r07_h20m"]
+    assert tree["structure_settings"] == {"grow_nodes": 2}  # notes dropped
+    assert (tree["bark_trunk"], tree["bark_branch"]) == (
+        "fab_nordic_spruce_detail_bark",
+        "fab_nordic_spruce_bark",
+    )  # config/pve_calibration.toml's tile pair
+    _, findings = tree_catalog.check(out)
+    assert any("STALE" in f for f in findings)

@@ -609,12 +609,20 @@ class SpeciesCalibration:
     # atlas strip. None: one bark for every generation, as before.
     bark_trunk_source: str | BarkAtlasStrip | None = None
     bark_branch_source: str | None = None
+    # Young bark of a tile pair (``young`` in the species' bark source): an intake
+    # id; a tree whose DBH is below the top of that intake's dbh_cm range reads
+    # MI_<species>_bark_young on generation 0 instead of the trunk source.
+    bark_young_source: str | None = None
 
     def __post_init__(self) -> None:
         if (self.bark_trunk_source is None) != (self.bark_branch_source is None):
             raise ValueError(
                 f"species {self.species!r} names a bark trunk or branch source "
                 "without the other; a tile pair needs both"
+            )
+        if self.bark_young_source is not None and self.bark_trunk_source is None:
+            raise ValueError(
+                f"species {self.species!r} names a young bark without a tile pair"
             )
         if self.bark_trunk_source is not None and self.bark_u_ranges:
             raise ValueError(
@@ -1114,6 +1122,7 @@ def _with_bark_source(
         species,
         bark_trunk_source=trunk,
         bark_branch_source=None if branch is None else str(branch),
+        bark_young_source=None if entry.get("young") is None else str(entry["young"]),
         bark_material_source=None if material is None else str(material),
         bark_y_scale=species.bark_y_scale if y_scale is None else float(y_scale),
         bark_u_ranges=tuple(

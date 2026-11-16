@@ -118,11 +118,18 @@ bark_source_per_species.european_beech = { trunk = "fab_beech_bark_smooth", bran
 bark_source_per_species.sycamore_maple = { trunk = "grove_maple_a60", branch = "fab_beech_bark_maple_branch" }
 # Release 1.1: a spruce trunk tile (Megascans Nordic forest detail scan, 0.5 m) replaces the
 # MegaPlants atlas strip, which also drops a MegaPlants dependency the XRFFTwin port lacks.
-bark_source_per_species.norway_spruce = { trunk = "fab_nordic_spruce_detail_bark", branch = "fab_nordic_spruce_bark" }
+# 2026-11-16 (owner: "pick bark by DBH"): spruce trunks under 20 cm DBH (the fab_spruce_bark_young
+# intake's range) wear the young Megascans spruce bark; thicker ones keep the detail scan.
+bark_source_per_species.norway_spruce = { trunk = "fab_nordic_spruce_detail_bark", branch = "fab_nordic_spruce_bark", young = "fab_spruce_bark_young" }
 # Douglas fir: its own Megascans scan through the material intake (XRFF-679,
 # data/input/materials/fab_douglas_fir_bark), a seamless 1 x 2 m tile.
 bark_source_per_species.douglas_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_douglas_fir_bark/MI_fab_douglas_fir_bark", tiled = true }
 bark_source_per_species.silver_fir = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_beech_bark_silver_fir/MI_fab_beech_bark_silver_fir", tiled = true }
+# 2026-11-16 (owner: "wire ash and birch first", before the XRFFTwin port): ash and birch wear
+# their own Megascans scans from the intake in place of the Grove bark, as single tiled
+# sources like the firs (live on the species MI, no re-export); tile pairs come with release 2.
+bark_source_per_species.common_ash = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_ash_bark/MI_fab_ash_bark", tiled = true }
+bark_source_per_species.silver_birch = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_silver_birch_bark/MI_fab_silver_birch_bark", tiled = true }
 # Release 1.1: Scots pine's two barks as a tile pair, brown plates on the stem and the thin
 # orange flaking bark on the branches (Megascans pine scans, owner downloads 2026-11-12/14).
 bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", branch = "fab_pine_bark_orange_branch" }

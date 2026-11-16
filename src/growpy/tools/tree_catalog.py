@@ -12,8 +12,13 @@ twig set, bark material, variant, the exported meshes, twig count and leaf area,
 (``tree-structure-target-sheet score`` CSVs). A later plan of the same tree replaces the
 earlier one, so pass the plans oldest first.
 
+Each entry also names its trunk and branch bark as material catalog ids and its
+structure settings (the species' ``config/preset_patches.json`` entry, since when it
+holds, and when the growth JSON was written).
+
 ``check`` lists every asset with a missing entry or a pass/fail trait outside the real
-p25-p75 of its height row. It exits 1 when anything is missing, not for traits: an
+p25-p75 of its height row, and every tree grown before its structure settings last
+changed (STALE). It exits 1 when anything is missing, not for traits: an
 out-of-target tree is a finding, not a broken catalog.
 
 Owner scope (2026-11-12): the manifest is a record; the export reads it only once bark
@@ -25,16 +30,20 @@ import argparse
 import csv
 import json
 import logging
+import subprocess
 import sys
 import tomllib
+from datetime import datetime
 from pathlib import Path
 
+from growpy.io.unreal.pve_graph_plan import intake_dbh, young_bark
 from growpy.tools.material_intake import CATALOG as MATERIAL_CATALOG
 from growpy.tools.material_intake import _toml_value
 
 logger = logging.getLogger(__name__)
 
 MANIFEST = Path("data/input/tree_catalog.toml")
+PRESET_PATCHES = Path("config/preset_patches.json")
 PASS_FAIL = (
     "dbh_m",
     "crown_base_m",
@@ -88,10 +97,93 @@ def read_scores(paths) -> dict[str, dict[str, dict]]:
     return scores
 
 
-def entry(row: dict, materials: dict[str, str], bones: dict, scores: dict) -> dict:
+def _patches(text: str) -> dict[str, dict]:
+    def strip(d):
+        return {k: v for k, v in d.items() if not k.startswith("_")}
+
+    return {sp: strip(p) for sp, p in strip(json.loads(text)).items()}
+
+
+def _iso(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp).astimezone().isoformat(timespec="seconds")
+
+
+def structure_settings(path: Path = PRESET_PATCHES) -> dict[str, tuple[dict, str]]:
+    """Species -> (its preset patch now, since when it has been that patch).
+
+    The catalog trees are grown from the Grove seed presets plus these tracked patches,
+    so a tree grown before its species' patch last changed is stale. "Since" is the
+    oldest commit in the unbroken run of commits that carry today's entry, or the
+    file's own time for an uncommitted edit or a file outside git.
+    shortcut: walks the committed history of this one file (a rename loses it);
+    upgrade if settings ever move out of preset_patches.json.
+    """
+    current = _patches(path.read_text(encoding="utf-8"))
+    since: dict[str, str] = {sp: _iso(path.stat().st_mtime) for sp in current}
+    log = subprocess.run(
+        ["git", "log", "--format=%H %cI", "--", path.name],
+        capture_output=True, text=True, cwd=path.parent,
+    )  # fmt: skip
+    if log.returncode != 0:  # not in git: only the file's own time is known
+        return {sp: (p, since[sp]) for sp, p in current.items()}
+    open_ = set(current)
+    for line in log.stdout.splitlines():
+        sha, date = line.split()
+        old = subprocess.run(
+            ["git", "show", f"{sha}:./{path.name}"],
+            capture_output=True, text=True, cwd=path.parent,
+        )  # fmt: skip
+        if old.returncode != 0:
+            break
+        old_patches = _patches(old.stdout)
+        for sp in list(open_):
+            if old_patches.get(sp) == current[sp]:
+                since[sp] = date
+            else:
+                open_.discard(sp)
+        if not open_:
+            break
+    return {sp: (current[sp], since[sp]) for sp in current}
+
+
+def bark_sources(species: str, materials: dict[str, str]):
+    """(trunk, branch, calibration) of a species: material catalog ids, "grove" for
+    the Grove map, or a UE path when the source is not an intake entry."""
+    from growpy.config.paths import get_species_growth_habit
+    from growpy.config.pve_calibration import BarkAtlasStrip, load_pve_calibration
+
+    try:
+        cal = load_pve_calibration().for_species(
+            species, get_species_growth_habit(species)
+        )
+    except (KeyError, FileNotFoundError, ValueError):
+        return None
+    if cal.bark_trunk_source is not None:
+        trunk = cal.bark_trunk_source
+        if isinstance(trunk, BarkAtlasStrip):
+            trunk = materials.get(trunk.material, trunk.material)
+        return str(trunk), str(cal.bark_branch_source), cal
+    source = cal.bark_material_source
+    textured = source and cal.bark_source_textures
+    bark = materials.get(source, source) if textured else "grove"
+    return bark, bark, cal
+
+
+def entry(
+    row: dict,
+    materials: dict[str, str],
+    bones: dict,
+    scores: dict,
+    settings: dict | None = None,
+    barks: dict | None = None,
+) -> dict:
     """One manifest entry from a plan row."""
     growth = Path(row["growth_json"])
     bark = row.get("bark_material")
+    patch, since = (settings or {}).get(row["species"], (None, None))
+    trunk, branch, cal = (barks or {}).get(row["species"]) or (None, None, None)
+    if cal is not None and young_bark(cal, float(row["dbh_cm"]), intake_dbh()):
+        trunk = cal.bark_young_source
     out = {
         "species": row["species"],
         "tree_id": row["tree_id"],
@@ -102,6 +194,11 @@ def entry(row: dict, materials: dict[str, str], bones: dict, scores: dict) -> di
         "growth_json": growth.as_posix(),
         "twig_set": row.get("palette"),
         "material": materials.get(bark, bark),
+        "bark_trunk": trunk,
+        "bark_branch": branch,
+        "structure_settings": patch,
+        "settings_since": since,
+        "grown": _iso(growth.stat().st_mtime) if growth.is_file() else None,
         "variant": "summer",
         "mesh": row.get("asset"),
         "static_mesh": row.get("static_asset"),
@@ -118,18 +215,28 @@ def entry(row: dict, materials: dict[str, str], bones: dict, scores: dict) -> di
     return {k: v for k, v in out.items() if v is not None}
 
 
-def build(plans, bones_path=None, score_paths=(), out: Path = MANIFEST) -> dict:
+def build(
+    plans,
+    bones_path=None,
+    score_paths=(),
+    out: Path = MANIFEST,
+    patches: Path = PRESET_PATCHES,
+) -> dict:
     """Write the manifest; a later plan of the same tree replaces an earlier one."""
     materials = material_ids()
     bones = (
         json.loads(Path(bones_path).read_text(encoding="utf-8")) if bones_path else {}
     )
     scores = read_scores(score_paths)
+    settings = structure_settings(patches) if patches.is_file() else {}
+    barks: dict[str, tuple | None] = {}
     trees: dict[str, dict] = {}
     for plan in plans:
         for row in plan_rows(Path(plan)):
+            if row["species"] not in barks:
+                barks[row["species"]] = bark_sources(row["species"], materials)
             trees[f"{row['species']}.{row['tree_id']}"] = entry(
-                row, materials, bones, scores
+                row, materials, bones, scores, settings, barks
             )
     if bones:
         # the bones dump lists every mesh the UE catalog holds: a planned tree
@@ -144,7 +251,11 @@ def build(plans, bones_path=None, score_paths=(), out: Path = MANIFEST) -> dict:
         "# GENERATED by growpy-tree-catalog build -- do not edit; re-plan, export,",
         "# then rebuild. One entry per catalog tree asset (XRFF-678): structure,",
         "# twig set, bark material, variant, exported meshes, twigs, bones and the",
-        "# target-sheet result.",
+        "# target-sheet result. bark_trunk/bark_branch: material catalog ids (or",
+        "# grove) from pve_calibration.toml at build time -- a species exported",
+        "# before its bark source changed shows the new source until re-export.",
+        "# structure_settings: the species' preset_patches.json entry; check flags",
+        "# a tree grown before that entry last changed (STALE).",
         "",
     ]
     for key in sorted(trees):
@@ -158,6 +269,10 @@ def build(plans, bones_path=None, score_paths=(), out: Path = MANIFEST) -> dict:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
     return trees
+
+
+def grown_before(grown: str, since: str) -> bool:
+    return datetime.fromisoformat(grown) < datetime.fromisoformat(since)
 
 
 def check(manifest: Path = MANIFEST) -> tuple[list[str], list[str]]:
@@ -175,6 +290,12 @@ def check(manifest: Path = MANIFEST) -> tuple[list[str], list[str]]:
                 gaps.append("bones")
             if gaps:
                 missing.append(f"{key}: no {', '.join(gaps)}")
+            grown, since = tree.get("grown"), tree.get("settings_since")
+            if grown and since and grown_before(grown, since):
+                out_of_target.append(
+                    f"{key}: STALE, grown {grown[:10]} before its structure "
+                    f"settings changed {since[:10]}"
+                )
             target = tree.get("target")
             if not target:
                 out_of_target.append(f"{key}: no target-sheet result")
