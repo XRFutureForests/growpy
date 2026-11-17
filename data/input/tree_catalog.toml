@@ -809,7 +809,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 77
 leaf_area_m2 = 5.4
 leaf_area_target_m2 = 5.3
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 367
 target.dbh_m = { value = 0.038, p25 = 0.029, p75 = 0.038, inside = true, n = 1 }
 target.crown_base_m = { value = 1.5, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
@@ -837,7 +837,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 346
 leaf_area_m2 = 31.9
 leaf_area_target_m2 = 32.0
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 1245
 target.dbh_m = { value = 0.102, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
 target.crown_base_m = { value = 2.0, p25 = 0.5, p75 = 1.5, inside = false, n = 19 }
@@ -865,7 +865,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 526
 leaf_area_m2 = 50.6
 leaf_area_target_m2 = 50.4
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 1666
 target.dbh_m = { value = 0.129, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 2.5, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -878,7 +878,7 @@ radius = 7
 height_m = 20.25
 dbh_cm = 17.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h20m_d18cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h20m_d18cm_full_growth_data.floor.json"
 twig_set = "compound"
 twig_entries = ["european_beech__cutL_p00", "european_beech__cutL_p01", "european_beech__cutL_p02", "european_beech__cutL_p03", "european_beech__cutL_p04", "european_beech__cutM_p00", "european_beech__cutM_p01", "european_beech__cutM_p02", "european_beech__cutM_p03", "european_beech__cutM_p04", "european_beech__cutS_p00", "european_beech__cutS_p01", "european_beech__cutS_p02", "european_beech__european_beech_compound_p00", "european_beech__european_beech_compound_p01", "european_beech__european_beech_compound_p02", "european_beech__european_beech_compound_p03", "european_beech__european_beech_compound_p04"]
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
@@ -886,18 +886,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:22:49+01:00"
+grown = "2026-11-17T11:02:31+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h20m"
-twigs = 884
-leaf_area_m2 = 91.3
+twigs = 893
+leaf_area_m2 = 91.8
 leaf_area_target_m2 = 90.8
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 1849
-target.dbh_m = { value = 0.177, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
-target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
-target.crown_radius_m = { value = 3.949, p25 = 3.117, p75 = 3.639, inside = false, n = 24 }
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 1830
 
 [trees.european_beech.r07_h25m]
 species = "european_beech"
@@ -906,7 +903,7 @@ radius = 7
 height_m = 25.47
 dbh_cm = 27.0
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h25m_d27cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r07/European_Beech_r07_h25m_d27cm_full_growth_data.floor.json"
 twig_set = "compound"
 twig_entries = ["european_beech__cutL_p00", "european_beech__cutL_p01", "european_beech__cutL_p02", "european_beech__cutL_p03", "european_beech__cutL_p04", "european_beech__cutM_p00", "european_beech__cutM_p01", "european_beech__cutM_p02", "european_beech__cutM_p03", "european_beech__cutM_p04", "european_beech__cutS_p00", "european_beech__cutS_p01", "european_beech__cutS_p02", "european_beech__european_beech_compound_p00", "european_beech__european_beech_compound_p01", "european_beech__european_beech_compound_p02", "european_beech__european_beech_compound_p03", "european_beech__european_beech_compound_p04"]
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
@@ -914,18 +911,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:22:49+01:00"
+grown = "2026-11-17T11:02:33+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r07_h25m"
-twigs = 1887
-leaf_area_m2 = 202.8
+twigs = 1881
+leaf_area_m2 = 201.9
 leaf_area_target_m2 = 202.4
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 2770
-target.dbh_m = { value = 0.27, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
-target.crown_base_m = { value = 11.0, p25 = 5.5, p75 = 10.5, inside = false, n = 87 }
-target.crown_radius_m = { value = 4.497, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 2761
 
 [trees.european_beech.r07_h30m]
 species = "european_beech"
@@ -949,7 +943,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 3638
 leaf_area_m2 = 412.1
 leaf_area_target_m2 = 412.9
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 3600
 target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
 target.crown_base_m = { value = 17.0, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
@@ -977,7 +971,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 5792
 leaf_area_m2 = 675.2
 leaf_area_target_m2 = 676.6
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 4747
 target.dbh_m = { value = 0.511, p25 = 0.406, p75 = 0.54, inside = true, n = 4 }
 target.crown_base_m = { value = 23.0, p25 = 12.21, p75 = 20.73, inside = false, n = 4 }
@@ -1005,7 +999,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 8113
 leaf_area_m2 = 929.3
 leaf_area_target_m2 = 931.4
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 7222
 target.dbh_m = { value = 0.605, p25 = 0.487, p75 = 0.647, inside = true, n = 0 }
 target.crown_base_m = { value = 26.5, p25 = 16.58, p75 = 28.16, inside = true, n = 0 }
@@ -1033,7 +1027,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 80
 leaf_area_m2 = 5.6
 leaf_area_target_m2 = 5.3
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 319
 target.dbh_m = { value = 0.04, p25 = 0.029, p75 = 0.038, inside = false, n = 1 }
 target.crown_base_m = { value = 2.0, p25 = 0.141, p75 = 0.239, inside = false, n = 1 }
@@ -1061,7 +1055,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 371
 leaf_area_m2 = 31.8
 leaf_area_target_m2 = 31.8
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 1289
 target.dbh_m = { value = 0.101, p25 = 0.088, p75 = 0.107, inside = true, n = 19 }
 target.crown_base_m = { value = 2.0, p25 = 0.5, p75 = 1.5, inside = false, n = 19 }
@@ -1089,7 +1083,7 @@ static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBee
 twigs = 597
 leaf_area_m2 = 55.7
 leaf_area_target_m2 = 53.1
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
 bones = 2130
 target.dbh_m = { value = 0.133, p25 = 0.112, p75 = 0.144, inside = true, n = 28 }
 target.crown_base_m = { value = 3.0, p25 = 0.875, p75 = 2.0, inside = false, n = 28 }
@@ -1102,7 +1096,7 @@ radius = 10
 height_m = 19.56
 dbh_cm = 17.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h20m_d18cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h20m_d18cm_full_growth_data.floor.json"
 twig_set = "compound"
 twig_entries = ["european_beech__cutL_p00", "european_beech__cutL_p01", "european_beech__cutL_p02", "european_beech__cutL_p03", "european_beech__cutL_p04", "european_beech__cutM_p00", "european_beech__cutM_p01", "european_beech__cutM_p02", "european_beech__cutM_p03", "european_beech__cutM_p04", "european_beech__cutS_p00", "european_beech__cutS_p01", "european_beech__cutS_p02", "european_beech__european_beech_compound_p00", "european_beech__european_beech_compound_p01", "european_beech__european_beech_compound_p02", "european_beech__european_beech_compound_p03", "european_beech__european_beech_compound_p04"]
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
@@ -1110,18 +1104,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:22:50+01:00"
+grown = "2026-11-17T11:02:51+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h20m"
-twigs = 865
-leaf_area_m2 = 89.7
+twigs = 867
+leaf_area_m2 = 89.6
 leaf_area_target_m2 = 90.0
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 2170
-target.dbh_m = { value = 0.176, p25 = 0.157, p75 = 0.192, inside = true, n = 24 }
-target.crown_base_m = { value = 5.5, p25 = 1.5, p75 = 7.375, inside = true, n = 24 }
-target.crown_radius_m = { value = 5.004, p25 = 3.117, p75 = 3.639, inside = false, n = 24 }
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 2153
 
 [trees.european_beech.r10_h25m]
 species = "european_beech"
@@ -1130,7 +1121,7 @@ radius = 10
 height_m = 25.34
 dbh_cm = 26.7
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h25m_d27cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h25m_d27cm_full_growth_data.floor.json"
 twig_set = "compound"
 twig_entries = ["european_beech__cutL_p00", "european_beech__cutL_p01", "european_beech__cutL_p02", "european_beech__cutL_p03", "european_beech__cutL_p04", "european_beech__cutM_p00", "european_beech__cutM_p01", "european_beech__cutM_p02", "european_beech__cutM_p03", "european_beech__cutM_p04", "european_beech__cutS_p00", "european_beech__cutS_p01", "european_beech__cutS_p02", "european_beech__european_beech_compound_p00", "european_beech__european_beech_compound_p01", "european_beech__european_beech_compound_p02", "european_beech__european_beech_compound_p03", "european_beech__european_beech_compound_p04"]
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
@@ -1138,18 +1129,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:22:50+01:00"
+grown = "2026-11-17T11:02:53+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h25m"
-twigs = 1923
-leaf_area_m2 = 198.5
+twigs = 1919
+leaf_area_m2 = 198.0
 leaf_area_target_m2 = 198.4
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 3611
-target.dbh_m = { value = 0.267, p25 = 0.239, p75 = 0.338, inside = true, n = 87 }
-target.crown_base_m = { value = 10.5, p25 = 5.5, p75 = 10.5, inside = true, n = 87 }
-target.crown_radius_m = { value = 5.264, p25 = 3.422, p75 = 4.435, inside = false, n = 87 }
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 3604
 
 [trees.european_beech.r10_h30m]
 species = "european_beech"
@@ -1158,7 +1146,7 @@ radius = 10
 height_m = 29.21
 dbh_cm = 39.2
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h30m_d39cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest/european_beech/r10/European_Beech_r10_h30m_d39cm_full_growth_data.floor.json"
 twig_set = "compound"
 twig_entries = ["european_beech__cutL_p00", "european_beech__cutL_p01", "european_beech__cutL_p02", "european_beech__cutL_p03", "european_beech__cutL_p04", "european_beech__cutM_p00", "european_beech__cutM_p01", "european_beech__cutM_p02", "european_beech__cutM_p03", "european_beech__cutM_p04", "european_beech__cutS_p00", "european_beech__cutS_p01", "european_beech__cutS_p02", "european_beech__european_beech_compound_p00", "european_beech__european_beech_compound_p01", "european_beech__european_beech_compound_p02", "european_beech__european_beech_compound_p03", "european_beech__european_beech_compound_p04"]
 material = "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_bark"
@@ -1166,18 +1154,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:22:50+01:00"
+grown = "2026-11-17T11:02:57+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h30m"
-twigs = 3709
+twigs = 3690
 leaf_area_m2 = 410.7
 leaf_area_target_m2 = 411.2
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 4826
-target.dbh_m = { value = 0.393, p25 = 0.351, p75 = 0.44, inside = true, n = 222 }
-target.crown_base_m = { value = 14.5, p25 = 9.0, p75 = 14.0, inside = false, n = 222 }
-target.crown_radius_m = { value = 5.528, p25 = 3.935, p75 = 4.865, inside = false, n = 222 }
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 4699
 
 [trees.european_beech.r10_h35m]
 species = "european_beech"
@@ -1194,15 +1179,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:30:54+01:00"
+grown = "2026-11-17T11:03:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h35m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h35m"
-twigs = 5877
-leaf_area_m2 = 669.9
+twigs = 5841
+leaf_area_m2 = 669.4
 leaf_area_target_m2 = 670.6
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 5739
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 5594
 
 [trees.european_beech.r10_h40m]
 species = "european_beech"
@@ -1219,15 +1204,15 @@ bark_trunk = "fab_beech_bark_smooth"
 bark_branch = "fab_beech_bark_smooth"
 structure_settings = { add_regenerate = 0.87, drop_shaded = 0.15, drop_obsolete = 0.15 }
 settings_since = "2026-09-20T10:00:43+02:00"
-grown = "2026-11-17T09:31:00+01:00"
+grown = "2026-11-17T11:03:08+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h40m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/european_beech/SM_EuropeanBeech_r10_h40m"
-twigs = 8465
-leaf_area_m2 = 952.2
+twigs = 8410
+leaf_area_m2 = 951.4
 leaf_area_target_m2 = 952.0
-plan = "unreal_scripts_european_beech_r12_2026-11-17"
-bones = 6955
+plan = "unreal_scripts_european_beech_r12b_2026-11-17"
+bones = 6665
 
 [trees.european_oak.r07_h05m]
 species = "european_oak"
