@@ -2003,10 +2003,10 @@ grown = "2026-09-22T17:15:13+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h05m"
-twigs = 352
-leaf_area_m2 = 11.5
-leaf_area_target_m2 = 7.0
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 445
+leaf_area_m2 = 4.2
+leaf_area_target_m2 = 4.2
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 536
 target.dbh_m = { value = 0.044, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
@@ -2031,10 +2031,10 @@ grown = "2026-09-22T17:17:13+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h10m"
-twigs = 411
-leaf_area_m2 = 30.0
-leaf_area_target_m2 = 30.0
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 443
+leaf_area_m2 = 18.1
+leaf_area_target_m2 = 18.0
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 546
 target.dbh_m = { value = 0.103, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 5.0, p25 = 5.0, p75 = 7.5, inside = true, n = 90 }
@@ -2059,10 +2059,10 @@ grown = "2026-09-22T17:24:23+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h15m"
-twigs = 262
-leaf_area_m2 = 61.7
-leaf_area_target_m2 = 61.0
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 205
+leaf_area_m2 = 36.7
+leaf_area_target_m2 = 36.6
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 298
 target.dbh_m = { value = 0.154, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 10.5, p25 = 7.5, p75 = 11.0, inside = true, n = 643 }
@@ -2087,10 +2087,10 @@ grown = "2026-09-22T17:40:09+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h20m"
-twigs = 286
-leaf_area_m2 = 123.8
-leaf_area_target_m2 = 123.0
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 229
+leaf_area_m2 = 74.9
+leaf_area_target_m2 = 73.8
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 343
 target.dbh_m = { value = 0.231, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 14.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
@@ -2115,10 +2115,10 @@ grown = "2026-09-22T18:03:47+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h25m"
-twigs = 365
-leaf_area_m2 = 223.1
-leaf_area_target_m2 = 222.1
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 281
+leaf_area_m2 = 134.1
+leaf_area_target_m2 = 133.3
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 340
 target.dbh_m = { value = 0.324, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 17.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
@@ -2143,10 +2143,10 @@ grown = "2026-09-22T18:28:34+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r07_h30m"
-twigs = 542
-leaf_area_m2 = 325.6
-leaf_area_target_m2 = 326.2
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 290
+leaf_area_m2 = 193.1
+leaf_area_target_m2 = 195.7
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 410
 target.dbh_m = { value = 0.404, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 19.5, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
@@ -2171,10 +2171,10 @@ grown = "2026-09-22T17:15:05+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h05m"
-twigs = 363
-leaf_area_m2 = 12.4
-leaf_area_target_m2 = 6.5
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 401
+leaf_area_m2 = 3.8
+leaf_area_target_m2 = 3.9
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 551
 target.dbh_m = { value = 0.041, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
@@ -2199,10 +2199,10 @@ grown = "2026-09-22T17:17:35+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h10m"
-twigs = 568
-leaf_area_m2 = 30.1
-leaf_area_target_m2 = 29.7
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 604
+leaf_area_m2 = 17.9
+leaf_area_target_m2 = 17.8
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 783
 target.dbh_m = { value = 0.102, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 3.5, p25 = 5.0, p75 = 7.5, inside = false, n = 90 }
@@ -2227,10 +2227,10 @@ grown = "2026-09-22T17:24:54+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h15m"
-twigs = 704
-leaf_area_m2 = 61.8
-leaf_area_target_m2 = 61.9
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 754
+leaf_area_m2 = 37.1
+leaf_area_target_m2 = 37.1
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 857
 target.dbh_m = { value = 0.156, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 6.5, p25 = 7.5, p75 = 11.0, inside = false, n = 643 }
@@ -2255,10 +2255,10 @@ grown = "2026-09-22T17:38:45+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h20m"
-twigs = 742
-leaf_area_m2 = 121.4
-leaf_area_target_m2 = 122.2
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 565
+leaf_area_m2 = 73.5
+leaf_area_target_m2 = 73.3
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 903
 target.dbh_m = { value = 0.23, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 7.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
@@ -2283,10 +2283,10 @@ grown = "2026-09-22T18:13:27+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h25m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h25m"
-twigs = 692
-leaf_area_m2 = 217.9
-leaf_area_target_m2 = 220.5
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 743
+leaf_area_m2 = 131.5
+leaf_area_target_m2 = 132.3
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 889
 target.dbh_m = { value = 0.322, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 6.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
@@ -2311,10 +2311,10 @@ grown = "2026-09-22T18:32:07+02:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_h30m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/scots_pine/SM_ScotsPine_r10_h30m"
-twigs = 720
-leaf_area_m2 = 311.6
-leaf_area_target_m2 = 309.6
-plan = "unreal_scripts_scots_pine_r11_2026-11-14"
+twigs = 756
+leaf_area_m2 = 184.4
+leaf_area_target_m2 = 185.7
+plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 1099
 target.dbh_m = { value = 0.392, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 4.0, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
