@@ -75,7 +75,7 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 
 | Category | Rule | When to Apply |
 |----------|------|---------------|
-| Confirmation | Never commit or push without explicit user confirmation | Always |
+| Confirmation | Commit and push your own work with an explicit pathspec; anything outward-facing waits for the owner (Decision rights, workspace `AGENTS.md`) | Always |
 | Scope | Modify only what the request requires — no adjacent cleanup | Always |
 | Clarity | State assumptions explicitly; ask when uncertain rather than guessing | Before coding |
 | Simplicity | Minimum code that solves the problem — no speculative features | Always |
