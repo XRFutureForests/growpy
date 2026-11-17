@@ -601,17 +601,22 @@ def graded_palette(
 
 
 def _step_base_scale(
-    solve, base: DistributorSpec, min_density: int, factor: float = 0.85
+    solve,
+    base: DistributorSpec,
+    min_density: int,
+    factor: float = 0.85,
+    min_scale: float = 1.0,
 ):
     """Solve at ``base``; while the density is below ``min_density``, re-solve at a
-    smaller base scale (``factor`` per step, never below 1.0). Returns (solved, base).
+    smaller base scale (``factor`` per step, never below ``min_scale``, the pose's
+    ``min_base_scale``). Returns (solved, base).
 
     XRFF-681: large twigs put small trees on the one-per-branch floor, where they
     overshoot their leaf-area target; smaller twigs give the solve room again.
     """
     solved = solve(base)
-    while min_density and solved.density < min_density and base.base_scale > 1.0:
-        smaller = max(1.0, round(base.base_scale * factor, 4))
+    while min_density and solved.density < min_density and base.base_scale > min_scale:
+        smaller = max(min_scale, round(base.base_scale * factor, 4))
         base = dataclasses.replace(base, base_scale=smaller)
         solved = solve(base)
     return solved, base
@@ -984,6 +989,7 @@ def _offline_chain(
             ),
             base,
             calibration.pose.min_density,
+            min_scale=calibration.pose.min_base_scale,
         )
         conditions = ConditionSpec(
             scale=ConditionInfluence(weight=ladder.scale_weight),
@@ -1048,6 +1054,7 @@ def _offline_chain(
             ),
             base,
             calibration.pose.min_density,
+            min_scale=calibration.pose.min_base_scale,
         )
         if mask > 0.0:
             solved = dataclasses.replace(

@@ -1038,3 +1038,14 @@ class TestStepBaseScale:
         assert floor.base_scale == 1.0
         _, off = _step_base_scale(self._solve(0), base, min_density=0)
         assert off.base_scale == 3.0
+
+    def test_a_lower_min_scale_lets_a_floored_tree_shrink_further(self):
+        # XRFF-686: young Douglas fir still sits on the floor at 1.0
+        from growpy.io.unreal.pve_graph_builder import DistributorSpec
+        from growpy.io.unreal.pve_graph_plan import _step_base_scale
+
+        base = DistributorSpec(branch_density=1, base_scale=1.5)
+        solved, out = _step_base_scale(
+            self._solve(0), base, min_density=150, min_scale=0.7
+        )
+        assert 0.7 <= out.base_scale < 1.0 and solved.density >= 150

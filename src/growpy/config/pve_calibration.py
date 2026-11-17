@@ -279,6 +279,10 @@ class TwigPose:
     # density is below this, the plan re-solves at 0.85x the base scale, down to 1.0.
     # 0 keeps the pose's base scale whatever the density.
     min_density: int = 0
+    # Lowest base scale that step may reach (2026-11-17, XRFF-686). 1.0 keeps the authored twig size; a
+    # many-branched young Douglas fir still sits on the one-per-branch floor at 1.0 (leaf area 1.29-1.66x its
+    # target at h10), so it may shrink its twigs further until the solve lands.
+    min_base_scale: float = 1.0
     # Droop (2026-11-14, owner: "double effort" on a natural look): strength of an
     # aim entry that turns each twig toward world down, as MegaPlants' Norway spruce
     # hangs its branchlets (AxisAim, axis (0, 0, -1), strength 0.93). Rotation only,
@@ -293,6 +297,8 @@ class TwigPose:
             raise ValueError(f"base_scale must be positive, got {self.base_scale}")
         if self.min_density < 0:
             raise ValueError(f"min_density must be >= 0, got {self.min_density}")
+        if not 0.0 < self.min_base_scale <= 1.0:
+            raise ValueError(f"min_base_scale must be in (0, 1], got {self.min_base_scale}")
         if not -90.0 <= self.axil_angle <= 90.0:
             raise ValueError(f"axil_angle must be in [-90, 90], got {self.axil_angle}")
         if self.orient not in ("AIM_FACE", "RANDOM_ROLL"):
@@ -986,6 +992,7 @@ def _pose(data: dict[str, Any] | None) -> TwigPose:
         scale_ramp=_pair(data.get("scale_ramp"), (1.0, 1.0)),
         base_scale=float(data.get("base_scale", 1.0)),
         min_density=int(data.get("min_density", 0)),
+        min_base_scale=float(data.get("min_base_scale", 1.0)),
         droop=float(data.get("droop", 0.0)),
     )
 
