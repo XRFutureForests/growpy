@@ -695,12 +695,11 @@ class TestPlanEndToEnd:
         plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
         graph_text = plan.script.read_text(encoding="utf-8")
         asset_text = plan.asset_script.read_text(encoding="utf-8")
-        mesh = (
-            "/Game/PVE_Test/Foliage/european_beech/european_beech_foliage_a"
-            "/StaticMeshes/SM_european_beech_foliage_a"
-        )
-        assert mesh in graph_text
-        assert mesh in asset_text
+        # whatever palette the species wears (flat twigs, or compounds since 1.2 beech)
+        foliage = r"/Game/PVE_Test/Foliage/[\w/]+/StaticMeshes/SM_\w+"
+        meshes = set(re.findall(foliage, graph_text))
+        assert meshes
+        assert all(mesh in asset_text for mesh in meshes)
 
     def test_an_empty_export_authors_nothing(self, tmp_path):
         plan = plan_pve_graphs(tmp_path, tmp_path / "absent")

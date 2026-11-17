@@ -457,6 +457,9 @@ leader_tier = ["_h", "lateral_c"]
 # ---------------------------------------------------------------- beech ----
 
 [pve_calibration.species.european_beech]
+# 1.2 beech dressing (owner 2026-11-17, E99 -> E101): the twig catalog's S/M/L compounds, see
+# [pve_calibration.species.european_beech.compound] at the end of this file.
+palette = "compound"
 # Foliage on the outer 60 % of every branch. This lifts the lowest foliage on
 # r20_h15m from 0.14 m to 1.60 m and keeps leaves off the thick inner span of
 # primary limbs. It is NOT count-neutral against 0.0, so every build_density
@@ -1090,3 +1093,16 @@ build_instances = 1908
 build_density_source = "offline"
 scale_targets = [0.000158, 0.000509, 0.000979, 0.004949, 0.014338, 0.025059, 0.049799, 0.077854]
 instance_leaf_area_m2 = 0.02047263
+
+# 1.2 beech dressing (owner 2026-11-17; E99, E101): the twig catalog's S/M/L compounds, picked by host
+# diameter (XRFF-685), spacing solved to the leaf-area target. Fill span 0.60-1.00 (TIP60): at the CUT20
+# cut a 10 m tree runs at the sparsest fill density, and the default 0.15-0.90 span left one compound
+# near each limb's root and 59-62 % of limbs with > 0.5 m bare ends; 0.60-1.00 brings that to 4-17 %
+# with leaf area 0.99-1.01 of target at h10 and h20 (owner: at all cells).
+[pve_calibration.species.european_beech.compound]
+size_bins_mm = { S = [0.0, 6.0], M = [6.0, 12.0], L = [12.0, 25.0] }
+cap_tier = "S_p00"
+apex_tier = "M_p02"
+solve_to_target = true
+fill_relative_start = 0.6
+fill_relative_end = 1.0

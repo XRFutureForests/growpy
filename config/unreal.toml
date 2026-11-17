@@ -268,7 +268,9 @@ common_ash = 0.02
 # 0.65 cm and 37-70 at 0.65-1.5 cm, against 7.5 and 21.5 on destructively measured
 # Belgian beech. Cut diameter about 15 mm at 20 m; bounded at 25 mm by
 # max_branch_cut_radius_per_species below (the largest compound size, L 12-25 mm).
-european_beech = 0.07
+# 2026-11-17 (owner, E101 cut sheet): 0.20, in effect a flat 25 mm cut diameter under the bound below; the
+# only cut that put the compound-dressed beech inside the +-15 % leaf-area guard at h10 and h20 (arm B).
+european_beech = 0.20
 european_oak = 0.02
 silver_birch = 0.02
 small_leaved_linden = 0.02
