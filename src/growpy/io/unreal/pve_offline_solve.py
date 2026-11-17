@@ -509,13 +509,16 @@ def size_bin_targets(
 ) -> tuple[float | None, ...]:
     """Scale target per fill part so the picker's nearest-target rule splits
     host branches exactly at the size-bin edges; ``None`` for a part whose bin
-    no host of this tree reaches (its upper edge is under the thinnest host).
+    no host of this tree reaches (its upper edge is under the thinnest host, or
+    its lower edge over the thickest).
 
     The picker takes the entry nearest the sample's normalised radius, so the
     split between two bins falls at the midpoint of their targets. In the
     tree's own Scale range (0 = thinnest host), targets are chained from the
     first reachable bin's middle, or 0 if that lies below the thinnest host:
-    t1 = 2 * edge - t0, and so on.
+    t1 = 2 * edge - t0, and so on. The top reachable bin's target is capped at
+    1 (the thickest host): its split then lands a little above the edge, inside
+    the few thickest hosts (a 5 m beech at the 1.2 cut, 2026-11-17).
     """
     from growpy.io.unreal.pve_distributor_model import scale_range_cm
 
@@ -526,7 +529,7 @@ def size_bin_targets(
     def norm(mm: float) -> float:
         return (mm / 20.0 - lo_cm) / (hi_cm - lo_cm)
 
-    bins = [b for b in spec.size_bins_mm if norm(b[2]) > 0.0]
+    bins = [b for b in spec.size_bins_mm if norm(b[2]) > 0.0 and norm(b[1]) < 1.0]
     if not bins:
         raise ValueError(
             f"{growth_json}: every host is thicker than {spec.size_bins_mm}"
@@ -534,6 +537,8 @@ def size_bin_targets(
     by_bin = {bins[0][0]: max(norm((bins[0][1] + bins[0][2]) / 2.0), 0.0)}
     for (_, _, edge), (name, lo, hi) in zip(bins, bins[1:], strict=False):
         t = 2.0 * norm(edge) - by_bin[next(reversed(by_bin))]
+        if name == bins[-1][0] and t > 1.0 >= norm(lo):
+            t = 1.0
         if not norm(lo) <= t < norm(hi) or t > 1.0:
             raise ValueError(
                 f"size bins {spec.size_bins_mm}: no chained target fits "

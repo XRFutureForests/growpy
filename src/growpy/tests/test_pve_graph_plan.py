@@ -34,6 +34,7 @@ from growpy.io.unreal.pve_graph_builder import (
     write_coverage_manifest,
 )
 from growpy.io.unreal.pve_graph_plan import (
+    CROWN_FLOOR_SUFFIX,
     discover_growth_jsons,
     graded_palette,
     mask_entries_for,
@@ -193,6 +194,31 @@ class TestMaskEntries:
         assert "repeats" in str(err.value)
         with pytest.raises(ValueError, match="mask_fraction"):
             mask_entries_for(1.0, 8)
+
+    def test_a_crown_floor_plans_on_a_compound_palette(self, tmp_path, forest_root):
+        # 1.2 beech (2026-11-17): compounds sit on side branches only, so the
+        # skeleton prune alone floors them; the chain reads the floored JSON.
+        # The tracked (offline) file: floors and compounds are offline-path only.
+        toml = TRACKED_TOML.read_text(encoding="utf-8")
+        anchor = "[pve_calibration.species.european_beech.crown_floor]"
+        assert toml.count(anchor) == 1
+        override = tmp_path / "cal.toml"
+        override.write_text(
+            toml.replace(anchor, anchor + "\nr10_h15m = 0.3"), encoding="utf-8"
+        )
+        (tree,) = (forest_root / "european_beech" / "r10").glob("*_h15m_*.json")
+        tree.write_text(json.dumps(_floor_tree()), encoding="utf-8")
+        plan = plan_pve_graphs(
+            tmp_path, forest_root, content_root="/Game/PVE_Test",
+            calibration_path=override, species=["european_beech"],
+        )  # fmt: skip
+        assert not [s for s in plan.skipped if "r10_h15m" in s]
+        chains = {c.mesh_name: c for g in plan.graphs for c in g.chains}
+        floored = chains["SK_EuropeanBeech_r10_h15m"]
+        assert str(floored.growth_json).endswith(CROWN_FLOOR_SUFFIX)
+        kept = json.loads(floored.growth_json.read_text())["primitives"]["points"]
+        assert len(kept) == 3  # trunk, high limb, its twig; the low limb is gone
+        assert floored.layers  # the compound tip caps and apex
 
     def test_a_masked_tree_plans_a_palette_of_its_own(self, tmp_path, forest_root):
         # XRFF-462: the calibration's mask_fraction becomes a per-chain palette
@@ -787,6 +813,54 @@ class TestPipelineWiring:
         assert "plan_pve_graphs" in source
         assert "unreal_generate_pve_graphs" in source
 
+
+
+def _floor_tree() -> dict:
+    """A 10 m tree with every attribute the crown-floor prune reads: a low limb
+    wholly under 3 m, a high limb with a twig; limbs 10 mm, twig 4 mm thick."""
+    positions, radii, gens = [], [], []
+
+    def run(pts, r, g):
+        out = []
+        for x, y in pts:
+            positions.append([x, y, 0.0])
+            radii.append([r, 0.0])
+            gens.append([g])
+            out.append(len(positions) - 1)
+        return out
+
+    trunk = run([(0.0, float(i)) for i in range(11)], 0.06, 1)
+    low = [trunk[1]] + run([(0.5, 1.2), (1.0, 1.5), (1.5, 1.8)], 0.005, 2)
+    high = [trunk[5]] + run([(0.8, 5.8), (1.6, 6.8), (2.4, 7.8)], 0.005, 2)
+    twig = [high[2]] + run([(2.0, 7.2), (2.4, 7.6)], 0.002, 3)
+    branches = [trunk, low, high, twig]
+    chains = [[0], [0, 1], [0, 1], [0, 1, 3]]
+    n = len(branches)
+
+    def attr(values):
+        return {"values": values}
+
+    return {
+        "points": {
+            "positions": positions,
+            "attributes": {
+                "budLateralMeristem": attr(radii),
+                "budDevelopment": attr(gens),
+            },
+        },
+        "primitives": {
+            "points": branches,
+            "attributes": {
+                "parents": attr(chains),
+                "children": attr([[2, 3], [], [4], []]),
+                "branchNumber": attr(list(range(1, n + 1))),
+                "branchSourceBudNumber": attr([0] * n),
+                "branchParentNumber": attr([0, 1, 1, 3]),
+                "branchHierarchyNumber": attr([len(c) for c in chains]),
+                "plantNumber": attr([1] * n),
+            },
+        },
+    }
 
 
 def _skeleton(tmp_path, limb_radius: float, twig_radius: float = 0.005) -> Path:

@@ -437,6 +437,25 @@ class TestCompoundLayout:
         assert t_s == 0.0
         assert lo + (t_s + t_m) / 2 * (hi - lo) == pytest.approx(50.0 / 20.0)
 
+    def test_a_bin_above_the_thickest_host_is_dropped(self, tmp_path):
+        spec = CompoundSpec(
+            size_bins_mm=(("S", 0.0, 50.0), ("M", 50.0, 500.0), ("L", 500.0, 600.0))
+        )
+        names = ["a_S_p00", "a_M_p00", "a_L_p00"]
+        targets = size_bin_targets(_tree(tmp_path), spec, names)
+        assert targets[2] is None and targets[1] is not None
+
+    def test_the_top_bin_target_is_capped_at_the_thickest_host(self, tmp_path):
+        # a 5 m beech at the 1.2 cut: the chained M target overshoots 1,
+        # yet M is still reached
+        path = _tree(tmp_path)
+        lo, hi = scale_range_cm(path, 0.15, 0.90)
+        edge = 20 * (lo + 0.9 * (hi - lo))
+        spec = CompoundSpec(size_bins_mm=(("S", 0.0, edge), ("M", edge, 20 * hi + 10)))
+        t_s, t_m = size_bin_targets(path, spec, ["a_S_p00", "a_M_p00"])
+        assert 2 * 0.9 - t_s > 1.0  # the chained target would overshoot
+        assert t_m == 1.0
+
     def test_size_bins_that_no_chained_target_fits_are_refused(self, tmp_path):
         spec = CompoundSpec(size_bins_mm=(("S", 0.0, 50.0), ("M", 50.0, 52.0)))
         with pytest.raises(ValueError, match="no chained target fits"):

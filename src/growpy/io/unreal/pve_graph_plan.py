@@ -876,10 +876,13 @@ def _offline_chain(
     crown_floor = calibration.crown_floor_for(entry.tree_id)
     crown_floor_m = 0.0
     if crown_floor > 0.0:
-        if calibration.palette != "twigs" or calibration.ladder is not None:
+        # A compound layout dresses side branches only (fill and caps from
+        # generation 2, apex on the leader top), so the skeleton prune alone
+        # keeps it off the floor; a flat palette also needs the picker gate.
+        if calibration.palette not in ("twigs", "compound") or calibration.ladder:
             raise ValueError(
                 f"{entry.species} {entry.tree_id}: crown_floor needs a flat twig "
-                f"palette; a graded ladder or compound layout owns the picker"
+                f"or compound palette; a graded ladder owns the picker"
             )
         entry, crown_floor_m = apply_crown_floor(entry, crown_floor)
     stats = tree_stats(entry.path, profile_mean)
@@ -940,6 +943,12 @@ def _offline_chain(
             predicted_instances=layout.instances,
             predicted_m2=round(layout.area_m2, 2),
         )
+        if crown_floor > 0.0:
+            detail.update(
+                crown_floor=crown_floor,
+                crown_floor_m=round(crown_floor_m, 2),
+                growth_json_floored=str(entry.path),
+            )
         return PlannedTree(chain=chain, instances=layout.instances, detail=detail)
 
     ladder = calibration.ladder
