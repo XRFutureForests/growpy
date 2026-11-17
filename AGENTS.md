@@ -2,7 +2,6 @@
 
 Procedural tree/forest generation pipeline: CSV species data → The Grove 2.3 growth simulation → USD Nanite assemblies for Unreal Engine 5.7+. Trees grow to height milestones; stem diameter is realised at export from yield-table height-DBH allometry. Competition variants come from Grove's Surround shell. Outputs USD assemblies, PVE JSON, OBJ for Helios++ LiDAR.
 
-
 ## Documentation Map
 
 | Need | Read |
@@ -73,28 +72,12 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 
 ## Critical Rules
 
+Workspace rules (decision rights, commits, Linear, tool preferences) are in the workspace `AGENTS.md` one level above the repos and apply here too. The basics: change only what the task needs, verify each step, commit your own work with an explicit pathspec, never commit secrets.
+
 | Category | Rule | When to Apply |
 |----------|------|---------------|
-| Confirmation | Commit and push your own work with an explicit pathspec; anything outward-facing waits for the owner (Decision rights, workspace `AGENTS.md`) | Always |
-| Scope | Modify only what the request requires — no adjacent cleanup | Always |
-| Clarity | State assumptions explicitly; ask when uncertain rather than guessing | Before coding |
-| Simplicity | Minimum code that solves the problem — no speculative features | Always |
-| Verification | Define success criteria before starting; verify each step | Per task |
-| Task tracking | Use Linear MCP for all issue operations — check before creating new issues | Always |
 | Language | Keep project code and documentation in English | For all written artifacts |
 | Research | Prefer official Python and USD documentation sources | Before stack-specific decisions |
-
-## MCP Tool Preferences
-
-| Need | Preferred flow |
-|------|----------------|
-| Discover files | `inspect_path` with narrow path |
-| Search text | `grep_search(output_mode="summary")`, narrow before content mode |
-| Read code | `outline` or targeted `read_file` |
-| Edit code | `read_file(edit_ready=true)` → `edit_file(base_revision)` → verify |
-| Semantic risk | `index_project` → symbol/architecture analysis |
-
-Use `hex-line` first for repository text reads, search, and edits. Use `hex-graph` first for semantic questions: symbol identity, references, architecture, edit blast radius. Fall back to built-in Read/Edit/Write/Grep/Glob only when MCP is unavailable or task is shell-native.
 
 ## Development Commands
 
@@ -121,4 +104,4 @@ Use `hex-line` first for repository text reads, search, and edits. Use `hex-grap
 - [ ] CLI script table matches `pyproject.toml` entry points
 - [ ] Canonical docs listed here still exist
 
-**Last Updated:** 2026-09-25
+**Last Updated:** 2026-11-17
