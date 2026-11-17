@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tomllib
 from pathlib import Path
@@ -43,8 +44,11 @@ SOURCES = {
 }
 # cut-diameter bins in mm (XRFF-684): beech owner-fixed 2026-11-16 (export cut 0.07 x trunk
 # base radius, bounded at 25 mm); a species not listed has no bins yet
+_SML = {"S": (0.0, 6.0), "M": (6.0, 12.0), "L": (12.0, 25.0)}
+# conifers since XRFF-686 (owner 2026-11-17, conifer twig pass for 1.2)
 SIZE_BINS_MM = {
-    "european_beech": {"S": (0.0, 6.0), "M": (6.0, 12.0), "L": (12.0, 25.0)}
+    sp: _SML
+    for sp in ("european_beech", "norway_spruce", "silver_fir", "douglas_fir", "scots_pine")
 }
 
 
@@ -244,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{sp}: {made} new entries")
         return 0
     entries, problems = (
-        build() if args.command == "build" else build(catalog=Path(sys.devnull))
+        build() if args.command == "build" else build(catalog=Path(os.devnull))
     )
     for tid, issues in problems.items():
         print(f"{tid}: {'; '.join(issues)}")

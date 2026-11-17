@@ -177,7 +177,7 @@ class TestShippedCalibration:
         assert beech.fullness == 1.5 and beech.relative_start == 0.4
         assert beech.crown_floor == {
             "r07_h20m": 0.25, "r07_h25m": 0.25, "r10_h20m": 0.25, "r10_h25m": 0.25,
-            "r10_h30m": 0.40, "r10_h35m": 0.25, "r10_h40m": 0.25,
+            "r10_h30m": 0.40, "r10_h35m": 0.40, "r10_h40m": 0.30,
         }  # fmt: skip
         assert beech.crown_floor_for("r07_h40m") == 0.0
         assert broadleaf.crown_floor == {}

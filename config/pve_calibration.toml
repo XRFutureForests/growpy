@@ -517,8 +517,11 @@ r07_h25m = 0.25
 r10_h20m = 0.25
 r10_h25m = 0.25
 r10_h30m = 0.40
-r10_h35m = 0.25
-r10_h40m = 0.25
+# r10 h35/h40 raised from the 1.1 0.25 (owner 2026-11-17): with compounds there is no picker gate, so short
+# shoots attached at 8.6-10.5 m that top out just above the 0.25 line (8.6 / 10.1 m) dressed a clump on the
+# bare bole; 0.40 / 0.30 put the lowest wood at 15.0 m, target-sheet crown base unchanged (17.0 / 28.5 m).
+r10_h35m = 0.40
+r10_h40m = 0.30
 
 
 # Fitted instances law, used only to seed a solve:
