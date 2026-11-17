@@ -440,6 +440,9 @@ palette = "twigs"
 fullness = 2.4
 
 [pve_calibration.species.scots_pine.pose]
+# XRFF-686 guard: young pines sit on the one-spray-per-branch floor at scale 1.0 (h05 2.96/3.44x, r10 h10 1.24x
+# the B2 target; 1.1 shipped h05 at 1.65/1.92x); 0.45 lands h05 and h10 at 0.99-1.01
+min_base_scale = 0.45
 orient = "RANDOM_ROLL"
 jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
