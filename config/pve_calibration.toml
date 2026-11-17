@@ -504,7 +504,19 @@ mask_fraction = 0.375
 # (37 / 83 branches below 5 m after thinning; main crown base 15.5 m at h35). A floor
 # at 0.25 of height (8.8 / 10.1 m) drops every side branch lying wholly below it and
 # gates the foliage there; the r07 ladder and every other r10 tree stay uncut.
+# 1.2 (owner 2026-11-17, E101/E102): at the CUT20 cut the h20-h30 trees dress their low
+# water sprouts (sprouts below the limb crown base: h20 4/4, h25 2/2, r10 h30 26). No
+# Grove arm of E102 removed them without lifting the target-sheet crown base out of the
+# band; these floors do (h20/h25 -> 0, r10 h25 one left high at 8.3 m, r10 h30 -> 0 with
+# lowest wood 10.9 m) and leave the target-sheet crown base unchanged. r07 h30/h40 keep
+# a few high in-crown shoots no floor reaches. With compounds the floor is the skeleton
+# prune alone (compounds dress side branches only).
 [pve_calibration.species.european_beech.crown_floor]
+r07_h20m = 0.25
+r07_h25m = 0.25
+r10_h20m = 0.25
+r10_h25m = 0.25
+r10_h30m = 0.40
 r10_h35m = 0.25
 r10_h40m = 0.25
 
