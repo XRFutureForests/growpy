@@ -157,13 +157,13 @@ class TestShippedCalibration:
         for name in PROFILE_CONIFERS:  # C1-C4: spruce profile, default fullness
             cal = shipped.for_species(name, habit="conifer")
             assert not cal.derived and cal.pose.orient == "RANDOM_ROLL", name
-            # release 1.1: spruce's and Douglas fir's half-size twigs come at half the leaf amount
-            assert cal.fullness == (2.0 if name in ("norway_spruce", "douglas_fir") else 4.0), name
+            # 1.2 B2 (XRFF-686): 0.6 x the 1.1 fullness (spruce/Douglas 2.0, fir/pine 4.0)
+            assert cal.fullness == (1.2 if name in ("norway_spruce", "douglas_fir") else 2.4), name
             assert cal.phyllotaxy_formation == "DISTICHOUS", name
         # XRFF-681: spruce left the defaults for its own Greenleaf-style block
         spruce = shipped.for_species("norway_spruce", habit="conifer")
         assert not spruce.derived and spruce.pose.orient == "RANDOM_ROLL"
-        assert spruce.fullness == 2.0 and spruce.trees == {}
+        assert spruce.fullness == 1.2 and spruce.trees == {}
         assert conifer.trees == {} and broadleaf.trees == {}
         # Broadleaf defaults are round-2 R4 (2026-09-16): x6, outer 15 %, 70 deg.
         assert conifer.fullness == 4.0 and broadleaf.fullness == 6.0
@@ -836,9 +836,9 @@ class TestPerInstanceVariance:
         fir = shipped.for_species("silver_fir").pose
         assert beech.randomize_scale == (0.7, 1.3)
         assert beech.randomize_axil_angle == (-20.0, 20.0)
-        # owner C1 (2026-11-12): fir follows the spruce profile's spread
-        assert fir.randomize_scale == (0.85, 1.15)
-        assert fir.randomize_axil_angle == (0.0, 0.0)
+        # owner C1 (2026-11-12): fir follows the spruce profile's spread; 1.2 B2 widened it (XRFF-686)
+        assert fir.randomize_scale == (0.5, 1.5)
+        assert fir.randomize_axil_angle == (-25.0, 25.0)
 
     def test_the_spacing_ramp_ships_only_as_the_broadleaf_gradient(self, shipped):
         # The ramp is shared by every branch, so it is a repeated motif rather

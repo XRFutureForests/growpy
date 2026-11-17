@@ -352,15 +352,17 @@ relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
 # Release 1.1: half-size twigs at a lower leaf amount (round 3 photos, side gap {2.0: 0.242, 2.5: 0.221})
-fullness = 2.0
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread; 0.6 x the 1.1 fullness 2
+fullness = 1.2
 
 [pve_calibration.species.norway_spruce.pose]
 orient = "RANDOM_ROLL"
 jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
 axil_angle = 45.0
-randomize_scale = [0.85, 1.15]
-randomize_axil_angle = [0.0, 0.0]
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread
+randomize_scale = [0.5, 1.5]
+randomize_axil_angle = [-25.0, 25.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
 # Release 1.1 (round 2 look board, owner "a bit better"): twigs at half their former size,
@@ -392,15 +394,19 @@ relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
 # Release 1.1: half-size twigs at a lower leaf amount (round 3 photos, side gap {2.0: 0.242, 2.5: 0.221})
-fullness = 2.0
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread; 0.6 x the 1.1 fullness 2
+fullness = 1.2
 
 [pve_calibration.species.douglas_fir.pose]
+# XRFF-686: h10's ~1300 branches sit on the one-per-branch floor at scale 1.0 (1.29-1.66x target); 0.7 lands it at 1.00
+min_base_scale = 0.7
 orient = "RANDOM_ROLL"
 jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
 axil_angle = 45.0
-randomize_scale = [0.85, 1.15]
-randomize_axil_angle = [0.0, 0.0]
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread
+randomize_scale = [0.5, 1.5]
+randomize_axil_angle = [-25.0, 25.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
 # Release 1.1 (round 2 look board, owner "a bit better"): twigs at half their former size,
@@ -430,15 +436,17 @@ relative_start = 0.0
 relative_start_by_height = [[5.0, 0.5], [15.0, 0.25], [20.0, 0.0]]
 phyllotaxy_formation = "DISTICHOUS"
 palette = "twigs"
-fullness = 4.0
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread; 0.6 x the 1.1 fullness 4
+fullness = 2.4
 
 [pve_calibration.species.scots_pine.pose]
 orient = "RANDOM_ROLL"
 jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
 axil_angle = 45.0
-randomize_scale = [0.85, 1.15]
-randomize_axil_angle = [0.0, 0.0]
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread
+randomize_scale = [0.5, 1.5]
+randomize_axil_angle = [-25.0, 25.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
 base_scale = 3.0
@@ -843,7 +851,8 @@ history_relative_start = 0.0
 # conifer fullness so the whole ladder is one look; the rows below stay as
 # the measured record. Graded ladder + apex as before.
 build_from = "offline"
-fullness = 4.0
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread; 0.6 x the 1.1 fullness 4
+fullness = 2.4
 
 # Borrowed from the beech fit -- no fir-specific fit was made. The law only
 # seeds a solve; every fir density below is measured or simulated.
@@ -861,8 +870,9 @@ orient = "RANDOM_ROLL"
 jitter = [{ mode = "ROLL", degrees = 180.0, seed = 21 }]
 reset_phyllotaxy = true
 axil_angle = 45.0
-randomize_scale = [0.85, 1.15]
-randomize_axil_angle = [0.0, 0.0]
+# 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread
+randomize_scale = [0.5, 1.5]
+randomize_axil_angle = [-25.0, 25.0]
 scale_ramp_basis = "BRANCH"
 scale_ramp = [1.89, 0.56]
 base_scale = 3.0
