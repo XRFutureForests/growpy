@@ -171,10 +171,14 @@ class TestShippedCalibration:
         assert broadleaf.pose.axil_angle == 70.0
         # Beech keeps its own block beside the R4 defaults: x1.5 since the
         # 2026-09-21 thinning (x2 before), start 0.4; since 2026-11-13 a crown
-        # floor only on the two tallest r10 trees (owner: E72 seed 4's shoot clump).
+        # floor only on the two tallest r10 trees (owner: E72 seed 4's shoot clump);
+        # 1.2 (2026-11-17) adds the h20-h30 water-sprout floors.
         beech = shipped.for_species("european_beech")
         assert beech.fullness == 1.5 and beech.relative_start == 0.4
-        assert beech.crown_floor == {"r10_h35m": 0.25, "r10_h40m": 0.25}
+        assert beech.crown_floor == {
+            "r07_h20m": 0.25, "r07_h25m": 0.25, "r10_h20m": 0.25, "r10_h25m": 0.25,
+            "r10_h30m": 0.40, "r10_h35m": 0.25, "r10_h40m": 0.25,
+        }  # fmt: skip
         assert beech.crown_floor_for("r07_h40m") == 0.0
         assert broadleaf.crown_floor == {}
         assert conifer.ladder is not None and broadleaf.ladder is not None
