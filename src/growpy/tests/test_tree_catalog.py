@@ -119,6 +119,19 @@ def test_a_tree_without_scores_is_a_finding_not_a_gap(tmp_path):
     assert tree_catalog.main(["check", "--manifest", str(out)]) == 0
 
 
+def test_grown_reads_the_tamf_sidecar_not_a_rewritten_growth_json(tmp_path):
+    import os
+
+    growth = tmp_path / "Norway_Spruce_r07_h20m_d27cm_full_growth_data.json"
+    tamf = tmp_path / "Norway_Spruce_r07_h20m_d27cm_full.tamf.json"
+    growth.write_text("{}")
+    tamf.write_text("{}")
+    os.utime(tamf, (1_700_000_000, 1_700_000_000))  # grown long ago; the JSON was rewritten since (DBH pass)
+    assert tree_catalog.grown_at(growth) == tree_catalog._iso(1_700_000_000)
+    tamf.unlink()
+    assert tree_catalog.grown_at(growth) == tree_catalog._iso(growth.stat().st_mtime)
+
+
 def test_build_records_bark_sources_settings_and_check_flags_stale_trees(tmp_path):
     import os
 

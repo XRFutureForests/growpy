@@ -206,7 +206,7 @@ def entry(
         "bark_branch": branch,
         "structure_settings": patch,
         "settings_since": since,
-        "grown": _iso(growth.stat().st_mtime) if growth.is_file() else None,
+        "grown": grown_at(growth),
         "variant": "summer",
         "mesh": row.get("asset"),
         "static_mesh": row.get("static_asset"),
@@ -277,6 +277,17 @@ def build(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines), encoding="utf-8")
     return trees
+
+
+def grown_at(growth: Path) -> str | None:
+    """When the tree was grown: the ``.tamf.json`` Grove writes beside the growth JSON at growth time. Post-passes
+    (DBH rescale, re-cuts) rewrite the growth JSON itself, so its own time says nothing about the growth: on
+    2026-11-17 it hid that the whole spruce and Douglas ladders predate their preset tunes."""
+    tamf = growth.with_name(growth.name.replace("_growth_data.json", ".tamf.json"))
+    for f in (tamf, growth):
+        if f.is_file():
+            return _iso(f.stat().st_mtime)
+    return None
 
 
 def grown_before(grown: str, since: str) -> bool:
