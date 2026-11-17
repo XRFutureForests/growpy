@@ -1,0 +1,14 @@
+# Conifer compound sized to the export cut (XRFF-686, owner 2026-11-17); baked by
+# bake_compound_parts.py from a 20 m Grove douglas_fir at cut 12.0 mm (data/output/compound_conifer_2026-11-17/bake.sh).
+id = "douglas_fir__cutM_p02"
+species = "douglas_fir"
+part_kind = "compound"
+size_bin = "M"
+cut_diameter_mm = [6.0, 12.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-17/douglas_fir_M/douglas_fir_compound_p02_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.1334
+faces = 130389
+span_m = 0.83
+twigs = 15

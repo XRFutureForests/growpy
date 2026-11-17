@@ -1,0 +1,14 @@
+# Conifer compound sized to the export cut (XRFF-686, owner 2026-11-17); baked by
+# bake_compound_parts.py from a 20 m Grove norway_spruce at cut 25.0 mm (data/output/compound_conifer_2026-11-17/bake.sh).
+id = "norway_spruce__cutL_p00"
+species = "norway_spruce"
+part_kind = "compound"
+size_bin = "L"
+cut_diameter_mm = [12.0, 25.0]
+source = "compound"
+source_ref = "compound_parts_2026-11-17/norway_spruce_L/norway_spruce_compound_p00_static.usda"
+licence = "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)"
+leaf_area_m2 = 0.1601
+faces = 156414
+span_m = 0.41
+twigs = 18
