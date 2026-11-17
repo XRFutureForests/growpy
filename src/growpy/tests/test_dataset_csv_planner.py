@@ -45,6 +45,16 @@ class TestRealNeighbours:
         dist = ((others["x"] - OPEN_TREE_X) ** 2 + others["y"] ** 2) ** 0.5
         assert dist.round(3).tolist() == [7.0] * 6
 
+    def test_split_ring_parts_only_when_on(self):
+        """E108: stand_part marks centre / ring / thinned ring; absent by default."""
+        with _mock_radii([0.0, 7.0], neighbours=6):
+            assert "stand_part" not in generate_merged_csv("Test Species", 25).columns
+        cfg = SimpleNamespace(surround_radii=[0.0, 7.0], surround_neighbours=6,
+                              surround_neighbour_thin_height=20.0)  # fmt: skip
+        with patch("growpy.config.get_config", return_value=cfg):
+            df = generate_merged_csv("Test Species", 25)
+        assert df["stand_part"].tolist() == [0, 0, 1, 2, 1, 2, 1, 2]
+
     def test_zero_neighbours_is_the_shell_matrix(self):
         with _mock_radii([0.0, 7.0, 15.0], neighbours=0):
             df = generate_merged_csv("Test Species", 25)

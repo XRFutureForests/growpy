@@ -37,6 +37,7 @@ class GroveEntry(NamedTuple):
     tree_count: int
     fids: list[int]
     radius: float = 0.0
+    part: int = 0  # E108 split stand: 0 centre (or whole grove), 1 ring, 2 ring thinned out
 
 
 class TreeSnapshot(NamedTuple):
@@ -103,12 +104,20 @@ def create_forest(
     if has_radius_col:
         forest_data["surround_radius"] = forest_data["surround_radius"].fillna(0.0)
     groupby_key = ["species", "surround_radius"] if has_radius_col else "species"
+    # E108 split stand: centre and ring are separate groves of one stand
+    # (dataset_csv_planner adds stand_part only when the split is on).
+    has_part = has_radius_col and "stand_part" in forest_data.columns
+    if has_part:
+        groupby_key = ["species", "surround_radius", "stand_part"]
+        ring = forest_data["stand_part"] > 0
+        stand_radii = set(forest_data.loc[ring, "surround_radius"])
 
     cfg = get_config()
     forest = []
     for group_key, species_data in forest_data.groupby(groupby_key, sort=False):
         species_name = str(group_key[0]) if has_radius_col else str(group_key)
         surround_radius = float(group_key[1]) if has_radius_col else 0.0
+        part = int(group_key[2]) if has_part else 0
         grove = create_grove(species_name)
 
         # Collect fids for this grove (use row index if fid column not present)
@@ -125,7 +134,10 @@ def create_forest(
         # explicitly when it is zero. The explicit off matters because Surround
         # is a preset property and 4 of the 11 dataset species ship it enabled
         # (see disable_surround) -- without it, r00 is not open-grown for those.
-        if len(species_data) == 1 and surround_radius > 0:
+        # A split stand's centre is alone in its grove but still a stand
+        # member: it keeps the preset Surround, as the unsplit stand grove does.
+        in_stand = has_part and surround_radius in stand_radii
+        if len(species_data) == 1 and surround_radius > 0 and not in_stand:
             applied = enable_surround(
                 grove,
                 density=cfg.get_surround_density(species_name, surround_radius),
@@ -154,7 +166,9 @@ def create_forest(
                 logger.info("Surround disabled for %s (open-grown)", species_name)
 
         forest.append(
-            GroveEntry(grove, species_name, len(species_data), fids, surround_radius)
+            GroveEntry(
+                grove, species_name, len(species_data), fids, surround_radius, part
+            )
         )
 
     return forest
@@ -187,6 +201,7 @@ def _run_single_growth_cycle(
     preset_overrides: PresetOverrides | None,
     frozen_grove_indices: set | None = None,
     shade_cache: dict | None = None,
+    removed_grove_indices: set | None = None,
 ) -> None:
     """Run one growth cycle: apply overrides, shade competition, simulate.
 
@@ -199,10 +214,13 @@ def _run_single_growth_cycle(
             rebuilding it every cycle is pure waste, and it is the *largest*
             grove that freezes first (the open-grown r00 tree finishes its
             milestone ladder long before the shaded radii finish theirs).
+        removed_grove_indices: Groves thinned out of a split stand (E108):
+            frozen and casting no shade, as if cut. Must also be in frozen.
     """
     frozen = frozen_grove_indices or set()
+    removed = removed_grove_indices or set()
 
-    for grove_idx, (grove, species_name, _, _, _radius) in enumerate(forest):
+    for grove_idx, (grove, species_name, _, _, _radius, *_) in enumerate(forest):
         if grove_idx in frozen:
             continue
         if species_name in species_overrides:
@@ -213,6 +231,8 @@ def _run_single_growth_cycle(
     if len(groves) > 1:
         all_coords = []
         for grove_idx, grove in enumerate(groves):
+            if grove_idx in removed:
+                continue
             if grove_idx in frozen:
                 if shade_cache is None:
                     all_coords.extend(grove.build_shade_geometry_flat())
@@ -300,7 +320,7 @@ def simulate_forest_growth(
     # species shares one preset regardless of its competition variant.
     species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for _grove, species_name, _, _, _radius in forest:
+        for _grove, species_name, _, _, _radius, *_ in forest:
             if species_name in species_overrides:
                 continue
             species_ov = get_species_overrides(species_name)
@@ -413,7 +433,7 @@ def simulate_forest_growth_with_snapshots(
     # species shares one preset regardless of its competition variant.
     species_overrides: dict[str, PresetOverrides] = {}
     if use_species_curves:
-        for _grove, species_name, _, _, _radius in forest:
+        for _grove, species_name, _, _, _radius, *_ in forest:
             if species_name in species_overrides:
                 continue
             species_ov = get_species_overrides(species_name)
@@ -623,6 +643,12 @@ def _simulate_height_threshold_mode(
     # Shade geometry of frozen groves, rebuilt once per freeze (see
     # _run_single_growth_cycle). Keyed by grove index.
     frozen_shade_cache: dict = {}
+    # E108 split stand: ring groves freeze (and keep shading) at the cap height;
+    # thinned ring groves go (no growth, no shade) once their centre reaches the
+    # thin height. Both 0 = off.
+    ring_cap = float(cfg.surround_neighbour_cap_height or 0.0)
+    thin_at = float(cfg.surround_neighbour_thin_height or 0.0)
+    removed_grove_indices: set = set()
 
     # Build species -> grove index mapping for freezing
     species_grove_indices: dict[str, list[int]] = {}
@@ -649,6 +675,7 @@ def _simulate_height_threshold_mode(
             preset_overrides,
             frozen_grove_indices=frozen_grove_indices,
             shade_cache=frozen_shade_cache,
+            removed_grove_indices=removed_grove_indices,
         )
 
         # Cheaply measure heights at every cycle (skip frozen groves)
@@ -663,6 +690,30 @@ def _simulate_height_threshold_mode(
                 continue
             offset = grove_offsets[grove_idx]
             heights = extract_tree_heights(grove, tree_count)
+            entry = forest[grove_idx]
+            top = max(heights, default=0.0)
+            if entry.part and ring_cap > 0 and top >= ring_cap:
+                frozen_grove_indices.add(grove_idx)
+                logger.info(
+                    "[Ring cap] Cycle %d: %s (r%s) ring at %.1f m -- frozen at "
+                    "the %.1f m cap, still shading",
+                    cycle, species_name, entry.radius, top, ring_cap,
+                )  # fmt: skip
+            if entry.part == 0 and thin_at > 0 and top >= thin_at:
+                for j, e in enumerate(forest):
+                    if (
+                        e.part == 2
+                        and e.species_name == species_name
+                        and e.radius == entry.radius
+                        and j not in removed_grove_indices
+                    ):
+                        removed_grove_indices.add(j)
+                        frozen_grove_indices.add(j)
+                        logger.info(
+                            "[Ring thin] Cycle %d: %s (r%s) centre at %.1f m -- "
+                            "every second ring tree removed",
+                            cycle, species_name, entry.radius, top,
+                        )  # fmt: skip
             for tree_idx, height in enumerate(heights):
                 global_idx = offset + tree_idx
                 key = (species_name, global_idx)

@@ -288,6 +288,9 @@ class GrowPyConfig:
         "yield_sources_documents": "nested dict of source paths, config-only",
         "surround_radii": "scenario-level setting, config-only by design",
         "surround_neighbours": "scenario-level setting, config-only by design",
+        "surround_neighbour_split": "scenario-level setting (E108), config-only",
+        "surround_neighbour_cap_height": "scenario-level setting (E108), config-only",
+        "surround_neighbour_thin_height": "scenario-level setting (E108), config-only",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
         "surround_grow": "scenario-level setting, config-only by design",
@@ -423,6 +426,13 @@ class GrowPyConfig:
     # together (Grove's own light competition; Surround is off for a multi-tree
     # grove) and exports only the centre. 0 = the single-tree Surround shell.
     surround_neighbours: int = 0
+    # E108 stand builder (owner go 2026-11-17), all off by default: split the
+    # ring into its own grove(s), shaded together with the centre; freeze the
+    # ring (it keeps shading) once a ring tree reaches cap height; remove every
+    # second ring tree (no growth, no shade) once the centre reaches thin height.
+    surround_neighbour_split: bool = False
+    surround_neighbour_cap_height: float = 0.0
+    surround_neighbour_thin_height: float = 0.0
     surround_density: float = 0.7
     surround_height: float = 5.0
     surround_grow: bool = True
@@ -1149,6 +1159,14 @@ class GrowPyConfig:
             if n < 0:
                 raise ValueError(f"[surround] neighbours must be >= 0, got {n}")
             kwargs["surround_neighbours"] = n
+        if "neighbour_split" in surr:
+            kwargs["surround_neighbour_split"] = bool(surr["neighbour_split"])
+        for key in ("neighbour_cap_height", "neighbour_thin_height"):
+            if key in surr:
+                v = float(surr[key])
+                if v < 0:
+                    raise ValueError(f"[surround] {key} must be >= 0, got {v}")
+                kwargs[f"surround_{key}"] = v
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:

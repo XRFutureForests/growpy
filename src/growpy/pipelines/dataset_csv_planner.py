@@ -131,6 +131,14 @@ def _job_rows(
     from growpy.config import get_config
 
     cfg = get_config()
+    # E108 stand builder (owner go 2026-11-17): a split ring gets a stand_part
+    # column (0 centre, 1 ring, 2 every second ring tree when thinning), so
+    # create_forest() can grow it as its own grove(s). No column when off, so the
+    # default job matrix and its growth stay what they were.
+    thin = float(getattr(cfg, "surround_neighbour_thin_height", 0.0) or 0.0)
+    split = bool(getattr(cfg, "surround_neighbour_split", False)) or thin > 0 or (
+        float(getattr(cfg, "surround_neighbour_cap_height", 0.0) or 0.0) > 0
+    )
     rows = []
     for i, radius in enumerate(cfg.surround_radii):
         cx = OPEN_TREE_X * i
@@ -156,6 +164,9 @@ def _job_rows(
                     "export": 1 if k == 0 else 0,
                 }
             )
+            if split:
+                part = 2 if thin > 0 and k % 2 == 0 else 1
+                rows[-1]["stand_part"] = 0 if k == 0 else part
     return pd.DataFrame(rows)
 
 
