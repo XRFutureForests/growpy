@@ -56,7 +56,11 @@ Generated scripts land in `unreal_scripts/`. Each is idempotent and VRAM-aware.
 ### Enable script generation
 
 The paths follow the project's Unreal content layout: generated trees under
-`/Game/Generated/Trees` (wiped per dataset run), schema under `/Game/XRFF/Forest/Data`, the
+`/Game/00_XRFF/30_Forest/TreeLibrary` (owner 2026-11-18; wiped per dataset run; subfolders `Structures/`,
+`StructuresStatic/`, `Twigs/` (vendor copies in `Twigs/ThirdParty/<pack>/`),
+`Materials/` (bark in `Materials/Bark/`), `Trees/`, `TreesStatic/`, `Wind/` and
+`DT_TreeCatalog`; until the next full regeneration the catalog still sits in the
+legacy `/Game/Generated/Trees`), schema under `/Game/XRFF/Forest/Data`, the
 spawn graph at `/Game/XRFF/Forest/Trees/PCG_Trees`, gallery levels under
 `/Game/Developers/Max/TreeGallery`. Every default comes from
 `src/growpy/config/ue_layout.py`; `config/unreal.toml` overrides them per project
@@ -69,14 +73,14 @@ spawn graph at `/Game/XRFF/Forest/Trees/PCG_Trees`, gallery levels under
 # config/unreal.toml
 [unreal]
 import_to_unreal         = true
-project_path             = "/Game/Generated/Trees"
+project_path             = "/Game/00_XRFF/30_Forest/TreeLibrary"
 db_path                  = "/Game/XRFF/Forest/Data"   # ST_TreeCatalogEntry lives here; keep it out of project_path, which gets wiped
 pcg_trees_graph          = "/Game/XRFF/Forest/Trees/PCG_Trees"   # graph growpy-pve-catalog points at DT_TreeCatalog
 voxelization             = true
 generate_wind_data       = true
 generate_pve_presets     = false   # deprecated Preset-Loader route; leave false
 generate_pve_graphs      = false   # the live PVE route (growth JSON → authored graphs); XRFF-452 decides the default
-pve_static_twins         = false   # also export SM_<name> to <pve_content_root>/CatalogStatic/<species> (surround forest)
+pve_static_twins         = false   # also export SM_<name> to <pve_content_root>/TreesStatic/<species> (surround forest)
 pve_import_base          = ""                  # empty = follow project_path
 
 [unreal.nanite]
@@ -179,7 +183,7 @@ Configured via `[unreal.nanite]` in `unreal.toml`. The script walks every assemb
 ## Troubleshooting
 
 - **"bone count exceeds 32767"**: run Step 4 with `--skeleton-reduce 0.5 --skeleton-length 2.5`. `skeleton-reduce` is the strongest lever.
-- **Twigs missing after import**: the shared-foliage batch must run first. Check Content Browser at `{project_path}/Foliage/` (default `/Game/Generated/Trees/Foliage/`). Note the on-disk export folder is still called `Instances/`; only the UE destination is `Foliage/`.
+- **Twigs missing after import**: the shared-foliage batch must run first. Check Content Browser at `{project_path}/Twigs/` (default `/Game/00_XRFF/30_Forest/TreeLibrary/Twigs/`). Note the on-disk export folder is still called `Instances/`; only the UE destination is `Twigs/`.
 - **Materials pink / "Parent material not found"**: `import_batch_98_materials.py` uses `MA_Foliage_Trees` at `{db_path}/MA_Foliage_Trees` (default `/Game/XRFF/Forest/Data/MA_Foliage_Trees`) when the project keeps a copy there, else the ProceduralVegetationEditor plugin's own (`/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees`). The error means neither exists: enable the Procedural Vegetation Editor plugin, then re-run the batch. XRFF_Twin keeps no copy and needs none.
 - **DataTable missing / "ST_TreeCatalogEntry struct not found"**: `import_batch_100_datatable.py` expects the struct at `{db_path}/ST_TreeCatalogEntry`. If it exists elsewhere in the project, duplicate it to that path (or set `config.unreal_db_path` to wherever it already lives) before re-running.
 - **VRAM climbs until crash**: lower `target_residency_kb`, split per-species batches, or disable voxelization on first pass.

@@ -21,9 +21,11 @@ import tomllib
 
 import unreal
 
-FOLIAGE = "/Game/Generated/Trees/Foliage"
-MATERIALS = "/Game/Generated/Trees/Materials"
-GRAPHS = "/Game/Generated/Trees/Graphs/"
+# Runs inside the editor, where growpy is not importable: mirrors
+# growpy.config.ue_layout (TREES_ROOT and its subfolders) by hand.
+FOLIAGE = "/Game/00_XRFF/30_Forest/TreeLibrary/Twigs"
+MATERIALS = "/Game/00_XRFF/30_Forest/TreeLibrary/Materials"
+GRAPHS = "/Game/00_XRFF/30_Forest/TreeLibrary/Structures/"
 LEVEL = "/Game/Developers/Max/CatalogPreview/L_CatalogPreview"
 MANIFEST = os.environ.get(
     "GROWPY_TREE_CATALOG", "D:/Git/work/growpy/data/input/tree_catalog.toml"

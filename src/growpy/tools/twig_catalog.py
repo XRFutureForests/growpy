@@ -13,7 +13,9 @@ An entry is a folder ``data/input/twigs/<id>/`` with a small tracked ``twig.toml
   (owner 2026-11-15). ``[]`` = not sized yet; ``check`` reports it,
 * ``source`` (``grove`` twig, ``compound`` part harvested from our own Grove growth, or ``own``)
   and ``source_ref`` (the asset file under ``data/assets/``), ``licence``,
-* ``leaf_area_m2`` and ``faces`` of one instance, optional ``placement`` overrides and ``preview``.
+* ``leaf_area_m2`` and ``faces`` of one instance, optional ``placement`` overrides and ``preview``,
+* optional ``nanite_triangles`` (int), ``textures`` (``"<n>x<px>"`` strings) and
+  ``status`` (``candidate``, ``shipped <release>``, ``held <release>``, ``retired``).
 
 ``catalog.toml`` is generated from the entries; the manifest (``growpy-tree-catalog``) names a tree's
 entries. Bins per species live in :data:`SIZE_BINS_MM` (beech fixed 2026-11-16 after the 20 m cut
@@ -43,18 +45,35 @@ SOURCES = {
     "own": "own",
     # third-party parts used in place in the UE project (owner 2026-11-18: licence is
     # no selection criterion while nothing is published; files stay out of git /
-    # Zenodo / hub). source_ref is then the /Game/ mesh path.
+    # Zenodo / hub). source_ref is then a /Game/ mesh path or a pack path
+    # "pack:<Pack>/<path>" (see resolve_pack_ref).
     "megaplants": "MegaPlants (Fab), Fab Standard License: use in the lab's UE "
+    "projects; no standalone redistribution",
+    "greenleaf": "Greenleaf (Fab), Fab Standard License: use in the lab's UE "
+    "projects; no standalone redistribution",
+    "fab": "Fab, Fab Standard License: use in the lab's UE "
     "projects; no standalone redistribution",
 }
 # cut-diameter bins in mm (XRFF-684): beech owner-fixed 2026-11-16 (export cut 0.07 x trunk
 # base radius, bounded at 25 mm); a species not listed has no bins yet
 _SML = {"S": (0.0, 6.0), "M": (6.0, 12.0), "L": (12.0, 25.0)}
 # conifers since XRFF-686 (owner 2026-11-17, conifer twig pass for 1.2)
+STATUS = ("candidate", "shipped", "held", "retired")  # shipped/held take " <release>"
 SIZE_BINS_MM = {
     sp: _SML
     for sp in ("european_beech", "norway_spruce", "silver_fir", "douglas_fir", "scots_pine")
 }
+
+
+def resolve_pack_ref(ref: str, third_party_root: str = "/Game") -> str:
+    """``pack:<Pack>/<path>`` -> ``<third_party_root>/<Pack>/<path>``; others as is.
+
+    A vendor pack sits at ``/Game/<Pack>`` in the sandbox and at
+    ``/Game/10_ThirdPartyAssets/<Pack>`` in XRFFTwin, so entries name it per pack.
+    """
+    if not ref.startswith("pack:"):
+        return ref
+    return f"{third_party_root.rstrip('/')}/{ref.removeprefix('pack:')}"
 
 
 def read_entry(folder: Path) -> dict:
@@ -71,7 +90,7 @@ def check_entry(entry: dict, assets: Path = ASSETS) -> list[str]:
         out.append(f"part_kind {entry['part_kind']!r} not in {PART_KINDS}")
     if entry["source"] not in SOURCES:
         out.append(f"source {entry['source']!r} not in {tuple(SOURCES)}")
-    if str(entry["source_ref"]).startswith("/Game/"):
+    if str(entry["source_ref"]).startswith(("/Game/", "pack:")):
         pass  # UE content (third-party in place): checked in the editor, not on disk
     elif not (assets / entry["source_ref"]).is_file():
         out.append(f"source_ref {entry['source_ref']} missing under {assets}")
@@ -85,7 +104,25 @@ def check_entry(entry: dict, assets: Path = ASSETS) -> list[str]:
         lo, hi = bins[entry["size_bin"]]
         if cut[0] < lo or cut[1] > hi:
             out.append(f"cut {cut} mm outside bin {entry['size_bin']} {lo}-{hi} mm")
+    tris = entry.get("nanite_triangles")
+    if tris is not None and (not isinstance(tris, int) or tris < 0):
+        out.append(f"nanite_triangles {tris!r} is not a count")
+    tex = entry.get("textures")
+    if tex is not None and not (
+        isinstance(tex, list) and all(isinstance(t, str) and "x" in t for t in tex)
+    ):
+        out.append(f'textures {tex!r} is not a list of "<n>x<px>"')
+    status = entry.get("status")
+    if status is not None and not _status_ok(str(status)):
+        out.append(f"status {status!r} not one of {STATUS} (shipped/held + release)")
     return out
+
+
+def _status_ok(status: str) -> bool:
+    word, _, release = status.partition(" ")
+    if word in ("shipped", "held"):
+        return bool(release.strip())
+    return word in STATUS and not release
 
 
 def write_entry(entry: dict, root: Path = ROOT, header: str = "") -> Path:

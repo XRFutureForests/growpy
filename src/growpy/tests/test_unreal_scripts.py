@@ -93,7 +93,7 @@ class TestBuildConsolidationScript:
 
     def test_foliage_subpath(self):
         script = _build_consolidation_script("/Game/Trees")
-        assert 'FOLIAGE_PATH = IMPORT_PATH + "/Foliage"' in script
+        assert 'FOLIAGE_PATH = IMPORT_PATH + "/Twigs"' in script
 
 
 class TestImportBlockDoneMarker:

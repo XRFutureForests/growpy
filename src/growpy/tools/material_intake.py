@@ -41,12 +41,14 @@ import sys
 import tomllib
 from pathlib import Path
 
+from growpy.config.ue_layout import BARK_PATH
+
 logger = logging.getLogger(__name__)
 
 INTAKE_ROOT = Path("data/input/materials")
 # Beside the intake folders, not in config/: growpy merges every config/*.toml.
 CATALOG = INTAKE_ROOT / "catalog.toml"
-UE_FOLDER = "/Game/00_XRFF/30_Forest/Materials/Bark"
+UE_FOLDER = BARK_PATH
 # The plain master every MegaPlants bark instance sits on; bark_source_per_species
 # copies a source's textures and values onto the species' trunk-DBH instance.
 SOURCE_MASTER = (

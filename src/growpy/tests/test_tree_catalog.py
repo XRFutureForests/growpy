@@ -169,3 +169,42 @@ def test_a_held_species_carries_its_release_hold(tmp_path):
 
     tree = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]["norway_spruce"]
     assert tree["r07_h20m"]["release_hold"] == "1.2: look verdict failed"
+
+
+def test_build_writes_a_catalog_index_row_of_each_kind(tmp_path, monkeypatch):
+    growth = tmp_path / "forest" / "norway_spruce" / "r07" / (
+        "Norway_Spruce_r07_h20m_d27cm_full_growth_data.json"
+    )
+    growth.parent.mkdir(parents=True)
+    growth.write_text("{}")
+    plan = _plan(tmp_path / "plan", "r07_h20m", growth)
+    twigs = tmp_path / "twigs"
+    for tid, kind in (("a", "twig"), ("b", "spray"), ("c", "compound")):
+        (twigs / tid).mkdir(parents=True)
+        (twigs / tid / "twig.toml").write_text(
+            f'id = "{tid}"\nspecies = "norway_spruce"\npart_kind = "{kind}"\n'
+            f'source = "megaplants"\nsource_ref = "pack:P/{tid}"\n'
+            'licence = "Fab"\nfaces = 10\nstatus = "candidate"\n'
+        )
+    materials = tmp_path / "materials.toml"
+    materials.write_text(
+        '[materials.fab_x]\nspecies = "norway_spruce"\nsource = "fab"\n'
+        'licence = "Fab Standard License"\ninstance = "/Game/M/MI_fab_x"\n'
+    )
+    monkeypatch.setattr(tree_catalog, "MATERIAL_CATALOG", materials)
+    out = tmp_path / "tree_catalog.toml"
+
+    tree_catalog.build([plan], None, [], out, twigs=twigs, forest=tmp_path / "forest")
+
+    rows = tomllib.loads((tmp_path / "catalog_index.toml").read_text("utf-8"))[
+        "components"
+    ]
+    by_kind = {r["kind"]: r for r in rows}
+    kinds = {"structure", "twig", "spray", "compound", "material", "tree"}
+    assert set(by_kind) == kinds
+    assert by_kind["structure"]["licence"] == "own (Grove growth)"
+    assert by_kind["structure"]["species"] == "norway_spruce"
+    assert by_kind["compound"]["path"] == "pack:P/c"
+    assert by_kind["compound"]["status"] == "candidate"
+    assert by_kind["material"]["path"] == "/Game/M/MI_fab_x"
+    assert by_kind["tree"]["id"] == "norway_spruce.r07_h20m"

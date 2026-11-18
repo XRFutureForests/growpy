@@ -9,7 +9,7 @@ import_to_unreal = true
 # Unreal content path for imported assets in Content Browser. DT_TreeCatalog
 # is created here too. Treat it as working content -- it is wiped and
 # re-imported between dataset runs.
-project_path = "/Game/Generated/Trees"
+project_path = "/Game/00_XRFF/30_Forest/TreeLibrary"
 # Where ST_TreeCatalogEntry lives. Keep it out of project_path, which gets
 # deleted and recreated; the struct is schema and has to survive that.
 db_path = "/Game/XRFF/Forest/Data"

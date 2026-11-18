@@ -35,7 +35,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from growpy.config.ue_layout import TREES_ROOT
+from growpy.config.ue_layout import (
+    STRUCTURES_PATH,
+    TREES_DIR,
+    TREES_ROOT,
+    TREES_STATIC_DIR,
+)
 from growpy.io.unreal.pve_graph_builder import (
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
@@ -1171,7 +1176,7 @@ def plan_pve_graphs(
     forest_root: Path,
     *,
     content_root: str = TREES_ROOT,
-    graph_folder: str = f"{TREES_ROOT}/Graphs",
+    graph_folder: str = STRUCTURES_PATH,
     triangle_cap: float = 120e6,
     nanite_shape_preservation: str = "VOXELIZE",
     collision_generation: str = "ALL_GENERATIONS",
@@ -1227,7 +1232,7 @@ def plan_pve_graphs(
             should carry. Divided by the species' mean triangles per instance
             it is the other bound on ``max_instances``.
         static_twins: Also export every tree as a static Nanite mesh,
-            ``SM_<name>`` under ``<content_root>/CatalogStatic/<species>``, for
+            ``SM_<name>`` under ``<content_root>/TreesStatic/<species>``, for
             the surround forest (owner, 2026-10-21). Roughly doubles the export
             time; oak static builds ran 16-18 min each.
 
@@ -1444,13 +1449,13 @@ def plan_pve_graphs(
                     bark_material=assets.bark_material,
                     bark_y_scale=bark_y_scale,
                     bark_u_ranges=species_cal.bark_u_ranges,
-                    export_folder=f"{content_root}/Catalog/{species}",
+                    export_folder=f"{content_root}/{TREES_DIR}/{species}",
                     graph_folder=graph_folder,
                     profile_pin=calibration.profile_pin,
                     nanite_shape_preservation=nanite_shape_preservation,
                     collision_generation=collision_generation,
                     static_export_folder=(
-                        f"{content_root}/CatalogStatic/{species}"
+                        f"{content_root}/{TREES_STATIC_DIR}/{species}"
                         if static_twins
                         else None
                     ),

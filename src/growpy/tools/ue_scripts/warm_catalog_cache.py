@@ -33,7 +33,13 @@ import time
 
 import unreal
 
-DEFAULT_ROOTS = ("/Game/Assets/Trees/Catalog", "/Game/Generated/Trees/Catalog")
+# Runs in the editor, where growpy is not importable: ue_layout.TREES_PATH,
+# plus the LEGACY_TREES_ROOT catalog for the one migration (2026-11-18).
+DEFAULT_ROOTS = (
+    "/Game/Assets/Trees/Catalog",
+    "/Game/Generated/Trees/Catalog",
+    "/Game/00_XRFF/30_Forest/TreeLibrary/Trees",
+)
 GC_EVERY = 4  # meshes between garbage collections; a large tree holds GBs
 # Console commands the engine derives per asset type (Editor.Async%sCompilation...).
 FINISH_ALL = (

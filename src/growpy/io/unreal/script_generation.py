@@ -9,6 +9,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from growpy.config.ue_layout import STRUCTURES_DIR
+
 if TYPE_CHECKING:
     from growpy.config.core import GrowPyConfig
 
@@ -116,7 +118,7 @@ def generate_unreal_scripts(
             output_dir / "unreal_scripts",
             output_dir,
             content_root=config.unreal_pve_content_root,
-            graph_folder=f"{config.unreal_pve_content_root}/Graphs",
+            graph_folder=f"{config.unreal_pve_content_root}/{STRUCTURES_DIR}",
             triangle_cap=config.unreal_pve_triangle_cap,
             static_twins=config.unreal_pve_static_twins,
         )

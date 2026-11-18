@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 
+from growpy.config.ue_layout import STRUCTURES_PATH, TREES_PATH
 from growpy.tools.pve_catalog import (
     DEFAULT_CATALOG,
     catalog_rows,
@@ -16,18 +17,18 @@ from growpy.tools.pve_catalog import (
 MANIFEST = {
     "graphs": [
         {
-            "graph_asset": "/Game/Generated/Trees/Graphs/PVG_EuropeanBeech_1",
+            "graph_asset": f"{STRUCTURES_PATH}/PVG_EuropeanBeech_1",
             "meshes": [
                 {
                     "mesh_name": "SK_EuropeanBeech_r07_h05m",
-                    "asset": "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h05m",
+                    "asset": f"{TREES_PATH}/european_beech/SK_EuropeanBeech_r07_h05m",
                     "species": "european_beech",
                     "tree_id": "r07_h05m",
                     "dbh_cm": 7.04,
                 },
                 {
                     "mesh_name": "SK_EuropeanBeech_r10_h10m",
-                    "asset": "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_h10m",
+                    "asset": f"{TREES_PATH}/european_beech/SK_EuropeanBeech_r10_h10m",
                     "species": "european_beech",
                     "tree_id": "r10_h10m",
                     "dbh_cm": 17.2,

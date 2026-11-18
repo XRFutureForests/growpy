@@ -2,11 +2,12 @@
 
 import json
 
+from growpy.config.ue_layout import BARK_PATH
 from growpy.tools import catalog_print as cp
 
 MATERIALS = {
     "fab_oak_bark": {
-        "instance": "/Game/Generated/Trees/Materials/Bark/MI_fab_oak_bark.MI",
+        "instance": f"{BARK_PATH}/MI_fab_oak_bark.MI",
         "source": "fab",
         "licence": "Fab Standard",
         "redistributable": False,
@@ -17,7 +18,7 @@ MATERIALS = {
 def test_bark_source_flags_fab_materials_as_project_only():
     cal = {
         "bark_source_per_species": {
-            "oak": {"material": "/Game/Generated/Trees/Materials/Bark/MI_fab_oak_bark"},
+            "oak": {"material": f"{BARK_PATH}/MI_fab_oak_bark"},
             "lime": {"material": "/Game/00_XRFF/Materials/MI_Lime"},
         }
     }

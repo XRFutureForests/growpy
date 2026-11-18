@@ -161,7 +161,7 @@ class TestGenerateUnrealScripts:
         assert planned[0]["content_root"] == "/Game/PVE_Test"
         assert planned[0]["triangle_cap"] == 2.0e8
         assert planned[0]["static_twins"] is True
-        assert planned[0]["graph_folder"] == "/Game/PVE_Test/Graphs"
+        assert planned[0]["graph_folder"] == "/Game/PVE_Test/Structures"
         assert "pve_graph_script" not in calls
 
     def test_skips_optional_scripts_when_disabled(self, tmp_path, monkeypatch):

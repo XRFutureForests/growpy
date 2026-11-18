@@ -9,7 +9,7 @@ import_to_unreal = true
 # Unreal content path for imported assets in Content Browser. DT_TreeCatalog
 # is created here too, next to the assemblies it indexes. Treat this as
 # working content: it is wiped and re-imported between dataset runs.
-project_path = "/Game/Generated/Trees"
+project_path = "/Game/00_XRFF/30_Forest/TreeLibrary"
 # Where the ST_TreeCatalogEntry struct lives. UE's Python API cannot create a
 # UserDefinedStruct, so the struct has to exist as an asset before an import
 # run -- this is only where the script looks for it. Keep it OUT of
@@ -200,7 +200,7 @@ generate_wind_data = true
 #   fifteen are individually over it.
 #
 # pve_static_twins: every chain also exports a STATIC Nanite twin, SM_<name>
-#   under <pve_content_root>/CatalogStatic/<species>, from the same distributor
+#   under <pve_content_root>/TreesStatic/<species>, from the same distributor
 #   (one click, both meshes). The plot trees stay skinned for wind; the UE
 #   surround forest (PCG_ForestStatic) spawns the twins, because skinned
 #   instances cost CPU per component and per instance -- a 180 k-tree skinned
@@ -208,7 +208,7 @@ generate_wind_data = true
 #   2026-10-20). Owner decision 2026-10-21. Doubles the export work; oak static
 #   builds take 16-18 min each.
 generate_pve_graphs = true
-pve_content_root = "/Game/Generated/Trees"
+pve_content_root = "/Game/00_XRFF/30_Forest/TreeLibrary"
 pve_triangle_cap = 120e6
 pve_static_twins = true
 

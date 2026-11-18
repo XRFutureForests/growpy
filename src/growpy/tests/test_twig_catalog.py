@@ -85,3 +85,32 @@ def test_merge_palette_renames_parts_by_bin_and_keeps_the_unbinned_manifest(tmp_
         'M def Xform "european_beech_compound_M_p01"')
     assert (manifest.parent / "european_beech_compound_M_p01_leaf_area_geom.json").read_text().startswith("M ")
     assert old.with_suffix(".unbinned.json").is_file()
+
+
+def test_pack_refs_resolve_per_project_and_skip_the_disk_check(tmp_path):
+    ref = "pack:Megaplant_Library/Tree_Baltic_Pine/Instances/Branch_01"
+    assert tc.resolve_pack_ref(ref) == (
+        "/Game/Megaplant_Library/Tree_Baltic_Pine/Instances/Branch_01"
+    )
+    assert tc.resolve_pack_ref(ref, "/Game/10_ThirdPartyAssets/") == (
+        "/Game/10_ThirdPartyAssets/Megaplant_Library/Tree_Baltic_Pine/Instances/Branch_01"
+    )
+    assert tc.resolve_pack_ref("compound_parts/c.usda") == "compound_parts/c.usda"
+    mp = _entry(source="fab", source_ref=ref, licence=tc.SOURCES["fab"], size_bin="-")
+    assert tc.check_entry(mp, tmp_path) == []
+
+
+def test_optional_cost_and_status_fields_are_checked(tmp_path):
+    (tmp_path / "compound_parts").mkdir()
+    (tmp_path / "compound_parts" / "c.usda").write_text("x")
+    ok = _entry(nanite_triangles=306194, textures=["2x2048"], status="shipped 1.2")
+    assert tc.check_entry(ok, tmp_path) == []
+    assert tc.check_entry(_entry(status="candidate"), tmp_path) == []
+    for bad in (
+        {"nanite_triangles": 1.5},
+        {"textures": "2x2048"},
+        {"status": "shipped"},
+        {"status": "candidate 1.2"},
+        {"status": "gone"},
+    ):
+        assert tc.check_entry(_entry(**bad), tmp_path), bad

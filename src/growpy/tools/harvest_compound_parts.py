@@ -42,7 +42,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from growpy.config.ue_layout import TREES_ROOT
+from growpy.config.ue_layout import TWIGS_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -1637,12 +1637,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--library-package",
-        default=f"{TREES_ROOT}/Foliage",
+        default=TWIGS_PATH,
         help=(
             "UE content folder the library stage will be imported into. The "
             "part package paths in an external-ref assembly are derived from "
             "it, and a wrong one yields an assembly with no parts and an "
-            f"import that still reports success (default {TREES_ROOT}/Foliage)"
+            f"import that still reports success (default {TWIGS_PATH})"
         ),
     )
     parser.add_argument(

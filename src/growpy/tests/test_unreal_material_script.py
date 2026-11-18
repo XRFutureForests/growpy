@@ -6,13 +6,14 @@ to the PVE plugin's own master rather than abort.
 
 import ast
 
+from growpy.config.ue_layout import TREES_ROOT
 from growpy.io.unreal.pve_asset_script import DEFAULT_MASTER_MATERIAL
 from growpy.io.unreal.unreal_material_script import _build_material_script
 
 
 def test_falls_back_to_the_plugin_master():
     text = _build_material_script(
-        "/Game/Generated/Trees",
+        TREES_ROOT,
         {},
         parent_material_path="/Game/00_XRFF/20_DigitalTwinDatabase/MA_Foliage_Trees",
     )

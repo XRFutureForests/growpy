@@ -36,6 +36,8 @@ from matplotlib.backends.backend_pdf import PdfPages  # noqa: E402
 from matplotlib.collections import LineCollection  # noqa: E402
 from PIL import Image  # noqa: E402
 
+from growpy.config.ue_layout import TREES_ROOT, content_relpath  # noqa: E402
+
 logger = logging.getLogger(__name__)
 
 A4_LANDSCAPE = (11.69, 8.27)
@@ -287,7 +289,7 @@ def hub_note(rows, pdf_name: str) -> str:
         "Structure (skeleton ladder per stand radius), twigs (rendered prototypes) and",
         "bark material (source, licence) behind every tree asset. The print version",
         "(linked below) shows every skeleton, twig and bark; the same PDF sits beside",
-        "the catalog in the UE project (`Content/Generated/Trees/`).",
+        f"the catalog in the UE project (`{content_relpath(TREES_ROOT)}/`).",
         "",
         "| Species | Structure (stand radius: heights) | Twig renders "
         "| Bark source | Bark licence |",
@@ -309,7 +311,7 @@ def hub_note(rows, pdf_name: str) -> str:
 def publish(project: Path, hub: Path | None = HUB) -> Path:
     """Rebuild the print beside the UE catalog; copy it and a note to the hub."""
     previews = project / "Saved" / "growpy_catalog_previews"
-    out = project / "Content" / "Generated" / "Trees" / PDF_NAME
+    out = project / content_relpath(TREES_ROOT) / PDF_NAME
     build(previews, out)
     if hub is not None and hub.is_dir():
         shutil.copy2(out, hub / "Pics" / PDF_NAME)
