@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 MANIFEST = Path("data/input/tree_catalog.toml")
 PRESET_PATCHES = Path("config/preset_patches.json")
-HOLDS = Path("data/input/release_holds.toml")  # species = "<release>: why it is held out"
+HOLDS = Path("data/input/release_holds.toml")  # species = "<release>: why"
 PASS_FAIL = (
     "dbh_m",
     "crown_base_m",
