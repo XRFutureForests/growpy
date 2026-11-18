@@ -242,6 +242,15 @@ freeze_height = 0.0       # 0 = never; per-species table [surround.freeze_height
 # own and a conifer that collapses under them gets its freeze back here.
 # Last values: douglas_fir 15.0, norway_spruce 15.0, silver_fir 15.0.
 
+# E108/E112 stand rule per species: the neighbour ring grows as its own grove and
+# freezes (still shading) once a ring tree reaches this height (m); 0 or absent =
+# the global [surround] neighbour_cap_height (0 = off, the plain stand). Needs
+# neighbours > 0. OWNER DECISION 2026-11-18 (E112 round 2 board): douglas_fir 25
+# together with preset shade_area 2.0 (preset_patches.json) -- conical crown with
+# whorled tiers instead of a tuft on a pole at h30-h40 (hub experiments E112).
+[surround.neighbour_cap_height_per_species]
+douglas_fir = 25.0
+
 # Owner decision 2026-09-15, judged at h15m (the production cap) on r08 crown
 # ratio against Sharma's 0.52-0.68, with the r08 crown BASE sitting above r16's
 # as the radius gate (growpy-summarise-surround-density --gate-axis base). The

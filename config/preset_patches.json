@@ -489,6 +489,14 @@
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15
   },
+  "_why_douglas_fir_shade_area_2026_11_18": [
+    "OWNER DECISION 2026-11-18 (E112 round 2, look verdict on the board): douglas_fir gets",
+    "shade_area 2.0 (preset 1.0) together with the stand rule [surround.neighbour_cap_height_per_species]",
+    "douglas_fir = 25 (surround.toml). Arm df_e112_cap25sa20: conical crown with whorled tiers over the",
+    "upper half, spire, clean bole, most even across seeds; r07 crown base h30/h40 19.2/21.0 m (ctl",
+    "19.7/29.8), crown radius +0.8/+3.8 IQR; branches after the cut06 cut 207/339 (ctl 218/204).",
+    "Register: hub experiments E112."
+  ],
   "douglas_fir": {
     "drop_shaded": 0.15,
     "drop_obsolete": 0.15,
@@ -496,6 +504,7 @@
     "turn_to_horizon": 0.1,
     "add_angle": 0.8,
     "add_only_on_end": 0.8,
-    "bend_mass": 0.7
+    "bend_mass": 0.7,
+    "shade_area": 2.0
   }
 }

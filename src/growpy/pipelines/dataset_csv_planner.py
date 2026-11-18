@@ -136,8 +136,14 @@ def _job_rows(
     # create_forest() can grow it as its own grove(s). No column when off, so the
     # default job matrix and its growth stay what they were.
     thin = float(getattr(cfg, "surround_neighbour_thin_height", 0.0) or 0.0)
+    cap_of = getattr(cfg, "get_surround_neighbour_cap_height", None)  # E112
+    cap = (
+        cap_of(species_name)
+        if cap_of
+        else getattr(cfg, "surround_neighbour_cap_height", 0.0)
+    )
     split = bool(getattr(cfg, "surround_neighbour_split", False)) or thin > 0 or (
-        float(getattr(cfg, "surround_neighbour_cap_height", 0.0) or 0.0) > 0
+        float(cap or 0.0) > 0
     )
     rows = []
     for i, radius in enumerate(cfg.surround_radii):

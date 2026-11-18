@@ -646,7 +646,10 @@ def _simulate_height_threshold_mode(
     # E108 split stand: ring groves freeze (and keep shading) at the cap height;
     # thinned ring groves go (no growth, no shade) once their centre reaches the
     # thin height. Both 0 = off.
-    ring_cap = float(cfg.surround_neighbour_cap_height or 0.0)
+    ring_caps = {
+        e.species_name: cfg.get_surround_neighbour_cap_height(e.species_name)
+        for e in forest
+    }
     thin_at = float(cfg.surround_neighbour_thin_height or 0.0)
     removed_grove_indices: set = set()
 
@@ -692,6 +695,7 @@ def _simulate_height_threshold_mode(
             heights = extract_tree_heights(grove, tree_count)
             entry = forest[grove_idx]
             top = max(heights, default=0.0)
+            ring_cap = ring_caps.get(species_name, 0.0)
             if entry.part and ring_cap > 0 and top >= ring_cap:
                 frozen_grove_indices.add(grove_idx)
                 logger.info(

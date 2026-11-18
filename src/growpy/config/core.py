@@ -290,6 +290,7 @@ class GrowPyConfig:
         "surround_neighbours": "scenario-level setting, config-only by design",
         "surround_neighbour_split": "scenario-level setting (E108), config-only",
         "surround_neighbour_cap_height": "scenario-level setting (E108), config-only",
+        "surround_neighbour_cap_height_per_species": "nested dict (E112), config-only",
         "surround_neighbour_thin_height": "scenario-level setting (E108), config-only",
         "surround_density": "scenario-level setting, config-only by design",
         "surround_height": "scenario-level setting, config-only by design",
@@ -432,6 +433,10 @@ class GrowPyConfig:
     # second ring tree (no growth, no shade) once the centre reaches thin height.
     surround_neighbour_split: bool = False
     surround_neighbour_cap_height: float = 0.0
+    # Per-species cap (E112, owner 2026-11-18: douglas_fir 25), else the global.
+    surround_neighbour_cap_height_per_species: dict[str, float] = field(
+        default_factory=dict
+    )
     surround_neighbour_thin_height: float = 0.0
     surround_density: float = 0.7
     surround_height: float = 5.0
@@ -1167,6 +1172,11 @@ class GrowPyConfig:
                 if v < 0:
                     raise ValueError(f"[surround] {key} must be >= 0, got {v}")
                 kwargs[f"surround_{key}"] = v
+        if "neighbour_cap_height_per_species" in surr:
+            kwargs["surround_neighbour_cap_height_per_species"] = {
+                str(k): float(v)
+                for k, v in surr["neighbour_cap_height_per_species"].items()
+            }
         if "density" in surr:
             kwargs["surround_density"] = float(surr["density"])
         if "height" in surr:
@@ -1365,6 +1375,20 @@ class GrowPyConfig:
             if key in self.surround_freeze_height_per_species:
                 return self.surround_freeze_height_per_species[key]
         return self.surround_freeze_height
+
+    def get_surround_neighbour_cap_height(self, species: str) -> float:
+        """Ring cap height (m) of this species' split stand; 0 = off.
+
+        Resolves ``[surround.neighbour_cap_height_per_species]``, then the global
+        ``[surround] neighbour_cap_height``. Accepts a common or standardized name.
+        """
+        from growpy.utils.naming import standardize_species_name
+
+        key = standardize_species_name(species) if species else ""
+        per = self.surround_neighbour_cap_height_per_species
+        if key in per:
+            return per[key]
+        return float(self.surround_neighbour_cap_height or 0.0)
 
     def get_surround_height(self, species: str) -> float:
         """Static shell height (m) for this species.

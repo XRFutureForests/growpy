@@ -48,6 +48,18 @@ class TestGrowPyConfigDefaults:
         assert config.get_surround_freeze_height("silver_fir") == 15.0
         assert config.get_surround_freeze_height("european_oak") == 0.0
 
+    def test_neighbour_cap_height_per_species_falls_back_to_global(self, tmp_path):
+        # E112 (owner 2026-11-18): the ring cap is a Douglas fir stand rule only.
+        (tmp_path / "surround.toml").write_text(
+            "[surround]\nneighbours = 6\n"
+            "[surround.neighbour_cap_height_per_species]\ndouglas_fir = 25.0\n"
+        )
+        config = GrowPyConfig.from_toml(tmp_path, set_as_global=False)
+        assert config.get_surround_neighbour_cap_height("Douglas Fir") == 25.0
+        assert config.get_surround_neighbour_cap_height("norway_spruce") == 0.0
+        config = GrowPyConfig(surround_neighbour_cap_height=30.0)
+        assert config.get_surround_neighbour_cap_height("douglas_fir") == 30.0
+
     def test_surround_height_per_species_falls_back_to_global(self, tmp_path):
         # Arm B of the 2026-09-16 crown-separation ladder: a static shell at
         # the goal height for one species, the global height for the rest.
