@@ -30,6 +30,14 @@ def test_check_entry_bins_and_sources(tmp_path):
     assert any(
         "missing" in p for p in tc.check_entry(_entry(source_ref="nope.usda"), tmp_path)
     )
+    # third-party parts in UE content (E116): a /Game/ path, no file under data/assets
+    mp = _entry(
+        source="megaplants",
+        source_ref="/Game/Megaplant_Library/Tree_Baltic_Pine/Instances/Branch_01",
+        licence=tc.SOURCES["megaplants"],
+        size_bin="-",
+    )
+    assert tc.check_entry(mp, tmp_path) == []
 
 
 def test_build_writes_the_catalog_and_entries_for_finds_a_palette(tmp_path):

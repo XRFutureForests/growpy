@@ -41,6 +41,11 @@ SOURCES = {
     "grove": "The Grove 2.3 twig library (licensed to the lab; not redistributed)",
     "compound": "own: harvested from the lab's Grove growth (growpy harvest_compound_parts)",
     "own": "own",
+    # third-party parts used in place in the UE project (owner 2026-11-18: licence is
+    # no selection criterion while nothing is published; files stay out of git /
+    # Zenodo / hub). source_ref is then the /Game/ mesh path.
+    "megaplants": "MegaPlants (Fab), Fab Standard License: use in the lab's UE "
+    "projects; no standalone redistribution",
 }
 # cut-diameter bins in mm (XRFF-684): beech owner-fixed 2026-11-16 (export cut 0.07 x trunk
 # base radius, bounded at 25 mm); a species not listed has no bins yet
@@ -66,7 +71,9 @@ def check_entry(entry: dict, assets: Path = ASSETS) -> list[str]:
         out.append(f"part_kind {entry['part_kind']!r} not in {PART_KINDS}")
     if entry["source"] not in SOURCES:
         out.append(f"source {entry['source']!r} not in {tuple(SOURCES)}")
-    if not (assets / entry["source_ref"]).is_file():
+    if str(entry["source_ref"]).startswith("/Game/"):
+        pass  # UE content (third-party in place): checked in the editor, not on disk
+    elif not (assets / entry["source_ref"]).is_file():
         out.append(f"source_ref {entry['source_ref']} missing under {assets}")
     cut = entry["cut_diameter_mm"]
     bins = SIZE_BINS_MM.get(entry["species"], {})

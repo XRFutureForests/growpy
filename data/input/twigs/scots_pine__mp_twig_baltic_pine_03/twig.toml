@@ -1,0 +1,14 @@
+# MegaPlants Baltic pine part used in place (E116, owner 2026-11-18). leaf_area_m2 = card area, one side,
+# bark cards included (E115 offline read), an upper bound of the needle area. Nanite: VOXELIZE (E115).
+id = "scots_pine__mp_twig_baltic_pine_03"
+species = "scots_pine"
+part_kind = "twig"
+size_bin = "-"
+cut_diameter_mm = []
+source = "megaplants"
+source_ref = "/Game/Megaplant_Library/Tree_Baltic_Pine/Instances/Twig_Baltic_Pine_03"
+licence = "MegaPlants (Fab), Fab Standard License: use in the lab's UE projects; no standalone redistribution"
+leaf_area_m2 = 0.0158
+faces = 881
+nanite_triangles = 13310
+palette_name = "scots_pine_mp_p00"

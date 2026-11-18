@@ -146,14 +146,25 @@ PALETTE_SOURCES = ("twigs", "compound")
 
 @dataclass(frozen=True)
 class PalettePrototype:
-    """One twig prototype: a ``*_static.usda`` in, one static mesh out."""
+    """One twig prototype: a ``*_static.usda`` in, one static mesh out.
+
+    ``existing`` (E116, 2026-11-18) names a static mesh already in the project and
+    already in PVE's part frame (+Z growth, e.g. a MegaPlants part): it is used in
+    place -- no import, no re-frame -- and ``source`` then only locates its
+    ``<name>_leaf_area_geom.json`` sidecar (a twig catalog entry folder).
+    """
 
     name: str
     source: Path
+    existing: str = ""
 
     def __post_init__(self) -> None:
         if not self.name:
             raise ValueError("prototype name must not be empty")
+        if self.existing and not self.existing.startswith("/Game/"):
+            raise ValueError(
+                f"existing mesh must be a /Game/ path, got {self.existing!r}"
+            )
 
     def mesh_path(self, foliage_folder: str) -> str:
         """Where the USD import lands this prototype's static mesh.
@@ -161,6 +172,8 @@ class PalettePrototype:
         A USD import writes ``<destination>/<name>/StaticMeshes/SM_<name>``;
         the nesting comes from the importer, not from us.
         """
+        if self.existing:
+            return self.existing
         return f"{foliage_folder}/{self.name}/StaticMeshes/SM_{self.name}"
 
     def part_path(self, foliage_folder: str) -> str:
@@ -169,6 +182,8 @@ class PalettePrototype:
         Written by the generated script next to the import, under the same
         ``StaticMeshes`` folder, so a re-import replaces both together.
         """
+        if self.existing:
+            return self.existing
         return f"{self.mesh_path(foliage_folder)}_ZUP"
 
 
@@ -504,6 +519,7 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                         "source": str(Path(p.source).resolve()).replace("\\", "/"),
                         "mesh": p.mesh_path(s.foliage_folder),
                         "part": p.part_path(s.foliage_folder),
+                        "existing": bool(p.existing),
                     }
                     for p in s.prototypes
                 ],
@@ -662,6 +678,10 @@ def import_palette(spec):
     its PVE part. Returns the problems found."""
     problems = []
     for proto in spec["prototypes"]:
+        if proto.get("existing"):  # used in place, already in PVE's frame
+            if not eal.does_asset_exist(proto["part"]):
+                problems.append("existing palette mesh missing: %s" % proto["part"])
+            continue
         if eal.does_asset_exist(proto["mesh"]):
             print("   palette exists: %s" % proto["name"])
         else:
@@ -959,7 +979,11 @@ def repoint_leaf_materials(spec):
     parent = eal.load_asset(want)
     problems = []
     seen = moved = 0
-    for proto in spec["prototypes"]:
+    imported = [p for p in spec["prototypes"] if not p.get("existing")]
+    if not imported:  # every part used in place keeps its own materials untouched
+        print("   leaves: palette used in place, materials untouched")
+        return problems
+    for proto in imported:
         folder = "%s/%s/Materials" % (spec["foliage_folder"], proto["name"])
         if not eal.does_directory_exist(folder):
             problems.append("palette materials folder missing: %s" % folder)

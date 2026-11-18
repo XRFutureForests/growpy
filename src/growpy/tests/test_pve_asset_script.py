@@ -170,6 +170,14 @@ class TestSpecResolution:
 
 
 class TestPaletteLayout:
+    def test_an_existing_mesh_is_used_in_place(self):
+        # E116: a mesh already in PVE's frame (a MegaPlants part) is used in place
+        mesh = "/Game/X/Parts/Branch_01"
+        proto = PalettePrototype("mp_p00", Path("e/twig.toml"), existing=mesh)
+        assert proto.mesh_path("/Game/F") == proto.part_path("/Game/F") == mesh
+        with pytest.raises(ValueError, match="/Game/"):
+            PalettePrototype("mp_p00", Path("e/twig.toml"), existing="X/Branch_01")
+
     def test_mesh_path_matches_the_usd_importers_nesting(self):
         # A USD import writes <destination>/<name>/StaticMeshes/SM_<name>.
         proto = PalettePrototype("european_beech_foliage_a", Path("x.usda"))
