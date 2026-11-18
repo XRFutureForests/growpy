@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 MANIFEST = Path("data/input/tree_catalog.toml")
 PRESET_PATCHES = Path("config/preset_patches.json")
+HOLDS = Path("data/input/release_holds.toml")  # species = "<release>: why it is held out"
 PASS_FAIL = (
     "dbh_m",
     "crown_base_m",
@@ -229,6 +230,7 @@ def build(
     score_paths=(),
     out: Path = MANIFEST,
     patches: Path = PRESET_PATCHES,
+    holds: Path = HOLDS,
 ) -> dict:
     """Write the manifest; a later plan of the same tree replaces an earlier one."""
     materials = material_ids()
@@ -237,6 +239,7 @@ def build(
     )
     scores = read_scores(score_paths)
     settings = structure_settings(patches) if patches.is_file() else {}
+    held = tomllib.loads(holds.read_text(encoding="utf-8")) if holds.is_file() else {}
     barks: dict[str, tuple | None] = {}
     trees: dict[str, dict] = {}
     for plan in plans:
@@ -246,6 +249,10 @@ def build(
             trees[f"{row['species']}.{row['tree_id']}"] = entry(
                 row, materials, bones, scores, settings, barks
             )
+            if row["species"] in held:
+                trees[f"{row['species']}.{row['tree_id']}"]["release_hold"] = held[
+                    row["species"]
+                ]
     if bones:
         # the bones dump lists every mesh the UE catalog holds: a planned tree
         # without one was never exported or was dropped (e.g. r00), so it is
@@ -264,6 +271,8 @@ def build(
         "# before its bark source changed shows the new source until re-export.",
         "# structure_settings: the species' preset_patches.json entry; check flags",
         "# a tree grown before that entry last changed (STALE).",
+        "# release_hold: the species is held out of that release",
+        "# (data/input/release_holds.toml); the asset is not shipped from it.",
         "",
     ]
     for key in sorted(trees):

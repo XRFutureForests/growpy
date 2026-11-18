@@ -6,6 +6,8 @@
 # before its bark source changed shows the new source until re-export.
 # structure_settings: the species' preset_patches.json entry; check flags
 # a tree grown before that entry last changed (STALE).
+# release_hold: the species is held out of that release
+# (data/input/release_holds.toml); the asset is not shipped from it.
 
 [trees.common_ash.r07_h05m]
 species = "common_ash"
@@ -2008,6 +2010,7 @@ leaf_area_m2 = 4.2
 leaf_area_target_m2 = 4.2
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 536
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.044, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
 target.crown_radius_m = { value = 1.388, p25 = 0.328, p75 = 0.484, inside = false, n = 4 }
@@ -2036,6 +2039,7 @@ leaf_area_m2 = 18.1
 leaf_area_target_m2 = 18.0
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 546
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.103, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 5.0, p25 = 5.0, p75 = 7.5, inside = true, n = 90 }
 target.crown_radius_m = { value = 2.114, p25 = 0.86, p75 = 1.429, inside = false, n = 90 }
@@ -2064,6 +2068,7 @@ leaf_area_m2 = 36.7
 leaf_area_target_m2 = 36.6
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 298
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.154, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 10.5, p25 = 7.5, p75 = 11.0, inside = true, n = 643 }
 target.crown_radius_m = { value = 1.781, p25 = 1.12, p75 = 1.81, inside = true, n = 643 }
@@ -2092,6 +2097,7 @@ leaf_area_m2 = 74.9
 leaf_area_target_m2 = 73.8
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 343
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.231, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 14.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
 target.crown_radius_m = { value = 2.236, p25 = 1.477, p75 = 2.343, inside = true, n = 932 }
@@ -2120,6 +2126,7 @@ leaf_area_m2 = 134.1
 leaf_area_target_m2 = 133.3
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 340
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.324, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 17.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
 target.crown_radius_m = { value = 2.151, p25 = 1.964, p75 = 2.93, inside = true, n = 619 }
@@ -2148,6 +2155,7 @@ leaf_area_m2 = 193.1
 leaf_area_target_m2 = 195.7
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 410
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.404, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 19.5, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
 target.crown_radius_m = { value = 2.455, p25 = 2.777, p75 = 3.76, inside = false, n = 428 }
@@ -2176,6 +2184,7 @@ leaf_area_m2 = 3.8
 leaf_area_target_m2 = 3.9
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 551
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.041, p25 = 0.035, p75 = 0.047, inside = true, n = 3 }
 target.crown_base_m = { value = 1.5, p25 = 4.46, p75 = 6.895, inside = false, n = 4 }
 target.crown_radius_m = { value = 1.685, p25 = 0.328, p75 = 0.484, inside = false, n = 4 }
@@ -2204,6 +2213,7 @@ leaf_area_m2 = 17.9
 leaf_area_target_m2 = 17.8
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 783
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.102, p25 = 0.101, p75 = 0.154, inside = true, n = 90 }
 target.crown_base_m = { value = 3.5, p25 = 5.0, p75 = 7.5, inside = false, n = 90 }
 target.crown_radius_m = { value = 2.651, p25 = 0.86, p75 = 1.429, inside = false, n = 90 }
@@ -2232,6 +2242,7 @@ leaf_area_m2 = 37.1
 leaf_area_target_m2 = 37.1
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 857
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.156, p25 = 0.135, p75 = 0.189, inside = true, n = 643 }
 target.crown_base_m = { value = 6.5, p25 = 7.5, p75 = 11.0, inside = false, n = 643 }
 target.crown_radius_m = { value = 3.072, p25 = 1.12, p75 = 1.81, inside = false, n = 643 }
@@ -2260,6 +2271,7 @@ leaf_area_m2 = 73.5
 leaf_area_target_m2 = 73.3
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 903
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.23, p25 = 0.19, p75 = 0.27, inside = true, n = 932 }
 target.crown_base_m = { value = 7.5, p25 = 9.5, p75 = 13.5, inside = false, n = 932 }
 target.crown_radius_m = { value = 3.508, p25 = 1.477, p75 = 2.343, inside = false, n = 932 }
@@ -2288,6 +2300,7 @@ leaf_area_m2 = 131.5
 leaf_area_target_m2 = 132.3
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 889
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.322, p25 = 0.265, p75 = 0.356, inside = true, n = 618 }
 target.crown_base_m = { value = 6.5, p25 = 10.0, p75 = 15.5, inside = false, n = 619 }
 target.crown_radius_m = { value = 3.935, p25 = 1.964, p75 = 2.93, inside = false, n = 619 }
@@ -2316,6 +2329,7 @@ leaf_area_m2 = 184.4
 leaf_area_target_m2 = 185.7
 plan = "unreal_scripts_scots_pine_r12_2026-11-17"
 bones = 1099
+release_hold = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E112)"
 target.dbh_m = { value = 0.392, p25 = 0.364, p75 = 0.454, inside = true, n = 428 }
 target.crown_base_m = { value = 4.0, p25 = 7.5, p75 = 15.0, inside = false, n = 428 }
 target.crown_radius_m = { value = 4.206, p25 = 2.777, p75 = 3.76, inside = false, n = 428 }

@@ -155,3 +155,17 @@ def test_build_records_bark_sources_settings_and_check_flags_stale_trees(tmp_pat
     )  # config/pve_calibration.toml's tile pair
     _, findings = tree_catalog.check(out)
     assert any("STALE" in f for f in findings)
+
+
+def test_a_held_species_carries_its_release_hold(tmp_path):
+    growth = tmp_path / "Norway_Spruce_r07_h20m_d27cm_full_growth_data.json"
+    growth.write_text("{}")
+    plan = _plan(tmp_path / "p", "r07_h20m", growth, instances=10)
+    holds = tmp_path / "holds.toml"
+    holds.write_text('norway_spruce = "1.2: look verdict failed"\n')
+    out = tmp_path / "tree_catalog.toml"
+
+    tree_catalog.build([plan], None, [], out, holds=holds)
+
+    tree = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]["norway_spruce"]
+    assert tree["r07_h20m"]["release_hold"] == "1.2: look verdict failed"
