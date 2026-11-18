@@ -12,4 +12,4 @@ leaf_area_m2 = 0.0273
 faces = 624
 nanite_triangles = 10316
 palette_name = "scots_pine_mp_p01"
-status = "candidate"
+status = "active interim"

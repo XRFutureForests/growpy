@@ -106,6 +106,7 @@ def test_optional_cost_and_status_fields_are_checked(tmp_path):
     ok = _entry(nanite_triangles=306194, textures=["2x2048"], status="shipped 1.2")
     assert tc.check_entry(ok, tmp_path) == []
     assert tc.check_entry(_entry(status="candidate"), tmp_path) == []
+    assert tc.check_entry(_entry(status="active interim"), tmp_path) == []
     for bad in (
         {"nanite_triangles": 1.5},
         {"textures": "2x2048"},

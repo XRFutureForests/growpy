@@ -15,7 +15,8 @@ An entry is a folder ``data/input/twigs/<id>/`` with a small tracked ``twig.toml
   and ``source_ref`` (the asset file under ``data/assets/``), ``licence``,
 * ``leaf_area_m2`` and ``faces`` of one instance, optional ``placement`` overrides and ``preview``,
 * optional ``nanite_triangles`` (int), ``textures`` (``"<n>x<px>"`` strings) and
-  ``status`` (``candidate``, ``shipped <release>``, ``held <release>``, ``retired``).
+  ``status`` (``candidate``, ``active [note]``, ``shipped <release>``,
+  ``held <release>``, ``retired``).
 
 ``catalog.toml`` is generated from the entries; the manifest (``growpy-tree-catalog``) names a tree's
 entries. Bins per species live in :data:`SIZE_BINS_MM` (beech fixed 2026-11-16 after the 20 m cut
@@ -58,7 +59,7 @@ SOURCES = {
 # base radius, bounded at 25 mm); a species not listed has no bins yet
 _SML = {"S": (0.0, 6.0), "M": (6.0, 12.0), "L": (12.0, 25.0)}
 # conifers since XRFF-686 (owner 2026-11-17, conifer twig pass for 1.2)
-STATUS = ("candidate", "shipped", "held", "retired")  # shipped/held take " <release>"
+STATUS = ("candidate", "active", "shipped", "held", "retired")  # shipped/held + " <release>"
 SIZE_BINS_MM = {
     sp: _SML
     for sp in ("european_beech", "norway_spruce", "silver_fir", "douglas_fir", "scots_pine")
@@ -122,6 +123,8 @@ def _status_ok(status: str) -> bool:
     word, _, release = status.partition(" ")
     if word in ("shipped", "held"):
         return bool(release.strip())
+    if word == "active":  # in use now, optionally with a note ("active interim")
+        return True
     return word in STATUS and not release
 
 
