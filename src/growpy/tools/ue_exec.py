@@ -304,48 +304,47 @@ def _run_cleanup(port: int) -> None:
         logger.warning("  Cleanup script failed: %s", e)
 
 
-def _find_ue_pids() -> list[int]:
-    """Return PIDs of all running UnrealEditor processes."""
+def _find_ue_pids(uproject: str | None = None) -> list[int]:
+    """PIDs of the UnrealEditor processes this run drives: those whose command
+    line names ``uproject``; without one, the only editor running (several
+    editors and no project = none, so another session's editor is never hit)."""
     try:
         import psutil
     except ImportError:
         return []
-    pids = []
-    for p in psutil.process_iter(["pid", "name"]):
+    editors = []
+    for p in psutil.process_iter(["pid", "name", "cmdline"]):
         try:
-            name = p.info.get("name") or ""
-            if name.lower().startswith("unrealeditor"):
-                pids.append(p.info["pid"])
+            if (p.info.get("name") or "").lower().startswith("unrealeditor"):
+                editors.append((p.info["pid"], " ".join(p.info.get("cmdline") or [])))
         except Exception:
             pass
-    return pids
-
-
-def _kill_ue() -> bool:
-    """Forcefully terminate all UnrealEditor processes. Returns True if any were found."""
-    pids = _find_ue_pids()
-    if pids:
-        try:
-            import psutil
-
-            for pid in pids:
-                try:
-                    psutil.Process(pid).kill()
-                except Exception:
-                    pass
-            return True
-        except ImportError:
-            pass
-    try:
-        result = subprocess.run(
-            ["taskkill", "/F", "/IM", "UnrealEditor.exe"],
-            capture_output=True,
-            text=True,
-            timeout=15,
+    if uproject:
+        want = Path(uproject).name.lower()
+        return [pid for pid, cmd in editors if want in cmd.lower()]
+    if len(editors) > 1:
+        logger.warning(
+            "  %d UE editors run and no --uproject names ours; killing none",
+            len(editors),
         )
-        return result.returncode == 0
-    except Exception:
+        return []
+    return [pid for pid, _ in editors]
+
+
+def _kill_ue(uproject: str | None = None) -> bool:
+    """Forcefully terminate the editor(s) of ``uproject`` (see _find_ue_pids),
+    never by image name. Returns True if any were found."""
+    pids = _find_ue_pids(uproject)
+    if not pids:
         return False
+    import psutil
+
+    for pid in pids:
+        try:
+            psutil.Process(pid).kill()
+        except Exception:
+            pass
+    return True
 
 
 def _launch_ue(editor_exe: str, uproject: str) -> None:
@@ -385,8 +384,8 @@ def _wait_for_ue_reachable(timeout: float = 300.0, poll: float = 5.0) -> bool:
 
 
 def _restart_ue(editor_exe: str, uproject: str, timeout: float = 300.0) -> bool:
-    """Kill any running UE editor, relaunch it, and wait until reachable."""
-    _kill_ue()
+    """Kill the editor of ``uproject``, relaunch it, and wait until reachable."""
+    _kill_ue(uproject)
     time.sleep(3.0)
     _launch_ue(editor_exe, uproject)
     return _wait_for_ue_reachable(timeout=timeout)
@@ -406,7 +405,9 @@ class _RamWatchdog:
         ram_limit: float,
         poll_interval: float,
         vram_limit: float = 0.0,
+        uproject: str | None = None,
     ):
+        self.uproject = uproject
         self.ram_limit = ram_limit
         self.vram_limit = vram_limit
         self.poll_interval = poll_interval
@@ -440,7 +441,7 @@ class _RamWatchdog:
                             self.vram_limit,
                         )
                         self._triggered.set()
-                        _kill_ue()
+                        _kill_ue(self.uproject)
                         return
 
             if self.ram_limit > 0:
@@ -455,7 +456,7 @@ class _RamWatchdog:
                             self.ram_limit,
                         )
                         self._triggered.set()
-                        _kill_ue()
+                        _kill_ue(self.uproject)
                         return
 
             if self._stop.wait(self.poll_interval):
@@ -492,7 +493,10 @@ def _run_single_with_restart(
     attempts = 0
     while True:
         watchdog = _RamWatchdog(
-            restart_ram_limit, restart_poll_interval, restart_vram_limit
+            restart_ram_limit,
+            restart_poll_interval,
+            restart_vram_limit,
+            uproject=uproject,
         )
         watchdog.start()
         try:

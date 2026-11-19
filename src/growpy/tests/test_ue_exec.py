@@ -182,3 +182,41 @@ class TestUeExecRestartConfigValidation:
         main()
         assert captured["editor_exe"] == "C:/CLI/Editor.exe"
         assert captured["uproject"] == "C:/CLI/Proj.uproject"
+
+
+class TestFindUePidsNeverHitsOtherEditors:
+    """Kills target the editor of the run's .uproject, never every UnrealEditor."""
+
+    @staticmethod
+    def _procs(*editors):
+        procs = []
+        for pid, cmd in editors:
+            p = MagicMock()
+            p.info = {"pid": pid, "name": "UnrealEditor.exe", "cmdline": cmd.split()}
+            procs.append(p)
+        other = MagicMock()
+        other.info = {"pid": 9, "name": "python.exe", "cmdline": ["python"]}
+        return procs + [other]
+
+    def _find(self, uproject, *editors):
+        from growpy.tools.ue_exec import _find_ue_pids
+
+        with patch("psutil.process_iter", return_value=self._procs(*editors)):
+            return _find_ue_pids(uproject)
+
+    def test_only_the_editor_of_the_named_project(self):
+        pids = self._find(
+            "C:/P/Mine.uproject",
+            (1, "UnrealEditor.exe C:/P/Mine.uproject"),
+            (2, "UnrealEditor.exe C:/Q/Other.uproject"),
+        )
+        assert pids == [1]
+
+    def test_no_project_and_several_editors_kills_none(self):
+        pids = self._find(
+            None, (1, "UnrealEditor.exe A.uproject"), (2, "UnrealEditor.exe B.uproject")
+        )
+        assert pids == []
+
+    def test_no_project_and_one_editor_is_that_one(self):
+        assert self._find(None, (1, "UnrealEditor.exe A.uproject")) == [1]
