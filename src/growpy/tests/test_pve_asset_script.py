@@ -618,3 +618,57 @@ class TestCli:
               "--content-root", "/Game/PVE_Test"])
         text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
         assert "/Game/PVE_Test/Foliage/european_beech" in text
+
+
+class TestCompoundPaletteExistingParts:
+    """Pine 1.2: a compound palette may name parts already in the project."""
+
+    def _manifest(self, tmp_path, monkeypatch, entries):
+        import json
+
+        import growpy.config.paths as paths
+        from growpy.io.unreal import pve_asset_script as pas
+
+        assets = tmp_path / "assets"
+        (assets / "compound_parts").mkdir(parents=True)
+        (assets / "compound_parts" / "scots_pine_pve_palette.json").write_text(
+            json.dumps({"prototypes": entries})
+        )
+        monkeypatch.setattr(paths, "get_assets_directory", lambda: assets)
+        monkeypatch.setattr(paths, "get_project_root", lambda: tmp_path)
+        return pas
+
+    def test_an_existing_part_is_used_in_place(self, tmp_path, monkeypatch):
+        entry = tmp_path / "data/input/twigs/scots_pine__mp_x/twig.toml"
+        entry.parent.mkdir(parents=True)
+        entry.write_text("")
+        pas = self._manifest(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "name": "scots_pine_mp_p00",
+                    "entry": "data/input/twigs/scots_pine__mp_x/twig.toml",
+                    "existing": "/Game/Generated/Trees/Foliage/scots_pine/MP/Twig_03",
+                }
+            ],
+        )
+        (proto,) = pas._compound_prototypes("scots_pine")
+        assert proto.existing == "/Game/Generated/Trees/Foliage/scots_pine/MP/Twig_03"
+        assert proto.source == entry
+        assert proto.mesh_path("/Game/x") == proto.existing
+
+    def test_a_missing_twig_entry_fails_loudly(self, tmp_path, monkeypatch):
+        pas = self._manifest(
+            tmp_path,
+            monkeypatch,
+            [
+                {
+                    "name": "p",
+                    "entry": "data/input/twigs/nope/twig.toml",
+                    "existing": "/Game/A",
+                }
+            ],
+        )
+        with pytest.raises(FileNotFoundError, match="twig catalog entry missing"):
+            pas._compound_prototypes("scots_pine")

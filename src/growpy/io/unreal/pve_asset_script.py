@@ -403,6 +403,27 @@ def _compound_prototypes(species: str) -> tuple[PalettePrototype, ...]:
     data = json.loads(manifest.read_text(encoding="utf-8"))
     prototypes = []
     for entry in data.get("prototypes", []):
+        if entry.get("existing"):
+            # a part already in the project (e.g. a MegaPlants static, E116 / pine 1.2):
+            # used in place; "entry" is its twig catalog entry (the leaf-area sidecar)
+            from growpy.config.paths import get_project_root
+
+            source = Path(entry["entry"])
+            if not source.is_absolute():
+                source = get_project_root() / source
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"{species!r} part {entry.get('name')!r} named by "
+                    f"{manifest.name}: twig catalog entry missing at {source}"
+                )
+            prototypes.append(
+                PalettePrototype(
+                    name=str(entry["name"]),
+                    source=source,
+                    existing=str(entry["existing"]),
+                )
+            )
+            continue
         source = Path(entry["file"])
         if not source.is_absolute():
             source = manifest.parent / source.name
