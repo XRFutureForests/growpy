@@ -220,3 +220,52 @@ class TestFindUePidsNeverHitsOtherEditors:
 
     def test_no_project_and_one_editor_is_that_one(self):
         assert self._find(None, (1, "UnrealEditor.exe A.uproject")) == [1]
+
+
+class TestKillOnlyTheOwnEditor:
+    """_kill_ue touches only the editor ue_exec launched; never one it attached to."""
+
+    def test_refuses_when_ue_exec_did_not_launch_the_editor(self, monkeypatch):
+        import growpy.tools.ue_exec as ue
+
+        monkeypatch.setitem(ue._OWN, "pid", None)
+        with patch("psutil.Process") as proc:
+            assert ue._kill_ue("C:/P/Mine.uproject") is False
+        proc.assert_not_called()
+
+    def test_kills_the_launched_pid_and_its_crash_reporter_only(self, monkeypatch):
+        import growpy.tools.ue_exec as ue
+
+        crash, other = MagicMock(), MagicMock()
+        crash.name.return_value = "CrashReportClientEditor.exe"
+        other.name.return_value = "zenserver.exe"
+        own = MagicMock()
+        own.children.return_value = [crash, other]
+        monkeypatch.setitem(ue._OWN, "pid", 4242)
+        with patch("psutil.Process", return_value=own) as proc:
+            assert ue._kill_ue() is True
+        proc.assert_called_once_with(4242)
+        own.kill.assert_called_once()
+        crash.kill.assert_called_once()
+        other.kill.assert_not_called()
+        assert ue._OWN["pid"] is None
+
+    def test_launch_records_the_pid(self, monkeypatch):
+        import growpy.tools.ue_exec as ue
+
+        monkeypatch.setitem(ue._OWN, "pid", None)
+        with patch("subprocess.Popen", return_value=MagicMock(pid=777)):
+            ue._launch_ue("Editor.exe", "C:/P/Mine.uproject")
+        assert ue._OWN["pid"] == 777
+
+    def test_restart_refuses_while_a_foreign_editor_of_the_project_runs(
+        self, monkeypatch
+    ):
+        import growpy.tools.ue_exec as ue
+
+        monkeypatch.setitem(ue._OWN, "pid", None)
+        monkeypatch.setattr(ue, "_find_ue_pids", lambda uproject=None: [99])
+        launched = []
+        monkeypatch.setattr(ue, "_launch_ue", lambda *a: launched.append(a))
+        assert ue._restart_ue("Editor.exe", "C:/P/Mine.uproject") is False
+        assert launched == []

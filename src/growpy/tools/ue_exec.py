@@ -305,9 +305,9 @@ def _run_cleanup(port: int) -> None:
 
 
 def _find_ue_pids(uproject: str | None = None) -> list[int]:
-    """PIDs of the UnrealEditor processes this run drives: those whose command
-    line names ``uproject``; without one, the only editor running (several
-    editors and no project = none, so another session's editor is never hit)."""
+    """PIDs of the running UnrealEditor processes whose command line names
+    ``uproject``; without one, the only editor running (several and no project =
+    none). Used to see whether a foreign editor still runs, never to pick a kill."""
     try:
         import psutil
     except ImportError:
@@ -331,19 +331,38 @@ def _find_ue_pids(uproject: str | None = None) -> list[int]:
     return [pid for pid, _ in editors]
 
 
+# The editor this process launched (``_launch_ue``); the only one ``_kill_ue`` touches.
+_OWN = {"pid": None}
+
+
 def _kill_ue(uproject: str | None = None) -> bool:
-    """Forcefully terminate the editor(s) of ``uproject`` (see _find_ue_pids),
-    never by image name. Returns True if any were found."""
-    pids = _find_ue_pids(uproject)
-    if not pids:
+    """Kill the editor this process launched (and its CrashReportClient), never
+    one it only attached to, never by image name. An editor ue_exec did not
+    start is left alone with a warning. Returns True if the own editor was killed."""
+    pid = _OWN["pid"]
+    if pid is None:
+        logger.warning(
+            "  the UE editor%s was not launched by ue_exec; refusing to kill it",
+            f" of {Path(uproject).name}" if uproject else "",
+        )
         return False
     import psutil
 
-    for pid in pids:
-        try:
-            psutil.Process(pid).kill()
-        except Exception:
-            pass
+    _OWN["pid"] = None
+    try:
+        proc = psutil.Process(pid)
+        kids = [
+            c
+            for c in proc.children(recursive=True)
+            if c.name().lower().startswith("crashreportclient")
+        ]
+        for p in [proc, *kids]:
+            p.kill()
+    except psutil.NoSuchProcess:
+        return False
+    except Exception as e:
+        logger.warning("  killing the own editor %d failed: %s", pid, e)
+        return False
     return True
 
 
@@ -358,12 +377,13 @@ def _launch_ue(editor_exe: str, uproject: str) -> None:
     connect. The flag suppresses that prompt and any other modal the relaunch
     would otherwise stop on.
     """
-    subprocess.Popen(
+    proc = subprocess.Popen(
         [editor_exe, uproject, "-unattended"],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         close_fds=True,
     )
+    _OWN["pid"] = proc.pid
 
 
 def _ue_alive(timeout: float = 2.0) -> bool:
@@ -384,8 +404,15 @@ def _wait_for_ue_reachable(timeout: float = 300.0, poll: float = 5.0) -> bool:
 
 
 def _restart_ue(editor_exe: str, uproject: str, timeout: float = 300.0) -> bool:
-    """Kill the editor of ``uproject``, relaunch it, and wait until reachable."""
-    _kill_ue(uproject)
+    """Kill the own editor, relaunch it, and wait until reachable. Refuses (False)
+    while an editor of ``uproject`` that ue_exec did not launch still runs."""
+    if not _kill_ue(uproject) and _find_ue_pids(uproject):
+        logger.error(
+            "  an editor of %s that ue_exec did not launch is still running; not "
+            "restarting (close it, or let ue_exec launch the editor)",
+            Path(uproject).name,
+        )
+        return False
     time.sleep(3.0)
     _launch_ue(editor_exe, uproject)
     return _wait_for_ue_reachable(timeout=timeout)
