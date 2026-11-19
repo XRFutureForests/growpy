@@ -469,9 +469,15 @@
     "add_only_on_end": 0.8,
     "bend_mass": 0.35
   },
+  "_why_scots_pine_turn_random": [
+    "turn_random 0.0 (E113 tr0, owner 2026-11-19: 'tr0 looks fine, keep'): the preset's 0.087",
+    "waves the bole (lower-half rms 12-30 cm at 20 m); 0.0 keeps it straight (1.5-3 cm) and leaves",
+    "the crown as it was. Stray low limbs are removed at dressing time, not in the growth."
+  ],
   "scots_pine": {
     "drop_shaded": 0.15,
-    "drop_obsolete": 0.15
+    "drop_obsolete": 0.15,
+    "turn_random": 0.0
   },
   "silver_fir": {
     "drop_shaded": 0.15,
