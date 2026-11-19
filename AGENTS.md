@@ -65,6 +65,7 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 | `growpy-skeleton-budget` | Bone budget of catalog growth JSONs (points, polylines, Douglas-Peucker keep shares) and, with `--spacing`, what `min_point_spacing` would save |
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
+| `growpy-ue-session` | One editor session: optional editor-slot lock, restore guard, launch (`-XRFFBatch`) with a commit-charge guard on the own PID, wait for a ping (one relaunch on the Zen splash hang), `--run` / `--run-until-done` / `--export` steps in order, quit, kill only the own PID; paths from `--project`/`--engine`/`--lock-dir` or `GROWPY_UE_UPROJECT`/`GROWPY_UE_ENGINE`/`GROWPY_LOCK_DIR` |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |
 | `growpy-analyze-usda` | Analyse USD assembly output (triangle budget) |
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
