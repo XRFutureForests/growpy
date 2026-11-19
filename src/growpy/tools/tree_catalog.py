@@ -44,7 +44,8 @@ logger = logging.getLogger(__name__)
 
 MANIFEST = Path("data/input/tree_catalog.toml")
 PRESET_PATCHES = Path("config/preset_patches.json")
-HOLDS = Path("data/input/release_holds.toml")  # species = "<release>: why"
+# species (or "species.tree_id") = "<release>: why"
+HOLDS = Path("data/input/release_holds.toml")
 PASS_FAIL = (
     "dbh_m",
     "crown_base_m",
@@ -249,10 +250,11 @@ def build(
             trees[f"{row['species']}.{row['tree_id']}"] = entry(
                 row, materials, bones, scores, settings, barks
             )
-            if row["species"] in held:
-                trees[f"{row['species']}.{row['tree_id']}"]["release_hold"] = held[
-                    row["species"]
-                ]
+            # a "<species>.<tree_id>" key holds one tree, a species key all of them
+            key = f"{row['species']}.{row['tree_id']}"
+            hold = held.get(key, held.get(row["species"]))
+            if hold:
+                trees[key]["release_hold"] = hold
     if bones:
         # the bones dump lists every mesh the UE catalog holds: a planned tree
         # without one was never exported or was dropped (e.g. r00), so it is

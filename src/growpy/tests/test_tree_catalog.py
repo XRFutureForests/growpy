@@ -169,3 +169,20 @@ def test_a_held_species_carries_its_release_hold(tmp_path):
 
     tree = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]["norway_spruce"]
     assert tree["r07_h20m"]["release_hold"] == "1.2: look verdict failed"
+
+
+def test_a_tree_key_holds_only_that_tree(tmp_path):
+    plans = []
+    for tid, d in (("r07_h20m", "d23cm"), ("r07_h30m", "d32cm")):
+        growth = tmp_path / f"Norway_Spruce_{tid}_{d}_full_growth_data.json"
+        growth.write_text("{}")
+        plans.append(_plan(tmp_path / tid, tid, growth, instances=10))
+    holds = tmp_path / "holds.toml"
+    holds.write_text('"norway_spruce.r07_h30m" = "1.2: not in the new ladder"\n')
+    out = tmp_path / "tree_catalog.toml"
+
+    tree_catalog.build(plans, None, [], out, holds=holds)
+
+    tree = tomllib.loads(out.read_text(encoding="utf-8"))["trees"]["norway_spruce"]
+    assert tree["r07_h30m"]["release_hold"] == "1.2: not in the new ladder"
+    assert "release_hold" not in tree["r07_h20m"]
