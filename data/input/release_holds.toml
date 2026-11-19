@@ -1,5 +1,8 @@
 # Species held out of a release (owner decision): species = "<release>: why".
-# growpy-tree-catalog build copies the line onto every entry of that species
-# as release_hold. The held species' assets stay in the catalog but are not
-# shipped from that release; the target ships the previous release's asset.
-scots_pine = "1.2: held out (owner 2026-11-18). The 1.2 look verdict failed (sparse crowns, opacity r10 0.29-0.40 vs MegaPlants 0.78-0.86; E110, E111 found no placement or pad fix); XRFFTwin keeps the 1.1 pine. Next: MegaPlants-style pine branch-pad part (E114); Grove structure fix (E113)"
+# A quoted "<species>.<tree_id>" key holds one tree only (growpy 48af0ef).
+# growpy-tree-catalog build copies the line onto the matching entries as
+# release_hold. The held assets stay in the catalog but are not shipped from
+# that release; the target ships the previous release's asset.
+# scots_pine 1.2 ships from the tr0 ladder (owner 2026-11-19 ~18:30): the species hold of 2026-11-18 is lifted
+# for the 11 exported trees; r07 h30 is not in the tr0 ladder (Grove stops r07 at 25 m) and stays held.
+"scots_pine.r07_h30m" = "1.2: not in the tr0 ladder, which stops r07 at 25 m (known gap: shade collapse, E125); XRFFTwin keeps the 1.1 asset; do not mix it with tr0 (as Douglas h45)"
