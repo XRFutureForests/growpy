@@ -1239,6 +1239,8 @@ class GrowPyConfig:
             "pve_calibration",
             # Likewise read as a named file by growpy.tools.twig_audit.
             "twig_audit",
+            # Likewise read as a named file by growpy.tools.ue_compare.
+            "compare",
         }
         for _section in data:
             if _section not in _known_sections:

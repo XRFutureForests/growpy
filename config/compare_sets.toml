@@ -1,0 +1,225 @@
+# Compare-board sets for growpy-ue-compare (cleanup class E step 2, owner 2026-11-19).
+#
+# One set = one compare level: one row per source, trees 10 m apart. A row is
+#   { label = "...", <one source>, tag = "...", optional = true }
+# with exactly one source:
+#   assets   = ["/Game/...", ...]                    content paths, in order
+#   pattern  = "/Game/.../SK_X_{cell}", cells = [...] one asset per cell
+#   variants = "/scots_pine/"                         the mesh column of the --variants file
+#                                                     (twig-tune variants.txt), filtered
+# tag: the actor-label prefix, default the label's first word (a /TwigTune/<arm>/ asset
+# takes its arm). optional: the row is dropped in the editor when none of its assets exist.
+# A label may name {params} given as --param key=value.
+# Set keys: rows, description, contexts (default ["light"]), neighbours (forest context;
+# default forest_neighbours below), assembly_tris (E111 T3D triangle yardstick).
+# Ported from build_compare_conifers.py (2026-11-13..19); "catalog" is its default rows.
+
+[compare]
+level = "/Game/Developers/Max/LiveCheck/L_Compare_Conifers"
+
+# forest context (E124, fleck check 2026-11-19): catalog neighbours behind each tree, away
+# from the camera at -X; dx, dy in cm
+forest_neighbours = [
+    { asset = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h25m", dx = 1200.0, dy = -450.0 },
+    { asset = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h20m", dx = 1500.0, dy = 500.0 },
+    { asset = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h30m", dx = 2000.0, dy = 0.0 },
+    { asset = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_h20m", dx = 1700.0, dy = -1100.0 },
+]
+
+[compare.sets.catalog]
+description = "release 1 spruce + pine beside MegaPlants and Greenleaf, twig tests (owner 2026-11-14)"
+rows = [
+    { label = "ours", pattern = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_{cell}", cells = ["r07_h15m", "r07_h20m", "r07_h25m", "r10_h15m", "r10_h20m", "r10_h25m"] },
+    { label = "megaplants", pattern = "/Game/Megaplant_Library/Tree_Norway_Spruce/Tree_Norway_Spruce_01/Tree_Norway_Spruce_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "greenleaf", pattern = "/Game/GVConiferPresets/Meshes/Trees/Conifer/High/SK_GV_Conifer_TypeA_HQ_{cell}", cells = ["001", "004", "007", "010", "013_Dense", "016", "018", "019"] },
+    { label = "spruce twig test", variants = "/norway_spruce/" },
+    { label = "pine ours", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h15m", "r07_h20m", "r07_h25m", "r10_h20m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "pine twig test", variants = "/scots_pine/" },
+]
+
+[compare.sets.beech]
+description = "owner 2026-11-15: beech reads very light"
+rows = [
+    { label = "beech ours", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h15m", "r07_h20m", "r07_h25m", "r10_h20m"] },
+    { label = "beech megaplants", pattern = "/Game/Megaplant_Library/Tree_European_Beech/Tree_European_Beech_01/Tree_European_Beech_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "beech twig test", variants = "/european_beech/" },
+]
+
+[compare.sets.beech_e99]
+description = "owner 2026-11-16: E99 sheet"
+rows = [
+    { label = "beech 1.1 shipped", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "beech megaplants", pattern = "/Game/Megaplant_Library/Tree_European_Beech/Tree_European_Beech_01/Tree_European_Beech_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "E99A compounds 0.4 m", pattern = "/Game/PVE_E99/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "E99B compounds sparsest", pattern = "/Game/PVE_E99b/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+]
+
+[compare.sets.beech_cut]
+description = "owner 2026-11-16: (c) higher cut, two values"
+rows = [
+    { label = "beech 1.1 shipped", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "beech megaplants", pattern = "/Game/Megaplant_Library/Tree_European_Beech/Tree_European_Beech_01/Tree_European_Beech_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "E99B cut 0.07", pattern = "/Game/PVE_E99b/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "CUT10 cut 0.10", pattern = "/Game/PVE_CUT/f010_cap25_B/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "CUT20 cut 0.20", pattern = "/Game/PVE_CUT/f020_cap25_B/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+]
+
+[compare.sets.beech_floor]
+description = "owner 2026-11-17 item 7: CUT20 + floor 0.22"
+rows = [
+    { label = "beech 1.1 shipped", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "CUT20 cut 0.20", pattern = "/Game/PVE_CUT/f020_cap25_B/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "TIP60 cut 0.20 + fill span 0.60-1.00", pattern = "/Game/PVE_CUT/f020_cap25_tip60_B/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h10m", "r07_h20m", "r10_h10m", "r10_h20m"] },
+    { label = "FLOOR22 cut 0.20 + crown floor 0.22", pattern = "/Game/PVE_CUT/f020_cap25_floor22_B/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r07_h20m", "r10_h20m"] },
+]
+
+[compare.sets.beech12]
+description = "release 1.2 beech ladder (2026-11-17)"
+rows = [
+    { label = "R07 beech 1.2 r07", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m", "h35m", "h40m"] },
+    { label = "R10 beech 1.2 r10", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m", "h35m", "h40m"] },
+    { label = "beech megaplants", pattern = "/Game/Megaplant_Library/Tree_European_Beech/Tree_European_Beech_01/Tree_European_Beech_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.pine12]
+description = "release 1.2 pine ladder, B2 (2026-11-17)"
+rows = [
+    { label = "P07 pine 1.2 r07", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m"] },
+    { label = "P10 pine 1.2 r10", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.douglas12]
+description = "release 1.2 Douglas ladder, E112 cap25sa20 (2026-11-19)"
+rows = [
+    { label = "D07 Douglas 1.2 r07", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m", "h35m", "h40m"] },
+    { label = "D10 Douglas 1.2 r10", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m", "h25m", "h30m", "h35m", "h40m"] },
+]
+
+[compare.sets.pinecount]
+description = "pine spray-count test (owner verdict 2026-11-17)"
+rows = [
+    { label = "S12 pine 1.2 shipped", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "N1 natural spray size, B2 area", pattern = "/Game/PVE_PINECOUNT/nat/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "N2 natural spray size, 1.1 area", pattern = "/Game/PVE_PINECOUNT/nat40/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.pinemass]
+description = "pine twig mass E111 (owner 2026-11-18)"
+assembly_tris = true
+rows = [
+    { label = "S12 pine 1.2 shipped", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "N2 natural spray size, 1.1 area", pattern = "/Game/PVE_PINECOUNT/nat40/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "TIP40 pine twig mass", pattern = "/Game/PVE_PINEMASS/tip40/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "TIP80 pine twig mass", pattern = "/Game/PVE_PINEMASS/tip80/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "FULL80 pine twig mass", pattern = "/Game/PVE_PINEMASS/full80/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "PAD40 pine twig mass", pattern = "/Game/PVE_PINEMASS/pad40/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.pinepad]
+description = "pine branch-pad part E114 (owner 2026-11-18), the round-1 rows (old \"pinepad\" with no arms)"
+assembly_tris = true
+rows = [
+    { label = "PAD40 E111", pattern = "/Game/PVE_PINEMASS/pad40/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "TIP80 E111", pattern = "/Game/PVE_PINEMASS/tip80/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "TUFTCAP E114", pattern = "/Game/PVE_PINEPAD/tuftcap/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "TUFTFILL80 E114", pattern = "/Game/PVE_PINEPAD/tuftfill80/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h10m", "r10_h20m", "r10_h30m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.barkzone]
+description = "pine fox-bark zone test, round 2 (owner 2026-11-18 ~22:40)"
+rows = [
+    { label = "BZ00 plated today", pattern = "/Game/PVE_PINEPAD/mpparts/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "BZ125 two-bark blend bh125", pattern = "/Game/PVE_PINEPAD/barkzone/SK_ScotsPine_{cell}_bh125", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "BZ150 two-bark blend bh150", pattern = "/Game/PVE_PINEPAD/barkzone/SK_ScotsPine_{cell}_bh150", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "BZ175 two-bark blend bh175", pattern = "/Game/PVE_PINEPAD/barkzone/SK_ScotsPine_{cell}_bh175", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "BZ150MP two-bark blend bh150mp", pattern = "/Game/PVE_PINEPAD/barkzone/SK_ScotsPine_{cell}_bh150mp", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.e113fol]
+description = "E113 tr0 foliage-on, mpparts (2026-11-19)"
+rows = [
+    { label = "E113 tr0 + mpparts, MegaPlants A/B", assets = ["/Game/PVE_PINEPAD/mpparts_e113/Catalog/scots_pine/SK_ScotsPine_r07_h20m", "/Game/PVE_PINEPAD/mpparts_e113/Catalog/scots_pine/SK_ScotsPine_r10_h20m", "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_A", "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_B"] },
+    { label = "MPP interim mpparts on today's pad40 skeleton (E116)", pattern = "/Game/PVE_PINEPAD/mpparts/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h20m"] },
+]
+
+[compare.sets.e124]
+description = "E124 pine crown-base limb removal (2026-11-19)"
+rows = [
+    { label = "BEFORE tr0 + mpparts (E113 foliage-on), MegaPlants A/B", assets = ["/Game/PVE_PINEPAD/mpparts_e113/Catalog/scots_pine/SK_ScotsPine_r07_h20m", "/Game/PVE_PINEPAD/mpparts_e113/Catalog/scots_pine/SK_ScotsPine_r10_h20m", "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_A", "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_B"] },
+    { label = "P25 crown base 9.5 m (target p25), limbs below removed in PVE", pattern = "/Game/PVE_PINEPAD/mpparts_cbp25_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h20m"] },
+    { label = "MED crown base 11.5 m (target median), limbs below removed in PVE", pattern = "/Game/PVE_PINEPAD/mpparts_cbmed_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h20m"] },
+    { label = "MEDU crown base 11.5 m, no cap", pattern = "/Game/PVE_PINEPAD/mpparts_cbmedu_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h20m", "r10_h20m"], optional = true },
+]
+
+[compare.sets.e124lad]
+description = "E124 ladder check (owner verdict p25 + cap, 2026-11-19)"
+rows = [
+    { label = "R10 tr0 ladder, p25 crown base + 30 % cap: h15 7.5 m / h20 9.5 m / h30 10.0 m", pattern = "/Game/PVE_PINEPAD/mpparts_cbp25lad_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h15m", "r10_h20m", "r10_h30m"] },
+    { label = "R07 tr0 ladder (stops at 25 m): h15 / h20", pattern = "/Game/PVE_PINEPAD/mpparts_cbp25lad_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h15m", "r07_h20m"] },
+    { label = "MP MegaPlants Baltic pine A/B", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B"] },
+]
+
+[compare.sets.barkzone3]
+description = "bark zone production check (2026-11-19)"
+rows = [
+    { label = "PLT plated today", pattern = "/Game/PVE_PINEPAD/mpparts_cbp25lad_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h30m", "r10_h20m"] },
+    { label = "NEW growpy zone MIs", pattern = "/Game/PVE_PINEPAD/mpparts_cbp25bz_e113/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h30m", "r10_h20m"] },
+    { label = "BZ150 round 2", pattern = "/Game/PVE_PINEPAD/barkzone/SK_ScotsPine_{cell}_bh150", cells = ["r10_h30m", "r10_h20m"] },
+    { label = "pine megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "D"] },
+]
+
+[compare.sets.fleck]
+description = "needle-fleck A/B/C test (2026-11-19), one row per variant session: --param variant=<V>"
+contexts = ["light", "dark", "forest"]
+rows = [
+    { label = "F{variant} needle-fleck variant {variant}", assets = ["/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h10m", "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h20m", "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_r07_h20m"] },
+]
+
+[compare.sets.mpbroadleaf]
+description = "MegaPlants broadleaf references (E121 boards, 2026-11-19)"
+rows = [
+    { label = "OAK MegaPlants English oak (forest)", pattern = "/Game/Megaplant_Library/Tree_English_Oak/Tree_English_Oak_Forest_01/Tree_English_Oak_Forest_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "BIRCH MegaPlants silver birch", pattern = "/Game/Megaplant_Library/Tree_Silver_Birch/Tree_Silver_Birch_01/Tree_Silver_Birch_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "MAPLE MegaPlants Norway maple (forest)", pattern = "/Game/Megaplant_Library/Tree_Norway_Maple/Tree_Norway_Maple_Forest_01/Tree_Norway_Maple_Forest_01_{cell}", cells = ["A", "B", "C", "D"] },
+    { label = "CHERRY MegaPlants Yoshino cherry (stand-in)", pattern = "/Game/Megaplant_Library/Tree_Yoshino_Cherry/Tree_Yoshino_Cherry_01/Tree_Yoshino_Cherry_01_{cell}", cells = ["A", "B", "C", "D"] },
+]
+
+[compare.sets.dfyoung]
+description = "young Douglas dressing test (owner 1c, 2026-11-19)"
+rows = [
+    { label = "S07 shipped 1.2 B2 (fullness 1.2)", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "A07 dfy24", pattern = "/Game/PVE_PINEPAD/dfy24/Catalog/douglas_fir/SK_DouglasFir_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "B07 dfy36", pattern = "/Game/PVE_PINEPAD/dfy36/Catalog/douglas_fir/SK_DouglasFir_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "C07 dfy24r0", pattern = "/Game/PVE_PINEPAD/dfy24r0/Catalog/douglas_fir/SK_DouglasFir_r07_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "S10 shipped 1.2 B2 (fullness 1.2)", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "A10 dfy24", pattern = "/Game/PVE_PINEPAD/dfy24/Catalog/douglas_fir/SK_DouglasFir_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "B10 dfy36", pattern = "/Game/PVE_PINEPAD/dfy36/Catalog/douglas_fir/SK_DouglasFir_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+    { label = "C10 dfy24r0", pattern = "/Game/PVE_PINEPAD/dfy24r0/Catalog/douglas_fir/SK_DouglasFir_r10_{cell}", cells = ["h05m", "h10m", "h15m", "h20m"] },
+]
+
+[compare.sets.xrff686]
+description = "conifer twig pass sheets (2026-11-17)"
+rows = [
+    { label = "NS11 1.1 norway_spruce", pattern = "/Game/Generated/Trees/Catalog/norway_spruce/SK_NorwaySpruce_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "NSB ladder norway_spruce", pattern = "/Game/PVE_686/lad_norway_spruce/Catalog/norway_spruce/SK_NorwaySpruce_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "NSB2 stronger ladder norway_spruce", pattern = "/Game/PVE_686/lad2_norway_spruce/Catalog/norway_spruce/SK_NorwaySpruce_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "NSA compounds norway_spruce", pattern = "/Game/PVE_686/smlt_norway_spruce/Catalog/norway_spruce/SK_NorwaySpruce_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SF11 1.1 silver_fir", pattern = "/Game/Generated/Trees/Catalog/silver_fir/SK_SilverFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SFB ladder silver_fir", pattern = "/Game/PVE_686/lad_silver_fir/Catalog/silver_fir/SK_SilverFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SFB2 stronger ladder silver_fir", pattern = "/Game/PVE_686/lad2_silver_fir/Catalog/silver_fir/SK_SilverFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SFA compounds silver_fir", pattern = "/Game/PVE_686/smlt_silver_fir/Catalog/silver_fir/SK_SilverFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "DF11 1.1 douglas_fir", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "DFB ladder douglas_fir", pattern = "/Game/PVE_686/lad_douglas_fir/Catalog/douglas_fir/SK_DouglasFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "DFB2 stronger ladder douglas_fir", pattern = "/Game/PVE_686/lad2_douglas_fir/Catalog/douglas_fir/SK_DouglasFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "DFA compounds douglas_fir", pattern = "/Game/PVE_686/smlt_douglas_fir/Catalog/douglas_fir/SK_DouglasFir_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SP11 1.1 scots_pine", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SPB ladder scots_pine", pattern = "/Game/PVE_686/lad_scots_pine/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SPB2 stronger ladder scots_pine", pattern = "/Game/PVE_686/lad2_scots_pine/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+    { label = "SPA compounds scots_pine", pattern = "/Game/PVE_686/smlt_scots_pine/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
+]

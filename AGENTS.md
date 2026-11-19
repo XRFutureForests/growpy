@@ -66,6 +66,7 @@ Structure evaluation (QSM readers, descriptors, reference store, gate, point-clo
 | `growpy-preflight-assembly` | Validate a USD assembly before import (bindJoints, paths) |
 | `growpy-ue-exec` | Execute Unreal Engine import scripts (with watchdog) |
 | `growpy-ue-session` | One editor session: optional editor-slot lock, restore guard, launch (`-XRFFBatch`) with a commit-charge guard on the own PID, wait for a ping (one relaunch on the Zen splash hang), `--run` / `--run-until-done` / `--export` steps in order, quit, kill only the own PID; paths from `--project`/`--engine`/`--lock-dir` or `GROWPY_UE_UPROJECT`/`GROWPY_UE_ENGINE`/`GROWPY_LOCK_DIR` |
+| `growpy-ue-compare` | Compare board from a named set in `config/compare_sets.toml`: one `growpy-ue-session` builds the level (`ue_scripts/compare_level.py`), per context (light / dark / forest) sets the backdrop and takes the tick-driven shots until `<out>/<context>/DONE`, saves the scratch level; prints `<context> shots -> <dir>` |
 | `growpy-ue-import-probe` / `growpy-ue-viewport-probe` | Gate 2 import cost and Gate 4 frame-time measurement |
 | `growpy-analyze-usda` | Analyse USD assembly output (triangle budget) |
 | `growpy-diagnose-growth` | Diagnose growth simulation results |
