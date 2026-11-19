@@ -30,6 +30,7 @@ documentation is not redistributed — point at thegrove3d.com.
 | `src/growpy/utils/` | yield tables, allometry, analysis, logging, GBIF |
 | `src/growpy/tools/` | console tools: UE exec + import/viewport probes, crown metrics, surround-density sweep + summariser, PVE assets + leaf area + export click, preflight, twig ladder, texture packing, diagnostics |
 | `src/growpy/blender/` | grove_extract, twig_converter |
+| `tools/ue_plugins/XRFFEditorScripting/` | Unreal Editor C++ plugin (canonical source): blueprint scripting helpers and the PVE skeleton dump to growth JSON; build recipe in its README |
 
 Structure evaluation (QSM readers, descriptors, reference store, gate, point-cloud metrics, synthetic scans) moved to the internal repo **tree-structure**, and the tree look survey to **tree-survey**, on 2026-10-28 (owner decision; history kept). growpy grows and exports trees; tree-structure judges them from growpy's output files.
 

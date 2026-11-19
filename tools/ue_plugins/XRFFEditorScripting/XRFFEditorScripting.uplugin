@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "XRFF Editor Scripting",
+	"Description": "Editor-only Python access to blueprint edits the engine's script API leaves out: pure flags, member, event and pin renames, comment boxes, user-defined enums and structs, node copy between graphs.",
+	"Category": "XRFF",
+	"CreatedBy": "XR Future Forests Lab",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+	"Plugins": [
+		{ "Name": "PCG", "Enabled": true },
+		{ "Name": "ProceduralVegetationEditor", "Enabled": true }
+	],
+	"Modules": [
+		{
+			"Name": "XRFFEditorScripting",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}
