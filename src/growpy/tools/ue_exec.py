@@ -9,6 +9,10 @@ Uses the same UDP/TCP Remote Execution protocol that the VS Code
 Unreal Python extension uses. Requires "Python Remote Execution"
 enabled in UE Editor Preferences.
 
+Kills only the editor this process launched (2026-11-19): attached to an editor
+started elsewhere, the RAM/VRAM watchdog warns at its limit and the run goes on,
+and a restart is refused while that editor still runs.
+
 Usage:
     # Import all batches from a scripts directory (recommended):
     # Runs import_batch_*.py in numeric order, then post-import scripts

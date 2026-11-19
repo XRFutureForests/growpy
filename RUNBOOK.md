@@ -460,6 +460,12 @@ must stay below 2048, or the editor asserts.
 A Voxelize export can log nothing for more than five minutes (ash h20). Only treat an editor
 as hung after 20 minutes of log silence.
 
+**`growpy-ue-exec` warns "not launched by ue_exec; refusing to kill it"**
+Since 2026-11-19, `growpy-ue-exec` kills only an editor it launched itself (and that editor's
+CrashReportClient). Attached to an editor someone else started, its RAM/VRAM watchdog warns at the
+limit and lets the run go on, and a restart is refused while that editor still runs. To get the
+watchdog's kill and the automatic restart, let `growpy-ue-exec` (or `growpy-ue-session`) start the editor.
+
 **`growpy-pve-export` waits forever at 0 % CPU**
 A graph asset exists, but its build script raised before finishing it. The export only fails
 fast ("PVEXPORT_ERROR asset not found") when no asset exists at all. Generated graph scripts
