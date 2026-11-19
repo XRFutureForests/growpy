@@ -482,6 +482,33 @@ def young_bark(species_cal, dbh_cm: float, ranges: dict) -> bool:
     return dbh_cm < ranges[young][1]
 
 
+def trunk_bark(
+    species_cal, bark_material: str, tree_id: str, dbh_cm: float, ranges: dict
+) -> tuple[object, str, dict | None]:
+    """Generation 0's bark source, material and bark zone of a tile-pair tree.
+
+    Young bark wins; otherwise a species with a bark zone reads
+    ``<bark_material>_zone_h<NN>`` (NN = the tree id's height stage) with its
+    Blend Height, and the trunk (lower) source keeps the U range and YScale.
+    """
+    if young_bark(species_cal, dbh_cm, ranges):
+        return species_cal.bark_young_source, f"{bark_material}_young", None
+    if species_cal.bark_upper_source is None:
+        return species_cal.bark_trunk_source, bark_material, None
+    match = _TREE_ID_HEIGHT.search(tree_id)
+    if not match:
+        raise ValueError(
+            f"tree id {tree_id!r} carries no height token for its bark zone"
+        )
+    stage = int(match.group(1))
+    zone = {
+        "material": f"{bark_material}_zone_h{stage:02d}",
+        "stage_m": stage,
+        "blend_height": species_cal.blend_height_for(stage),
+    }
+    return species_cal.bark_trunk_source, zone["material"], zone
+
+
 def bark_tile_pair_setups(
     growth_json: Path | str,
     trunk_source: object,
@@ -1276,9 +1303,14 @@ def plan_pve_graphs(
         try:
             # the graphs read MI_<species>_bark_branch/_young when the species has a
             # tile pair, so the asset script must build them (as growpy-pve-assets does)
-            from growpy.tools.pve_assets import bark_pair_sources, bark_young_source
+            from growpy.tools.pve_assets import (
+                bark_pair_sources,
+                bark_young_source,
+                bark_zone_source,
+            )
 
             trunk, branch = bark_pair_sources(species_cal)
+            upper, upper_tiling = bark_zone_source(species_cal)
             assets = build_species_asset_spec(
                 species,
                 content_root=content_root,
@@ -1287,9 +1319,11 @@ def plan_pve_graphs(
                 bark_source_textures=species_cal.bark_source_textures,
                 bark_branch_source_material=branch,
                 bark_young_source_material=bark_young_source(species_cal),
+                bark_zone_source_material=upper,
+                bark_zone_upper_tiling=upper_tiling,
             )
             palette_areas = prototype_leaf_areas(assets)
-        except (FileNotFoundError, KeyError) as err:
+        except (FileNotFoundError, KeyError, ValueError) as err:
             skipped.append(f"{species}: {err}")
             continue
 
@@ -1335,6 +1369,7 @@ def plan_pve_graphs(
         )
         chains: list[TreeChainSpec] = []
         instances: dict[str, int] = {}
+        zones: dict[int, float] = {}  # bark zone stage m -> Blend Height
         for entry in entries:
             try:
                 if species_cal.builds_from_row(entry.tree_id):
@@ -1361,13 +1396,16 @@ def plan_pve_graphs(
             wraps: tuple[int, ...] = ()
             bark_setups: tuple[BarkSetup, ...] = ()
             if species_cal.bark_trunk_source is not None:
-                trunk_source, trunk_material = (
-                    species_cal.bark_trunk_source,
+                trunk_source, trunk_material, zone = trunk_bark(
+                    species_cal,
                     assets.bark_material,
+                    entry.tree_id,
+                    planned.detail["dbh_cm"],
+                    intake_dbh(),
                 )
-                if young_bark(species_cal, planned.detail["dbh_cm"], intake_dbh()):
-                    trunk_source = species_cal.bark_young_source
-                    trunk_material = f"{assets.bark_material}_young"
+                if zone is not None:
+                    planned.detail["bark_zone"] = zone
+                    zones[zone["stage_m"]] = zone["blend_height"]
                 bark_setups = bark_tile_pair_setups(
                     planned.chain.growth_json,
                     trunk_source,
@@ -1408,6 +1446,10 @@ def plan_pve_graphs(
                 planned.detail.get("target_m2"),
             )
 
+        if zones:  # one zone instance per height class the plan contains
+            asset_specs[-1] = dataclasses.replace(
+                asset_specs[-1], bark_zone_heights=tuple(sorted(zones.items()))
+            )
         if not chains:
             continue
 

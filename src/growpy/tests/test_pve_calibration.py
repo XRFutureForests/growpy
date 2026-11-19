@@ -1033,6 +1033,77 @@ def test_young_bark_needs_a_tile_pair_and_picks_thin_trees(tmp_path):
         young_bark(sp, 5.0, {})
 
 
+class TestBarkZone:
+    """Owner 2026-11-19 (Scots pine fox bark): a two-bark height blend on the trunk."""
+
+    PAIR = {"trunk": "t", "branch": "b"}
+
+    def test_upper_and_ramp_parse_and_interpolate(self):
+        sp = _with_bark_source(
+            _species(),
+            {
+                "test_species": {
+                    **self.PAIR,
+                    "upper": "u",
+                    "blend_height_by_height": [[20.0, 2.0], [30.0, 1.5]],
+                }
+            },
+        )
+        assert sp.bark_upper_source == "u"
+        assert sp.bark_blend_height_by_height == ((20.0, 2.0), (30.0, 1.5))
+        got = [sp.blend_height_for(h) for h in (15.0, 20.0, 25.0, 30.0, 40.0)]
+        assert got == pytest.approx([2.0, 2.0, 1.75, 1.5, 1.5])
+
+    @pytest.mark.parametrize(
+        "entry",
+        [{"upper": "u"}, {"blend_height_by_height": [[20.0, 2.0], [30.0, 1.5]]}],
+    )
+    def test_upper_and_ramp_come_together(self, entry):
+        with pytest.raises(ValueError, match="needs both"):
+            _with_bark_source(_species(), {"test_species": {**self.PAIR, **entry}})
+
+    @pytest.mark.parametrize(
+        ("ramp", "match"),
+        [
+            ([[20.0, 2.0]], ">= 2"),
+            ([[30.0, 1.5], [20.0, 2.0]], "ascending"),
+            ([[20.0, 2.0], [30.0, 0.0]], "positive"),
+        ],
+    )
+    def test_a_bad_ramp_is_refused(self, ramp, match):
+        with pytest.raises(ValueError, match=match):
+            _species(
+                bark_trunk_source="t",
+                bark_branch_source="b",
+                bark_upper_source="u",
+                bark_blend_height_by_height=tuple(tuple(k) for k in ramp),
+            )
+
+    def test_a_zone_needs_a_tile_pair(self):
+        with pytest.raises(ValueError, match="upper bark without a tile pair"):
+            _species(
+                bark_upper_source="u",
+                bark_blend_height_by_height=((20.0, 2.0), (30.0, 1.5)),
+            )
+
+    def test_the_owner_pine_zone_line_parses(self):
+        # The config line held back until the two-bark master exists in UE.
+        line = (
+            'bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", '
+            'branch = "fab_pine_bark_orange_branch", '
+            'upper = "fab_pine_bark_orange_branch", '
+            "blend_height_by_height = [[20.0, 2.0], [30.0, 1.5]] }"
+        )
+        entries = tomllib.loads(line)["bark_source_per_species"]
+        pine = _with_bark_source(_species(species="scots_pine"), entries)
+        assert pine.bark_upper_source == "fab_pine_bark_orange_branch"
+        assert (pine.blend_height_for(20.0), pine.blend_height_for(30.0)) == (2.0, 1.5)
+        intake = tomllib.loads(
+            Path("data/input/materials/catalog.toml").read_text(encoding="utf-8")
+        )["materials"]
+        assert pine.bark_upper_source in intake
+
+
 def test_shipped_young_spruce_and_scanned_ash_birch_barks():
     from growpy.config.pve_calibration import load_pve_calibration
 

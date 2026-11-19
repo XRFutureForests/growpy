@@ -636,8 +636,40 @@ class SpeciesCalibration:
     # id; a tree whose DBH is below the top of that intake's dbh_cm range reads
     # MI_<species>_bark_young on generation 0 instead of the trunk source.
     bark_young_source: str | None = None
+    # Bark zone of a tile pair (``upper`` / ``blend_height_by_height``, owner
+    # 2026-11-19, Scots pine fox bark): generation 0 of a non-young tree reads
+    # MI_<species>_bark_zone_h<NN>, a two-bark height blend, lower = the trunk
+    # source, upper = this intake id. Blend Height is absolute, not relative to
+    # tree height, so it is a ramp over tree height (m -> Blend Height).
+    bark_upper_source: str | None = None
+    bark_blend_height_by_height: tuple[tuple[float, float], ...] | None = None
 
     def __post_init__(self) -> None:
+        if (self.bark_upper_source is None) != (
+            self.bark_blend_height_by_height is None
+        ):
+            raise ValueError(
+                f"species {self.species!r} names a bark upper source or a "
+                "blend_height_by_height without the other; a bark zone needs both"
+            )
+        if self.bark_upper_source is not None and self.bark_trunk_source is None:
+            raise ValueError(
+                f"species {self.species!r} names an upper bark without a tile pair"
+            )
+        blend = self.bark_blend_height_by_height
+        if blend is not None:
+            if len(blend) < 2 or any(
+                b[0] <= a[0] for a, b in zip(blend, blend[1:], strict=False)
+            ):
+                raise ValueError(
+                    f"species {self.species!r} blend_height_by_height needs >= 2 "
+                    f"keys with strictly ascending heights, got {blend}"
+                )
+            if any(v <= 0.0 for _, v in blend):
+                raise ValueError(
+                    f"species {self.species!r} blend_height_by_height values "
+                    f"must be positive, got {blend}"
+                )
         if (self.bark_trunk_source is None) != (self.bark_branch_source is None):
             raise ValueError(
                 f"species {self.species!r} names a bark trunk or branch source "
@@ -748,6 +780,13 @@ class SpeciesCalibration:
         if self.relative_start_by_height is None:
             return self.relative_start
         return _interp(self.relative_start_by_height, height_m)
+
+    def blend_height_for(self, height_m: float) -> float:
+        """Two-bark ``Blend Height`` for a tree of ``height_m``, linear between
+        the ramp's keys and held flat outside them."""
+        if self.bark_blend_height_by_height is None:
+            raise ValueError(f"species {self.species!r} has no bark zone")
+        return _interp(self.bark_blend_height_by_height, height_m)
 
     def crown_floor_for(self, tree_id: str) -> float:
         """Crown floor (fraction of height) for a tree: its own id (``r10_h35m``)
@@ -1159,6 +1198,8 @@ def _with_bark_source(
         bark_trunk_source=trunk,
         bark_branch_source=None if branch is None else str(branch),
         bark_young_source=None if entry.get("young") is None else str(entry["young"]),
+        bark_upper_source=None if entry.get("upper") is None else str(entry["upper"]),
+        bark_blend_height_by_height=_ramp(entry.get("blend_height_by_height")),
         bark_material_source=None if material is None else str(material),
         bark_y_scale=species.bark_y_scale if y_scale is None else float(y_scale),
         bark_u_ranges=tuple(

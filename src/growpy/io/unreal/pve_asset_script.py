@@ -85,6 +85,8 @@ from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "BARK_ZONE_BLEND",
+    "DEFAULT_BARK_ZONE_MASTER",
     "DEFAULT_CLONE_SOURCES",
     "DEFAULT_MASTER_MATERIAL",
     "PalettePrototype",
@@ -124,6 +126,19 @@ DEFAULT_CLONE_SOURCES = (
 )
 
 _FORBIDDEN_MASTER_PREFIX = SCHEMA_ROOT
+
+# The two-bark trunk master the bark zone instances sit on (owner 2026-11-19):
+# the plugin's MA_Foliage_Trees_TwoBarkBlend plus our trunk-DBH offset, built in
+# the editor. The generated script refuses to run a zone without it.
+DEFAULT_BARK_ZONE_MASTER = (
+    "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TwoBarkBlend_TrunkDBH"
+)
+# The tested two-bark blend values (barkzone round 2, owner verdict 2026-11-19).
+BARK_ZONE_BLEND = {
+    "Blend Strength": 2.0,
+    "Additional Blend Strength": 1.3,
+    "Additional Blend Ratio": 1.8,
+}
 
 # The plugin's own foliage instances, one per growth habit, cloned as the base of
 # a species' foliage material. Read off the live project on 2026-09-25: both are
@@ -217,8 +232,22 @@ class SpeciesAssetSpec:
     # Young bark (``young`` in the species' bark source): the instance that
     # ``MI_<species>_bark_young`` copies, read on generation 0 of thin trees.
     bark_young_source_material: str = ""
+    # Bark zone (``upper`` in the species' bark source, owner 2026-11-19): the
+    # instance whose textures the upper bark of MI_<species>_bark_zone_h<NN>
+    # takes (the lower bark is ``bark_source_material``), the upper tile's U/V
+    # tiling relative to the lower one, and (stage m, Blend Height) per class.
+    bark_zone_source_material: str = ""
+    bark_zone_upper_tiling: tuple[float, float] = (1.0, 1.0)
+    bark_zone_heights: tuple[tuple[int, float], ...] = ()
 
     def __post_init__(self) -> None:
+        if self.bark_zone_heights and not (
+            self.bark_zone_source_material and self.bark_source_material
+        ):
+            raise ValueError(
+                f"species {self.species!r} has bark zone heights without an upper "
+                "and a lower (trunk) bark source"
+            )
         if not self.prototypes:
             raise ValueError(
                 f"species {self.species!r} has no twig prototypes -- a foliage "
@@ -310,11 +339,18 @@ class PVEAssetPlan:
     # bark follows master_material. Clone sources are still checked against
     # master_material, which they are parented to.
     bark_master_material: str = ""
+    # Parent of the bark zone instances (MI_<species>_bark_zone_h<NN>): our
+    # two-bark copy of the plugin's TwoBarkBlend with the trunk-DBH offset.
+    bark_zone_master_material: str = DEFAULT_BARK_ZONE_MASTER
 
     def __post_init__(self) -> None:
         if not self.species:
             raise ValueError("no species to import")
-        for master in (self.master_material, self.bark_master_material):
+        for master in (
+            self.master_material,
+            self.bark_master_material,
+            self.bark_zone_master_material,
+        ):
             if master.startswith(_FORBIDDEN_MASTER_PREFIX):
                 raise ValueError(
                     f"refusing to parent bark materials to {master!r}: "
@@ -388,6 +424,9 @@ def build_species_asset_spec(
     bark_source_textures: bool = True,
     bark_branch_source_material: str = "",
     bark_young_source_material: str = "",
+    bark_zone_source_material: str = "",
+    bark_zone_upper_tiling: tuple[float, float] = (1.0, 1.0),
+    bark_zone_heights: tuple[tuple[int, float], ...] = (),
 ) -> SpeciesAssetSpec:
     """Resolve one species' palette and bark sources from disk.
 
@@ -466,6 +505,9 @@ def build_species_asset_spec(
         bark_source_textures=bark_source_textures,
         bark_branch_source_material=bark_branch_source_material,
         bark_young_source_material=bark_young_source_material,
+        bark_zone_source_material=bark_zone_source_material,
+        bark_zone_upper_tiling=bark_zone_upper_tiling,
+        bark_zone_heights=bark_zone_heights,
     )
 
 
@@ -505,6 +547,8 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
     return {
         "master_material": plan.master_material,
         "bark_master_material": plan.bark_master_material or plan.master_material,
+        "bark_zone_master_material": plan.bark_zone_master_material,
+        "bark_zone_blend": dict(BARK_ZONE_BLEND),
         "clone_sources": list(plan.clone_sources),
         "species": [
             {
@@ -537,6 +581,9 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                 "bark_source_textures": s.bark_source_textures,
                 "bark_branch_source_material": s.bark_branch_source_material,
                 "bark_young_source_material": s.bark_young_source_material,
+                "bark_zone_source_material": s.bark_zone_source_material,
+                "bark_zone_upper_tiling": list(s.bark_zone_upper_tiling),
+                "bark_zone_heights": [list(h) for h in s.bark_zone_heights],
                 "foliage": _foliage_payload(s),
             }
             for s in plan.species
@@ -855,6 +902,67 @@ def build_bark_material(spec, master, bark_master):
     return problems
 
 
+def build_zone_material(spec, stage, blend_height, zone_master):
+    """Create or repair MI_<species>_bark_zone_h<NN>, the two-bark height blend
+    on generation 0 (owner 2026-11-19): Lower* and the single Base Color/Normal
+    from the trunk source, Upper* from the zone source, the tested blend values
+    and this class's Blend Height. Cloned from the species' trunk bark (built
+    and read back just before; never factory-created), overrides cleared and
+    re-parented to the zone master; repaired in place, then read back."""
+    mi_path = "%s_zone_h%02d" % (spec["bark_material"], stage)
+    name = mi_path.rsplit("/", 1)[1]
+    if not eal.does_asset_exist(mi_path):
+        print("   cloning %s -> %s" % (spec["bark_material"], name))
+        if eal.duplicate_asset(spec["bark_material"], mi_path) is None:
+            return ["duplicate_asset failed: %s -> %s"
+                    % (spec["bark_material"], mi_path)]
+    mi = eal.load_asset(mi_path)
+    if mi is None:
+        return ["bark zone material missing after clone: %s" % mi_path]
+    mel.clear_all_material_instance_parameters(mi)
+    mi.set_editor_property("parent", eal.load_asset(zone_master))
+    textures = []
+    for prefix, source_path in (("Lower ", spec["bark_source_material"]),
+                                ("Upper ", spec["bark_zone_source_material"])):
+        source = eal.load_asset(source_path)
+        if source is None:
+            return ["bark zone source material missing: %s" % source_path]
+        for param in ("Base Color", "Normal"):
+            tex = mel.get_material_instance_texture_parameter_value(source, param)
+            textures.append((prefix + param, tex))
+            if prefix == "Lower ":
+                textures.append((param, tex))
+    for param, tex in textures:
+        mel.set_material_instance_texture_parameter_value(mi, param, tex)
+    upper_u, upper_v = spec["bark_zone_upper_tiling"]
+    scalars = [("Lower Trunk U Tiling", 1.0), ("Lower Trunk V Tiling", 1.0),
+               ("Upper Trunk U Tiling", upper_u), ("Upper Trunk V Tiling", upper_v),
+               ("Blend Height", blend_height)]
+    scalars += sorted(PLAN["bark_zone_blend"].items())
+    for param, value in scalars:
+        mel.set_material_instance_scalar_parameter_value(mi, param, float(value))
+    mel.update_material_instance(mi)
+    eal.save_asset(mi_path, only_if_is_dirty=False)
+
+    check = eal.load_asset(mi_path)
+    problems = []
+    parent = _path_of(check.get_editor_property("parent"))
+    if parent != zone_master:
+        problems.append("%s parent is %s, expected %s" % (mi_path, parent, zone_master))
+    for param, tex in textures:
+        got = _path_of(mel.get_material_instance_texture_parameter_value(check, param))
+        if tex is None or got != _path_of(tex):
+            problems.append("%s %s is %s, expected %s"
+                            % (mi_path, param, got, _path_of(tex)))
+    for param, value in scalars:
+        got = mel.get_material_instance_scalar_parameter_value(check, param)
+        if abs(got - float(value)) > 1e-4:
+            problems.append("%s %s is %s, expected %s" % (mi_path, param, got, value))
+    if not problems:
+        print("   bark zone %s: Blend Height %.3f" % (name, blend_height))
+    return problems
+
+
 def audit_for_usd_stubs(folder):
     """Flag any material instance still parented to the USD import stub.
 
@@ -1043,6 +1151,13 @@ bark_master = PLAN["bark_master_material"]
 for path in (master, bark_master):
     if eal.load_asset(path) is None:
         raise RuntimeError("master material not found: %s" % path)
+zone_master = PLAN["bark_zone_master_material"]
+if any(s["bark_zone_heights"] for s in PLAN["species"]) and (
+        eal.load_asset(zone_master) is None):
+    raise RuntimeError(
+        "bark zone master not found: %s -- build the two-bark trunk master "
+        "(MA_Foliage_Trees_TwoBarkBlend + the trunk-DBH offset) in the editor "
+        "first; the zone instances MI_<species>_bark_zone_h<NN> need it" % zone_master)
 trees = trees_in_open_level()
 if trees:
     raise RuntimeError(
@@ -1082,6 +1197,9 @@ for spec in PLAN["species"]:
         young["bark_source_material"] = spec["bark_young_source_material"]
         young["bark_source_textures"] = True
         failures.extend(build_bark_material(young, master, bark_master))
+    # Bark zone: generation 0 of the other trees reads MI_<species>_bark_zone_h<NN>.
+    for stage, blend_height in spec["bark_zone_heights"]:
+        failures.extend(build_zone_material(spec, stage, blend_height, zone_master))
     failures.extend(audit_for_usd_stubs(spec["bark_folder"]))
 
     # Leaves: the same order, maps before the material that samples them.

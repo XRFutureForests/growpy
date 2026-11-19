@@ -492,6 +492,70 @@ class TestBarkTilePair:
         assert trunk < branch
         assert 'spec["bark_material"] + "_branch"' in loop
 
+    def test_the_bark_zone_instances_reach_the_script(self, tmp_path):
+        # Owner 2026-11-19 (pine fox bark): one MI_<species>_bark_zone_h<NN> per
+        # height class, on the two-bark master, which must exist before anything runs.
+        from growpy.io.unreal.pve_asset_script import DEFAULT_BARK_ZONE_MASTER
+
+        spec = build_species_asset_spec(
+            "european_beech",
+            bark_source_material="/Game/B/t/MI_t",
+            bark_branch_source_material="/Game/B/b/MI_b",
+            bark_zone_source_material="/Game/B/u/MI_u",
+            bark_zone_upper_tiling=(0.5, 1.0),
+            bark_zone_heights=((20, 2.0), (25, 1.75)),
+        )
+        script = generate_pve_asset_script(
+            tmp_path, PVEAssetPlan(species=(spec,))
+        ).read_text(encoding="utf-8")
+        ast.parse(script)
+        assert DEFAULT_BARK_ZONE_MASTER.endswith(
+            "MA_Foliage_Trees_TwoBarkBlend_TrunkDBH"
+        )
+        assert f"'bark_zone_master_material': '{DEFAULT_BARK_ZONE_MASTER}'" in script
+        assert "'bark_zone_heights': [[20, 2.0], [25, 1.75]]" in script
+        assert "'bark_zone_upper_tiling': [0.5, 1.0]" in script
+        assert "'Additional Blend Ratio': 1.8" in script
+        body = script.split("def build_zone_material", 1)[1].split("\ndef ", 1)[0]
+        assert '"%s_zone_h%02d" % (spec["bark_material"], stage)' in body
+        for param in ("Lower ", "Upper ", "Blend Height", "Upper Trunk U Tiling"):
+            assert param in body
+        assert "if parent != zone_master:" in body  # read back
+        # the missing master stops the run before any asset is touched
+        guard = script.index("bark zone master not found")
+        assert guard < script.index("for spec in PLAN[")
+        loop = script.split("for spec in PLAN[", 1)[1]
+        assert "build_zone_material(spec, stage, blend_height, zone_master)" in loop
+
+    def test_zone_heights_need_both_sources(self):
+        with pytest.raises(ValueError, match="bark zone heights"):
+            build_species_asset_spec("european_beech", bark_zone_heights=((20, 2.0),))
+
+    def test_the_zone_tiling_follows_the_intake_tiles(self, tmp_path):
+        from types import SimpleNamespace
+
+        from growpy.tools.pve_assets import bark_zone_source
+
+        catalog = tmp_path / "catalog.toml"
+        catalog.write_text(
+            '[materials.t]\ninstance = "/Game/B/t/MI_t"\ntile_size_m = [1.0, 2.0]\n'
+            '[materials.u]\ninstance = "/Game/B/u/MI_u"\ntile_size_m = [2.0, 2.0]\n'
+            '[materials.g]\ninstance = "/Game/B/g/MI_g"\ntile_size_m = "grove-wraps"\n',
+            encoding="utf-8",
+        )
+        cal = SimpleNamespace(bark_trunk_source="t", bark_upper_source="u")
+        # plated 1 x 2 m below, orange 2 x 2 m above: U 0.5, V 1.0 (barkzone test)
+        assert bark_zone_source(cal, catalog) == ("/Game/B/u/MI_u", (0.5, 1.0))
+        assert bark_zone_source(SimpleNamespace(), catalog) == ("", (1.0, 1.0))
+        with pytest.raises(ValueError, match="tile_size_m"):
+            bark_zone_source(
+                SimpleNamespace(bark_trunk_source="t", bark_upper_source="g"), catalog
+            )
+        with pytest.raises(KeyError):
+            bark_zone_source(
+                SimpleNamespace(bark_trunk_source="t", bark_upper_source="x"), catalog
+            )
+
     def test_a_sandbox_calibration_reaches_the_script(self, tmp_path):
         # The tile-pair test runs from a calibration copy so the catalog's
         # oak keeps its atlas until the owner switches it.

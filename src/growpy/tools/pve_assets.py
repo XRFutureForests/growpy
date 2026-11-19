@@ -29,6 +29,7 @@ from pathlib import Path
 
 from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
 from growpy.io.unreal.pve_asset_script import (
+    DEFAULT_BARK_ZONE_MASTER,
     DEFAULT_MASTER_MATERIAL,
     PVEAssetPlan,
     build_species_asset_spec,
@@ -102,6 +103,48 @@ def bark_young_source(species_cal, catalog: Path | None = None) -> str:
     return str(materials[young]["instance"])
 
 
+# The catalog's height stages (h05..h45): without a plan this CLI builds a bark
+# zone instance for each, so every tree the graphs may name finds one.
+ZONE_STAGES_M = tuple(range(5, 50, 5))
+
+
+def bark_zone_source(
+    species_cal, catalog: Path | None = None
+) -> tuple[str, tuple[float, float]]:
+    """UE path of the species' upper (zone) bark source and the upper tile's U/V
+    tiling relative to the lower (trunk) tile; ("", (1.0, 1.0)) without a zone.
+
+    The trunk UVs already span one lower tile (the plan wraps its real size), so
+    upper U, V = lower width / upper width, lower height / upper height.
+
+    Raises:
+        KeyError: If an intake id is not in the catalog.
+        ValueError: If either tile has no physical size (an atlas strip or a
+            ``grove-wraps`` intake): the zone's tiling could not be derived.
+    """
+    import tomllib
+
+    from growpy.tools.material_intake import CATALOG
+
+    upper = getattr(species_cal, "bark_upper_source", None)
+    if upper is None:
+        return "", (1.0, 1.0)
+    path = catalog or CATALOG
+    materials = tomllib.loads(path.read_text(encoding="utf-8")).get("materials", {})
+    lower = species_cal.bark_trunk_source
+    for mid in (upper, lower):
+        if not isinstance(mid, str) or mid not in materials:
+            raise KeyError(f"bark zone intake id {mid!r} not in {path}")
+    sizes = [materials[mid].get("tile_size_m") for mid in (lower, upper)]
+    if not all(isinstance(s, list) for s in sizes):
+        raise ValueError(
+            f"bark zone {lower!r} / {upper!r}: both tiles need a tile_size_m, "
+            f"got {sizes}"
+        )
+    (lw, lh), (uw, uh) = sizes
+    return str(materials[upper]["instance"]), (lw / uw, lh / uh)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -132,6 +175,12 @@ def main(argv: list[str] | None = None) -> int:
         help="material to parent bark instances to when it is not the master, "
         "e.g. a project copy of MA_Foliage_Trees with a trunk-DBH offset "
         "(XRFF_Twin: /Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH)",
+    )
+    parser.add_argument(
+        "--bark-zone-master-material",
+        default=DEFAULT_BARK_ZONE_MASTER,
+        help="two-bark master the bark zone instances MI_<species>_bark_zone_h<NN> "
+        f"are parented to (default: {DEFAULT_BARK_ZONE_MASTER})",
     )
     parser.add_argument(
         "--lookup",
@@ -165,6 +214,7 @@ def main(argv: list[str] | None = None) -> int:
             habit = get_species_growth_habit(name)
             species_cal = calibration.for_species(name, habit)
             trunk, branch = bark_pair_sources(species_cal)
+            upper, upper_tiling = bark_zone_source(species_cal)
             specs.append(
                 build_species_asset_spec(
                     name,
@@ -175,9 +225,16 @@ def main(argv: list[str] | None = None) -> int:
                     bark_source_textures=species_cal.bark_source_textures,
                     bark_branch_source_material=branch,
                     bark_young_source_material=bark_young_source(species_cal),
+                    bark_zone_source_material=upper,
+                    bark_zone_upper_tiling=upper_tiling,
+                    bark_zone_heights=tuple(
+                        (s, species_cal.blend_height_for(s)) for s in ZONE_STAGES_M
+                    )
+                    if upper
+                    else (),
                 )
             )
-        except (FileNotFoundError, KeyError) as err:
+        except (FileNotFoundError, KeyError, ValueError) as err:
             skipped.append((name, str(err)))
 
     for name, reason in skipped:
@@ -193,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
             species=tuple(specs),
             master_material=args.master_material,
             bark_master_material=args.bark_master_material,
+            bark_zone_master_material=args.bark_zone_master_material,
         ),
     )
 

@@ -1000,6 +1000,108 @@ class TestBarkTilePair:
         assert intake_tiles(catalog) == {"a": (1.0, 2.0), "b": None}
 
 
+class TestTrunkBark:
+    """Generation 0's bark: young wins, else the bark zone class, else the trunk."""
+
+    RANGES = {"y": (0.0, 20.0)}
+
+    @staticmethod
+    def _cal(**kwargs):
+        from growpy.config.pve_calibration import SpeciesCalibration
+
+        return SpeciesCalibration(
+            species="x",
+            relative_start=0.4,
+            fraction=0.06,
+            prototype_leaf_area_m2=None,
+            palette_flat_mean_triangles=None,
+            history_relative_start=0.0,
+            trees={},
+            bark_trunk_source="t",
+            bark_branch_source="b",
+            **kwargs,
+        )
+
+    ZONE = {
+        "bark_upper_source": "u",
+        "bark_blend_height_by_height": ((20.0, 2.0), (30.0, 1.5)),
+    }
+
+    def test_a_normal_tree_reads_its_height_class_zone(self):
+        from growpy.io.unreal.pve_graph_plan import trunk_bark
+
+        got = trunk_bark(self._cal(**self.ZONE), "/G/MI_x_bark", "r10_h25m", 40.0, {})
+        assert got == (
+            "t",
+            "/G/MI_x_bark_zone_h25",
+            {"material": "/G/MI_x_bark_zone_h25", "stage_m": 25, "blend_height": 1.75},
+        )
+        assert trunk_bark(self._cal(**self.ZONE), "M", "r07_h05m", 4.0, {})[1] == (
+            "M_zone_h05"
+        )
+
+    def test_young_bark_wins_over_the_zone(self):
+        from growpy.io.unreal.pve_graph_plan import trunk_bark
+
+        cal = self._cal(bark_young_source="y", **self.ZONE)
+        assert trunk_bark(cal, "M", "r10_h10m", 12.0, self.RANGES) == (
+            "y",
+            "M_young",
+            None,
+        )
+        assert trunk_bark(cal, "M", "r10_h30m", 35.0, self.RANGES)[1] == "M_zone_h30"
+
+    def test_a_species_without_a_zone_keeps_its_trunk_bark(self):
+        from growpy.io.unreal.pve_graph_plan import trunk_bark
+
+        assert trunk_bark(self._cal(), "M", "r10_h25m", 40.0, {}) == ("t", "M", None)
+
+    def test_the_plan_builds_a_zone_instance_per_height_class_of_the_pine(
+        self, tmp_path
+    ):
+        (tmp_path / "skeleton").mkdir()
+        skeleton = _skeleton(tmp_path / "skeleton", 0.08).read_text(encoding="utf-8")
+        root = tmp_path / "forest" / "scots_pine" / "r10"
+        root.mkdir(parents=True)
+        for h in ("h20m", "h30m"):
+            name = f"Scots_Pine_r10_{h}_d40cm_d100_growth_data.json"
+            (root / name).write_text(skeleton, encoding="utf-8")
+        # a sandbox copy: the pine zone (owner 2026-11-19, not shipped until its
+        # master exists), uncarved (the stub skeleton has no meristem data)
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        pair = (
+            'scots_pine = { trunk = "fab_pine_bark_plated", '
+            'branch = "fab_pine_bark_orange_branch"'
+        )
+        assert pair in shipped
+        zone = (
+            ', upper = "fab_pine_bark_orange_branch", '
+            "blend_height_by_height = [[20.0, 2.0], [30.0, 1.5]]"
+        )
+        cal = tmp_path / "pve_calibration.toml"
+        cal.write_text(
+            shipped.replace(pair, pair + zone).replace(
+                "carve_trim = 0.15", "carve_trim = 0.0"
+            )
+        )
+        plan = plan_pve_graphs(
+            tmp_path / "out", tmp_path / "forest", calibration_path=cal
+        )
+        trunks = {
+            c.mesh_name: c.bark_setups[0].material.rsplit("/", 1)[1]
+            for g in plan.graphs
+            for c in g.chains
+        }
+        assert trunks == {
+            "SK_ScotsPine_r10_h20m": "MI_scots_pine_bark_zone_h20",
+            "SK_ScotsPine_r10_h30m": "MI_scots_pine_bark_zone_h30",
+        }
+        script = plan.asset_script.read_text(encoding="utf-8")
+        assert "'bark_zone_heights': [[20, 2.0], [30, 1.5]]" in script
+        manifest = plan.manifest.read_text(encoding="utf-8")
+        assert "bark_zone" in manifest and "MI_scots_pine_bark_zone_h30" in manifest
+
+
 class TestStepBaseScale:
     """XRFF-681: large twigs put small trees on the one-per-branch floor."""
 
