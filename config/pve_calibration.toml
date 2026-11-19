@@ -132,7 +132,9 @@ bark_source_per_species.common_ash = { material = "/Game/00_XRFF/30_Forest/Mater
 bark_source_per_species.silver_birch = { material = "/Game/00_XRFF/30_Forest/Materials/Bark/fab_silver_birch_bark/MI_fab_silver_birch_bark", tiled = true }
 # Release 1.1: Scots pine's two barks as a tile pair, brown plates on the stem and the thin
 # orange flaking bark on the branches (Megascans pine scans, owner downloads 2026-11-12/14).
-bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", branch = "fab_pine_bark_orange_branch" }
+# Owner 2026-11-19 (fox bark, "BZ150 with our orange"): the trunk blends plated (low) into orange
+# (high) on the two-bark master, one MI per height class (Blend Height is absolute: 2.0 at 20 m, 1.5 at 30 m).
+bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", branch = "fab_pine_bark_orange_branch", upper = "fab_pine_bark_orange_branch", blend_height_by_height = [[20.0, 2.0], [30.0, 1.5]] }
 
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
 # trunk profile; growpy divides emitted radii by it so a tape-measured DBH

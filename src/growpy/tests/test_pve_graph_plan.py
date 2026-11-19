@@ -1066,24 +1066,18 @@ class TestTrunkBark:
         for h in ("h20m", "h30m"):
             name = f"Scots_Pine_r10_{h}_d40cm_d100_growth_data.json"
             (root / name).write_text(skeleton, encoding="utf-8")
-        # a sandbox copy: the pine zone (owner 2026-11-19, not shipped until its
-        # master exists), uncarved (the stub skeleton has no meristem data)
+        # the shipped pine zone (owner 2026-11-19, BZ150 with our orange), in an
+        # uncarved copy (the stub skeleton has no meristem data)
         shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
-        pair = (
-            'scots_pine = { trunk = "fab_pine_bark_plated", '
-            'branch = "fab_pine_bark_orange_branch"'
-        )
-        assert pair in shipped
         zone = (
-            ', upper = "fab_pine_bark_orange_branch", '
+            'scots_pine = { trunk = "fab_pine_bark_plated", '
+            'branch = "fab_pine_bark_orange_branch", '
+            'upper = "fab_pine_bark_orange_branch", '
             "blend_height_by_height = [[20.0, 2.0], [30.0, 1.5]]"
         )
+        assert zone in shipped
         cal = tmp_path / "pve_calibration.toml"
-        cal.write_text(
-            shipped.replace(pair, pair + zone).replace(
-                "carve_trim = 0.15", "carve_trim = 0.0"
-            )
-        )
+        cal.write_text(shipped.replace("carve_trim = 0.15", "carve_trim = 0.0"))
         plan = plan_pve_graphs(
             tmp_path / "out", tmp_path / "forest", calibration_path=cal
         )
