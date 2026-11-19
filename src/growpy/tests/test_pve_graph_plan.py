@@ -1102,6 +1102,71 @@ class TestTrunkBark:
         assert "bark_zone" in manifest and "MI_scots_pine_bark_zone_h30" in manifest
 
 
+class TestCrownBase:
+    """E124: the plan gives each pine chain its crown base for the Manual Edit node."""
+
+    RAMP = "crown_base_by_height = [[10.0, 1.0], [20.0, 4.0], [30.0, 9.0]]\n"
+
+    @staticmethod
+    def _plan(tmp_path, species_block_extra):
+        (tmp_path / "skeleton").mkdir()
+        skeleton = _skeleton(tmp_path / "skeleton", 0.08).read_text(encoding="utf-8")
+        root = tmp_path / "forest" / "scots_pine" / "r10"
+        root.mkdir(parents=True)
+        for h in ("h05m", "h15m", "h30m"):
+            name = f"Scots_Pine_r10_{h}_d30cm_d100_growth_data.json"
+            (root / name).write_text(skeleton, encoding="utf-8")
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        block = "[pve_calibration.species.scots_pine]\n"
+        assert block in shipped
+        # test-local, uncarved (the stub skeleton has no meristem data)
+        cal = tmp_path / "pve_calibration.toml"
+        cal.write_text(
+            shipped.replace(block, block + species_block_extra).replace(
+                "carve_trim = 0.15", "carve_trim = 0.0"
+            )
+        )
+        return plan_pve_graphs(
+            tmp_path / "out", tmp_path / "forest", calibration_path=cal
+        )
+
+    def test_each_chain_and_the_manifest_carry_the_crown_base(self, tmp_path):
+        plan = self._plan(tmp_path, self.RAMP)
+        got = {
+            c.mesh_name: (
+                c.crown_base.stage_m,
+                c.crown_base.height_m,
+                c.crown_base.max_share,
+                c.crown_base.node,
+            )
+            for g in plan.graphs
+            for c in g.chains
+        }
+        assert got == {
+            "SK_ScotsPine_r10_h05m": (5, 1.0, 0.3, "XRFF_CrownBase"),
+            "SK_ScotsPine_r10_h15m": (15, 2.5, 0.3, "XRFF_CrownBase"),
+            "SK_ScotsPine_r10_h30m": (30, 9.0, 0.3, "XRFF_CrownBase"),
+        }
+        manifest = json.loads(plan.manifest.read_text(encoding="utf-8"))
+        meshes = {m["mesh_name"]: m for g in manifest["graphs"] for m in g["meshes"]}
+        assert meshes["SK_ScotsPine_r10_h15m"]["crown_base"] == {
+            "stage_m": 15,
+            "height_m": 2.5,
+            "max_share": 0.3,
+            "node": "XRFF_CrownBase",
+        }
+        body = plan.script.read_text(encoding="utf-8")
+        assert "'node': 'XRFF_CrownBase'" in body
+
+    def test_a_species_without_the_key_gets_no_node(self, tmp_path):
+        plan = self._plan(tmp_path, "")
+        assert all(c.crown_base is None for g in plan.graphs for c in g.chains)
+        manifest = json.loads(plan.manifest.read_text(encoding="utf-8"))
+        assert all(
+            m["crown_base"] is None for g in manifest["graphs"] for m in g["meshes"]
+        )
+
+
 class TestFullnessByHeight:
     """E119 (a): the ramp scales a young tree's leaf target, not an old one's."""
 

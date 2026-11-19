@@ -571,6 +571,14 @@ class SpeciesCalibration:
     # E119): ``[[height_m, fullness], ...]``, piecewise linear and held flat
     # outside the keys; replaces ``fullness`` when set. None keeps the flat value.
     fullness_by_height: tuple[tuple[float, float], ...] | None = None
+    # Crown base by height stage (owner 2026-11-19, E124): ``[[height_m,
+    # crown_base_m], ...]``, held flat outside the keys. A species with it gets a
+    # PVE Manual Edit node per chain whose RemovedPoints our editor plugin fills
+    # with the first-order limbs below the crown base, at most
+    # ``crown_base_max_share`` of them. Non-decreasing: one tree over time, a
+    # limb removed at h20 stays gone at h25.
+    crown_base_by_height: tuple[tuple[float, float], ...] | None = None
+    crown_base_max_share: float = 0.3
     # Ceiling on the instance base scale the plan may spend to close a leaf-
     # area gap the instance cap leaves (XRFF-474): a capped tree gets
     # ``min(max_base_scale, sqrt(target / area_at_cap))``, an uncapped one
@@ -730,6 +738,31 @@ class SpeciesCalibration:
                 f"species {self.species!r} mask_fraction must be in [0, 1), "
                 f"got {self.mask_fraction}"
             )
+        crown = self.crown_base_by_height
+        if crown is not None:
+            if len(crown) < 2 or any(
+                b[0] <= a[0] for a, b in zip(crown, crown[1:], strict=False)
+            ):
+                raise ValueError(
+                    f"species {self.species!r} crown_base_by_height needs >= 2 "
+                    f"keys with strictly ascending heights, got {crown}"
+                )
+            if any(v < 0.0 for _, v in crown):
+                raise ValueError(
+                    f"species {self.species!r} crown_base_by_height values must "
+                    f"be >= 0, got {crown}"
+                )
+            if any(b[1] < a[1] for a, b in zip(crown, crown[1:], strict=False)):
+                raise ValueError(
+                    f"species {self.species!r} crown_base_by_height must not "
+                    f"fall with height (a limb removed at one stage stays gone "
+                    f"at the next), got {crown}"
+                )
+        if not 0.0 < self.crown_base_max_share <= 1.0:
+            raise ValueError(
+                f"species {self.species!r} crown_base_max_share must be in "
+                f"(0, 1], got {self.crown_base_max_share}"
+            )
         ramp = self.fullness_by_height
         if ramp is not None:
             if len(ramp) < 2 or any(
@@ -805,6 +838,13 @@ class SpeciesCalibration:
         if self.fullness_by_height is None:
             return self.fullness
         return _interp(self.fullness_by_height, height_m)
+
+    def crown_base_for(self, height_m: float) -> float:
+        """Crown base (m) for a tree of ``height_m`` (the caller passes its
+        height stage, as for ``fullness_for``), held flat outside the keys."""
+        if self.crown_base_by_height is None:
+            raise ValueError(f"species {self.species!r} has no crown_base_by_height")
+        return _interp(self.crown_base_by_height, height_m)
 
     def blend_height_for(self, height_m: float) -> float:
         """Two-bark ``Blend Height`` for a tree of ``height_m``, linear between
@@ -1168,6 +1208,8 @@ def _species(
         palette=str(data.get("palette", "twigs")),
         fullness=float(data.get("fullness", 1.0)),
         fullness_by_height=_ramp(data.get("fullness_by_height")),
+        crown_base_by_height=_ramp(data.get("crown_base_by_height")),
+        crown_base_max_share=float(data.get("crown_base_max_share", 0.3)),
         mask_fraction=float(data.get("mask_fraction", 0.0)),
         compound=_compound(data.get("compound")),
         relative_start_by_height=_ramp(data.get("relative_start_by_height")),

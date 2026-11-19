@@ -460,6 +460,55 @@ class TestStaticTwin:
         assert 'if spec["static_export_folder"] else 0' in build
 
 
+class TestCrownBaseNode:
+    """E124: a Manual Edit node per chain with a crown base, titled for the plugin."""
+
+    def test_only_a_chain_with_a_crown_base_carries_one(self, tmp_path):
+        from dataclasses import replace
+
+        from growpy.io.unreal.pve_graph_builder import CROWN_BASE_NODE, CrownBaseEdit
+
+        edit = CrownBaseEdit(stage_m=20, height_m=4.0, max_share=0.3)
+        chains = (replace(_chain("SK_A"), crown_base=edit), _chain("SK_B"))
+        path = generate_pve_graph_builder_script(tmp_path, [_graph(chains=chains)])
+        body = path.read_text(encoding="utf-8")
+        compile(body, str(path), "exec")
+        assert CROWN_BASE_NODE == "XRFF_CrownBase"
+        assert (
+            "'crown_base': {'stage_m': 20, 'height_m': 4.0, 'max_share': 0.3, "
+            "'node': 'XRFF_CrownBase'}" in body
+        )
+        assert "'crown_base': None" in body  # SK_B: no node
+        build = body.split("def build(spec):", 1)[1]
+        assert 'if chain["crown_base"]:' in build
+        # its edge counts once per chain that has one
+        assert 'sum(1 for c in spec["chains"] if c.get("crown_base"))' in build
+
+    def test_it_sits_after_carve_and_gravity_before_the_mesh_builder(self, tmp_path):
+        body = generate_pve_graph_builder_script(tmp_path, [_graph()]).read_text(
+            encoding="utf-8"
+        )
+        build = body.split("def build(spec):", 1)[1]
+        carve = build.index("unreal.PVCarveSettings")
+        gravity = build.index("unreal.PVGravitySettings")
+        edit = build.index("unreal.PVManualEditSettings")
+        meshing = build.index('(skeleton, "Out", mesh_node, "In")')
+        assert carve < gravity < edit < meshing
+        block = build[edit : build.index("skeleton = edit_node")]
+        assert 'carve_edges.append((skeleton, "Out", edit_node, "In"))' in block
+        # titled and read back; RemovedPoints is the plugin's, never written here
+        assert 'set_editor_property("node_title", title)' in block
+        assert 'get_editor_property("node_title")' in block
+        assert "removed_points" not in build.lower()
+
+    def test_a_bad_crown_base_is_refused(self):
+        from growpy.io.unreal.pve_graph_builder import CrownBaseEdit
+
+        for height_m, max_share in ((-1.0, 0.3), (2.0, 0.0)):
+            with pytest.raises(ValueError, match="crown base"):
+                CrownBaseEdit(stage_m=20, height_m=height_m, max_share=max_share)
+
+
 class TestGenerateScript:
     def test_writes_a_runnable_script(self, tmp_path):
         path = generate_pve_graph_builder_script(tmp_path, [_graph()])

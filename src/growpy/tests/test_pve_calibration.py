@@ -1069,6 +1069,67 @@ class TestFullnessByHeight:
         assert (young, old) == ([3.6] * 4, [1.2] * 4)
 
 
+class TestCrownBaseByHeight:
+    """Owner 2026-11-19, E124: pine drops its stray low limbs in a Manual Edit node."""
+
+    RAMP = ((10.0, 1.0), (20.0, 4.0), (30.0, 9.0))
+
+    def test_it_parses_from_a_species_block(self, tmp_path):
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        block = "[pve_calibration.species.scots_pine]\n"
+        assert block in shipped
+        local = tmp_path / "pve_calibration.toml"
+        keys = (
+            "crown_base_by_height = [[10.0, 1.0], [20.0, 4.0], [30.0, 9.0]]\n"
+            "crown_base_max_share = 0.25\n"
+        )
+        local.write_text(shipped.replace(block, block + keys), encoding="utf-8")
+        pine = load_pve_calibration(local).for_species("scots_pine", "conifer")
+        assert pine.crown_base_by_height == self.RAMP
+        assert pine.crown_base_max_share == 0.25
+
+    def test_absent_means_no_crown_base_and_the_default_share(self):
+        sp = _species()
+        assert sp.crown_base_by_height is None
+        assert sp.crown_base_max_share == 0.3
+        with pytest.raises(ValueError, match="no crown_base_by_height"):
+            sp.crown_base_for(20.0)
+
+    def test_interpolation_and_clamping(self):
+        sp = _species(crown_base_by_height=self.RAMP)
+        got = [sp.crown_base_for(h) for h in (5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 45.0)]
+        assert got == pytest.approx([1.0, 1.0, 2.5, 4.0, 6.5, 9.0, 9.0])
+
+    def test_a_valid_ramp_never_falls_over_the_ladder(self):
+        # one tree over time: what is gone at one stage stays gone at the next
+        sp = _species(crown_base_by_height=self.RAMP)
+        ladder = [sp.crown_base_for(h) for h in range(5, 35, 5)]
+        assert ladder == sorted(ladder)
+        assert all(b >= a for a, b in zip(ladder, ladder[1:], strict=False))
+
+    @pytest.mark.parametrize(
+        ("kwargs", "match"),
+        [
+            ({"crown_base_by_height": ((10.0, 1.0),)}, ">= 2"),
+            ({"crown_base_by_height": ((20.0, 1.0), (10.0, 2.0))}, "ascending"),
+            ({"crown_base_by_height": ((10.0, 1.0), (10.0, 2.0))}, "ascending"),
+            ({"crown_base_by_height": ((10.0, -0.5), (20.0, 2.0))}, ">= 0"),
+            ({"crown_base_by_height": ((10.0, 3.0), (20.0, 2.0))}, "must not fall"),
+            ({"crown_base_max_share": 0.0}, r"\(0, 1\]"),
+            ({"crown_base_max_share": 1.2}, r"\(0, 1\]"),
+        ],
+    )
+    def test_every_bad_value_is_refused(self, kwargs, match):
+        with pytest.raises(ValueError, match=match):
+            _species(**kwargs)
+
+    def test_a_flat_ramp_and_a_full_share_are_allowed(self):
+        sp = _species(
+            crown_base_by_height=((10.0, 2.0), (20.0, 2.0)), crown_base_max_share=1.0
+        )
+        assert sp.crown_base_for(15.0) == 2.0
+
+
 class TestBarkZone:
     """Owner 2026-11-19 (Scots pine fox bark): a two-bark height blend on the trunk."""
 

@@ -40,6 +40,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
 	static FString DumpPVESkeleton(UObject* Run, const FString& Node, const FString& OutPath, const FString& ExtraMetadata);
 
+	/** Pine low-limb removal (register E124): on a finished run, read the input skeleton of the Manual Edit node `Node`
+	 *  (node name or title; empty = the first PVManualEditSettings node), pick the first-order limbs attached below
+	 *  CrownBaseM metres above the tree base (lowest first, at most MaxShare of all first-order limbs), and write their
+	 *  points and those of their subtrees, by bud number, into the node's RemovedPoints, so PVE's own Manual Edit
+	 *  removes them. A limb attached above the line keeps its whole subtree; each branch's first point (the attachment
+	 *  vertex on its parent) is never marked, so the trunk stays whole. The graph is marked dirty; the caller saves it.
+	 *  Returns "removed <k> of <n> first-order limbs below <h> m[, CAPPED at <share>]" or "ERROR: ...". */
+	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
+	static FString MarkCrownBaseRemoval(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare);
+
 	/** Stop and forget a run. */
 	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
 	static void ReleasePVERun(UObject* Run);

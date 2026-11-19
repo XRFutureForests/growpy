@@ -145,6 +145,8 @@ __all__ = [
     "JitterSpec",
     "DistributorSpec",
     "TreeChainSpec",
+    "CrownBaseEdit",
+    "CROWN_BASE_NODE",
     "FoliageLayer",
     "PVEGraphSpec",
     "generate_pve_graph_builder_script",
@@ -630,6 +632,37 @@ class BarkSetup:
             raise ValueError(f"bark setup {self.material!r} u_range {self.u_range}")
 
 
+# Title of the per-chain PVE Manual Edit node (E124): our editor plugin finds the
+# node by it and fills its RemovedPoints after a graph execution.
+CROWN_BASE_NODE = "XRFF_CrownBase"
+
+
+@dataclass(frozen=True)
+class CrownBaseEdit:
+    """A chain's crown base: the stage, the crown base in m and the cap on the
+    share of first-order limbs removed, for the Manual Edit node ``node``."""
+
+    stage_m: int
+    height_m: float
+    max_share: float
+    node: str = CROWN_BASE_NODE
+
+    def __post_init__(self) -> None:
+        if self.height_m < 0.0 or not 0.0 < self.max_share <= 1.0:
+            raise ValueError(
+                f"crown base {self.height_m} m / max share {self.max_share}: "
+                "need height >= 0 and a share in (0, 1]"
+            )
+
+    def payload(self) -> dict:
+        return {
+            "stage_m": self.stage_m,
+            "height_m": self.height_m,
+            "max_share": self.max_share,
+            "node": self.node,
+        }
+
+
 @dataclass(frozen=True)
 class TreeChainSpec:
     """One tree: a growth JSON in, one exported mesh out.
@@ -665,6 +698,9 @@ class TreeChainSpec:
     # PVE Gravity (phototropic) after the Carve node; 0 wires no node. The plan sets
     # it from SpeciesCalibration.gravity.
     gravity: float = 0.0
+    # PVE Manual Edit after Carve/Gravity, before MeshBuilder (E124); None wires
+    # no node. The plan sets it from SpeciesCalibration.crown_base_by_height.
+    crown_base: CrownBaseEdit | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.gravity <= 1.0:
@@ -908,6 +944,7 @@ def _graph_payload(graph: PVEGraphSpec) -> dict:
                 "bone_reduction_strength": c.bone_reduction_strength,
                 "carve": c.carve,
                 "gravity": c.gravity,
+                "crown_base": c.crown_base.payload() if c.crown_base else None,
                 "palette": _palette_payload(c.palette),
                 **_distributor_payload(c.distributor),
                 "layers": [
@@ -1238,6 +1275,22 @@ def build(spec):
                 )
             carve_edges.append((skeleton, "Out", gravity_node, "In"))
             skeleton = gravity_node
+        # Manual Edit (E124) on the trimmed, sagged skeleton, before meshing, so
+        # a removed limb carries no mesh, bones or foliage. Its RemovedPoints is
+        # left empty: the XRFF editor plugin fills it, finding the node by title.
+        if chain["crown_base"]:
+            edit_node, _ = graph.add_node_of_type(unreal.PVManualEditSettings)
+            edit_node.set_node_position(280, row + 240)
+            title = chain["crown_base"]["node"]
+            edit_node.set_editor_property("node_title", title)
+            if str(edit_node.get_editor_property("node_title")) != title:
+                raise RuntimeError(
+                    "%s: Manual Edit node title read back as %s, wanted %s"
+                    % (chain["mesh_name"],
+                       edit_node.get_editor_property("node_title"), title)
+                )
+            carve_edges.append((skeleton, "Out", edit_node, "In"))
+            skeleton = edit_node
 
         radius_node, radius_settings = graph.add_node_of_type(
             unreal.PVMeshBuilderBranchRadiusSettings
@@ -1504,7 +1557,7 @@ def build(spec):
         1 for c in spec["chains"] if c["bone_reduction_strength"] > 0.0
     ) + sum(1 for c in spec["chains"] if c["carve"] > 0.0) + sum(
         1 for c in spec["chains"] if c.get("gravity", 0.0) > 0.0
-    )
+    ) + sum(1 for c in spec["chains"] if c.get("crown_base"))
     eal.save_asset(full)
     status = "OK" if edges == expected else "EDGE COUNT MISMATCH"
     unreal.log(
@@ -1830,6 +1883,9 @@ def write_coverage_manifest(
                         ),
                         "wind_settings": c.wind_settings,
                         "layers": len(c.layers),
+                        "crown_base": (
+                            c.crown_base.payload() if c.crown_base else None
+                        ),
                         **details.get(c.mesh_name, {}),
                     }
                     for c in g.chains

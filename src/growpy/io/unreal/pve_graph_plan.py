@@ -42,6 +42,7 @@ from growpy.io.unreal.pve_graph_builder import (
     BarkSetup,
     ConditionInfluence,
     ConditionSpec,
+    CrownBaseEdit,
     DistributorSpec,
     FoliageLayer,
     FoliageVectorSpec,
@@ -507,6 +508,22 @@ def trunk_bark(
         "blend_height": species_cal.blend_height_for(stage),
     }
     return species_cal.bark_trunk_source, zone["material"], zone
+
+
+def crown_base_edit(species_cal, tree_id: str) -> CrownBaseEdit | None:
+    """The chain's Manual Edit crown base (E124) at the tree id's height stage;
+    None for a species without ``crown_base_by_height``."""
+    if species_cal.crown_base_by_height is None:
+        return None
+    match = _TREE_ID_HEIGHT.search(tree_id)
+    if not match:
+        raise ValueError(f"tree id {tree_id!r} has no height token for its crown base")
+    stage = int(match.group(1))
+    return CrownBaseEdit(
+        stage_m=stage,
+        height_m=species_cal.crown_base_for(stage),
+        max_share=species_cal.crown_base_max_share,
+    )
 
 
 def bark_tile_pair_setups(
@@ -1437,10 +1454,16 @@ def plan_pve_graphs(
                     planned.chain.growth_json, species_cal.bark_texture_repeat
                 )
                 planned.detail["bark_wraps"] = list(wraps)
+            crown_base = crown_base_edit(species_cal, entry.tree_id)
+            if crown_base is not None:
+                planned.detail["crown_base"] = crown_base.payload()
             planned = dataclasses.replace(
                 planned,
                 chain=dataclasses.replace(
-                    planned.chain, bark_wraps=wraps, bark_setups=bark_setups
+                    planned.chain,
+                    bark_wraps=wraps,
+                    bark_setups=bark_setups,
+                    crown_base=crown_base,
                 ),
             )
             chains.append(planned.chain)

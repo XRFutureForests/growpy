@@ -16,6 +16,7 @@
 #include "ProceduralVegetation.h"
 #include "Subsystems/IPCGBaseSubsystem.h"
 #include "UObject/StrongObjectPtr.h"
+#include "UObject/UnrealType.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogXRFFPVEDump, Log, All);
 
@@ -308,6 +309,166 @@ FString UXRFFPVESkeletonDump::DumpPVESkeleton(UObject* Run, const FString& Node,
 	}
 	UE_LOG(LogXRFFPVEDump, Display, TEXT("PVE_DUMP %s <- %s: %d points, %d branches"), *OutPath, *Pin->Node->GetName(), NP, NB);
 	return FString();
+}
+
+FString UXRFFPVESkeletonDump::MarkCrownBaseRemoval(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare)
+{
+	using namespace XRFFPVEDump;
+	UPCGDefaultExecutionSource* Source = AsRun(Run);
+	if (!Source || Source->GetExecutionState().IsGenerating() || !Source->GetGraph())
+	{
+		return TEXT("ERROR: not a finished run from start_pve_run");
+	}
+	// the Manual Edit node; its settings class is not exported, so it is found by class name and written by reflection
+	UPCGNode* Target = nullptr;
+	for (UPCGNode* N : Source->GetGraph()->GetNodes())
+	{
+		if (SettingsClass(N) == TEXT("PVManualEditSettings") && (Node.IsEmpty() || Matches(N, Node)))
+		{
+			Target = N;
+			break;
+		}
+	}
+	if (!Target || Target->GetInputPins().Num() == 0 || Target->GetInputPins()[0]->Edges.Num() == 0)
+	{
+		return FString::Printf(TEXT("ERROR: no connected Manual Edit node %s"), *Node);
+	}
+	const UPCGPin* In = Target->GetInputPins()[0];
+	const UPVData* Data = PinData(*Source, *In->Edges[0]->GetOtherPin(In));
+	if (!Data)
+	{
+		return TEXT("ERROR: no inspected data on the Manual Edit node's input");
+	}
+	const FManagedArrayCollection& C = Data->GetCollection();
+	const TManagedArray<FVector3f>* Pos = C.FindAttributeTyped<FVector3f>(PositionAttr, PointGroup);
+	const TManagedArray<int32>* Bud = C.FindAttributeTyped<int32>(FName(TEXT("budNumber")), PointGroup);
+	const TManagedArray<TArray<int32>>* BPoints = C.FindAttributeTyped<TArray<int32>>(BranchPointsAttr, BranchGroup);
+	const TManagedArray<int32>* BNum = C.FindAttributeTyped<int32>(BranchNumberAttr, BranchGroup);
+	const TManagedArray<int32>* BPar = C.FindAttributeTyped<int32>(BranchParentNumberAttr, BranchGroup);
+	if (!Pos || !Bud || !BPoints || !BNum || !BPar)
+	{
+		return TEXT("ERROR: input collection lacks Position / budNumber / branch attributes");
+	}
+	const int32 NB = BPoints->Num();
+	TMap<int32, int32> IndexOfNumber;
+	for (int32 B = 0; B < NB; ++B)
+	{
+		IndexOfNumber.Add((*BNum)[B], B);
+	}
+	int32 Root = INDEX_NONE;
+	TArray<TArray<int32>> Children;
+	Children.SetNum(NB);
+	for (int32 B = 0; B < NB; ++B)
+	{
+		const int32* P = IndexOfNumber.Find((*BPar)[B]);
+		if (P && *P != B)
+		{
+			Children[*P].Add(B);
+		}
+		else if (Root == INDEX_NONE)
+		{
+			Root = B;
+		}
+		else
+		{
+			return TEXT("ERROR: more than one root branch");
+		}
+	}
+	if (Root == INDEX_NONE || (*BPoints)[Root].Num() == 0)
+	{
+		return TEXT("ERROR: no trunk");
+	}
+	float BaseZ = TNumericLimits<float>::Max();
+	for (const int32 P : (*BPoints)[Root])
+	{
+		BaseZ = FMath::Min(BaseZ, (*Pos)[P].Z);
+	}
+	// first-order limbs by attachment height (their first point, shared with the trunk), lowest first
+	TArray<TPair<float, int32>> FirstOrder;
+	for (const int32 B : Children[Root])
+	{
+		if ((*BPoints)[B].Num() > 0)
+		{
+			FirstOrder.Add(TPair<float, int32>(((*Pos)[(*BPoints)[B][0]].Z - BaseZ) / 100.0f, B));
+		}
+	}
+	FirstOrder.Sort([](const TPair<float, int32>& A, const TPair<float, int32>& B2) { return A.Key < B2.Key; });
+	const int32 Cap = FMath::FloorToInt(FMath::Clamp(MaxShare, 0.0f, 1.0f) * FirstOrder.Num());
+	TArray<int32> Remove;
+	int32 Below = 0;
+	for (const TPair<float, int32>& L : FirstOrder)
+	{
+		if (L.Key < CrownBaseM)
+		{
+			++Below;
+			if (Remove.Num() < Cap)
+			{
+				Remove.Add(L.Value);
+			}
+		}
+	}
+	// mark every point but each branch's attachment vertex, over the removed limbs and their whole subtrees
+	int32 MaxBud = 0;
+	for (int32 I = 0; I < Bud->Num(); ++I)
+	{
+		MaxBud = FMath::Max(MaxBud, (*Bud)[I]);
+	}
+	TArray<bool> Removed;
+	Removed.Init(false, MaxBud + 1);
+	TArray<int32> Stack = Remove;
+	int32 Marked = 0;
+	while (Stack.Num() > 0)
+	{
+		const int32 B = Stack.Pop();
+		const TArray<int32>& Pts = (*BPoints)[B];
+		for (int32 K = 1; K < Pts.Num(); ++K)
+		{
+			const int32 BudNo = (*Bud)[Pts[K]];
+			if (BudNo >= 0 && BudNo <= MaxBud && !Removed[BudNo])
+			{
+				Removed[BudNo] = true;
+				++Marked;
+			}
+		}
+		Stack.Append(Children[B]);
+	}
+	// write ManualEditSettings.RemovedPoints (and size RelativeOffsets to match) through reflection
+	UPCGSettings* Settings = Target->GetSettings();
+	FStructProperty* ParamsProp = Settings ? CastField<FStructProperty>(Settings->GetClass()->FindPropertyByName(TEXT("ManualEditSettings"))) : nullptr;
+	if (!ParamsProp)
+	{
+		return TEXT("ERROR: Manual Edit settings have no ManualEditSettings property");
+	}
+	void* Params = ParamsProp->ContainerPtrToValuePtr<void>(Settings);
+	FArrayProperty* RemovedProp = CastField<FArrayProperty>(ParamsProp->Struct->FindPropertyByName(TEXT("RemovedPoints")));
+	FArrayProperty* OffsetsProp = CastField<FArrayProperty>(ParamsProp->Struct->FindPropertyByName(TEXT("RelativeOffsets")));
+	if (!RemovedProp || !CastField<FBoolProperty>(RemovedProp->Inner))
+	{
+		return TEXT("ERROR: ManualEditSettings has no bool array RemovedPoints");
+	}
+	Settings->Modify();
+	FScriptArrayHelper RemovedArr(RemovedProp, RemovedProp->ContainerPtrToValuePtr<void>(Params));
+	RemovedArr.Resize(Removed.Num());
+	FBoolProperty* BoolInner = CastField<FBoolProperty>(RemovedProp->Inner);
+	for (int32 I = 0; I < Removed.Num(); ++I)
+	{
+		BoolInner->SetPropertyValue(RemovedArr.GetRawPtr(I), Removed[I]);
+	}
+	if (OffsetsProp)
+	{
+		FScriptArrayHelper OffArr(OffsetsProp, OffsetsProp->ContainerPtrToValuePtr<void>(Params));
+		if (OffArr.Num() != Removed.Num())
+		{
+			OffArr.Resize(Removed.Num());  // new elements are zero-initialised: no offsets
+		}
+	}
+	Settings->PostEditChange();
+	Settings->MarkPackageDirty();
+	const FString Out = FString::Printf(TEXT("removed %d of %d first-order limbs below %.2f m (%d below the line, %d points marked)%s"),
+		Remove.Num(), FirstOrder.Num(), CrownBaseM, Below, Marked,
+		Below > Remove.Num() ? *FString::Printf(TEXT(", CAPPED at %.2f"), MaxShare) : TEXT(""));
+	UE_LOG(LogXRFFPVEDump, Display, TEXT("PVE_CROWNBASE %s: %s"), *Target->GetName(), *Out);
+	return Out;
 }
 
 void UXRFFPVESkeletonDump::ReleasePVERun(UObject* Run)
