@@ -567,6 +567,10 @@ class SpeciesCalibration:
     # offline-built trees read it; a measured row was measured at one start
     # and stays valid only there.
     relative_start_by_height: tuple[tuple[float, float], ...] | None = None
+    # Per-tree fullness keyed on the tree's height stage (owner 2026-11-19,
+    # E119): ``[[height_m, fullness], ...]``, piecewise linear and held flat
+    # outside the keys; replaces ``fullness`` when set. None keeps the flat value.
+    fullness_by_height: tuple[tuple[float, float], ...] | None = None
     # Ceiling on the instance base scale the plan may spend to close a leaf-
     # area gap the instance cap leaves (XRFF-474): a capped tree gets
     # ``min(max_base_scale, sqrt(target / area_at_cap))``, an uncapped one
@@ -726,6 +730,20 @@ class SpeciesCalibration:
                 f"species {self.species!r} mask_fraction must be in [0, 1), "
                 f"got {self.mask_fraction}"
             )
+        ramp = self.fullness_by_height
+        if ramp is not None:
+            if len(ramp) < 2 or any(
+                b[0] <= a[0] for a, b in zip(ramp, ramp[1:], strict=False)
+            ):
+                raise ValueError(
+                    f"species {self.species!r} fullness_by_height needs >= 2 "
+                    f"keys with strictly ascending heights, got {ramp}"
+                )
+            if any(v <= 0.0 for _, v in ramp):
+                raise ValueError(
+                    f"species {self.species!r} fullness_by_height values must "
+                    f"be positive, got {ramp}"
+                )
         if self.fullness <= 0.0:
             raise ValueError(
                 f"species {self.species!r} fullness must be positive, "
@@ -780,6 +798,13 @@ class SpeciesCalibration:
         if self.relative_start_by_height is None:
             return self.relative_start
         return _interp(self.relative_start_by_height, height_m)
+
+    def fullness_for(self, height_m: float) -> float:
+        """``fullness`` for a tree of ``height_m`` (the species' flat value when
+        no height ramp is configured)."""
+        if self.fullness_by_height is None:
+            return self.fullness
+        return _interp(self.fullness_by_height, height_m)
 
     def blend_height_for(self, height_m: float) -> float:
         """Two-bark ``Blend Height`` for a tree of ``height_m``, linear between
@@ -1142,6 +1167,7 @@ def _species(
         ladder=_ladder(data.get("ladder")),
         palette=str(data.get("palette", "twigs")),
         fullness=float(data.get("fullness", 1.0)),
+        fullness_by_height=_ramp(data.get("fullness_by_height")),
         mask_fraction=float(data.get("mask_fraction", 0.0)),
         compound=_compound(data.get("compound")),
         relative_start_by_height=_ramp(data.get("relative_start_by_height")),

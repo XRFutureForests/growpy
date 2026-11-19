@@ -1033,6 +1033,42 @@ def test_young_bark_needs_a_tile_pair_and_picks_thin_trees(tmp_path):
         young_bark(sp, 5.0, {})
 
 
+class TestFullnessByHeight:
+    """Owner 2026-11-19, E119 (a): young Douglas dressed at 3.6, h25+ keep 1.2."""
+
+    RAMP = ((20.0, 3.6), (25.0, 1.2))
+
+    def test_absent_keeps_the_flat_fullness(self):
+        sp = _species(fullness=1.2)
+        assert sp.fullness_by_height is None
+        assert (sp.fullness_for(5.0), sp.fullness_for(40.0)) == (1.2, 1.2)
+
+    def test_the_ramp_replaces_the_flat_value_and_clamps(self):
+        sp = _species(fullness=1.2, fullness_by_height=self.RAMP)
+        got = [sp.fullness_for(h) for h in (5.0, 20.0, 22.5, 25.0, 40.0)]
+        assert got == pytest.approx([3.6, 3.6, 2.4, 1.2, 1.2])
+
+    @pytest.mark.parametrize(
+        ("ramp", "match"),
+        [
+            (((20.0, 3.6),), ">= 2"),
+            (((25.0, 1.2), (20.0, 3.6)), "ascending"),
+            (((20.0, 3.6), (25.0, 0.0)), "positive"),
+        ],
+    )
+    def test_a_bad_ramp_is_refused(self, ramp, match):
+        with pytest.raises(ValueError, match=match):
+            _species(fullness_by_height=ramp)
+
+    def test_the_shipped_douglas_ramp(self):
+        douglas = load_pve_calibration().for_species("douglas_fir", "conifer")
+        assert douglas.fullness == 1.2
+        assert douglas.fullness_by_height == self.RAMP
+        young = [douglas.fullness_for(h) for h in (5, 10, 15, 20)]
+        old = [douglas.fullness_for(h) for h in (25, 30, 35, 40)]
+        assert (young, old) == ([3.6] * 4, [1.2] * 4)
+
+
 class TestBarkZone:
     """Owner 2026-11-19 (Scots pine fox bark): a two-bark height blend on the trunk."""
 

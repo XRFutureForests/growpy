@@ -924,7 +924,13 @@ def _offline_chain(
     solve_path, carve = entry.path, 0.0
     if calibration.carve_trim > 0.0:
         solve_path, carve = apply_carve(entry, calibration.carve_trim)
-    target_m2 = forrester_m2 * calibration.fullness
+    # Keyed on the stage, not the skeleton height (an h20 Douglas stands 20.2 m):
+    # the owner sets fullness per catalog stage (E119: h05-h20 at 3.6).
+    stage = _TREE_ID_HEIGHT.search(entry.tree_id)
+    fullness = calibration.fullness_for(
+        float(stage.group(1)) if stage else stats.height_m
+    )
+    target_m2 = forrester_m2 * fullness
     meshes = assets.palette_meshes
     names = [p.name for p in assets.prototypes]
     # Height-keyed per-tree start (XRFF-475): a fraction of each branch, so
@@ -943,7 +949,7 @@ def _offline_chain(
         "forrester_m2": round(forrester_m2, 2),
         "forrester_model": model_id,
         "forrester_extrapolated": extrapolated,
-        "fullness": calibration.fullness,
+        "fullness": fullness,
         "target_m2": round(target_m2, 2),
     }
     if carve > 0.0:
@@ -1357,7 +1363,7 @@ def plan_pve_graphs(
             )
         logger.info(
             "%s: palette %s (%d prototypes, mean %.4f m2, ~%.0f tris), %s calibration, "
-            "build from %s, fullness x%.2f",
+            "build from %s, fullness x%.2f%s",
             species,
             species_cal.palette,
             len(palette_areas),
@@ -1366,6 +1372,11 @@ def plan_pve_graphs(
             "derived" if species_cal.derived else "tracked",
             species_cal.build_from,
             species_cal.fullness,
+            ""
+            if species_cal.fullness_by_height is None
+            else " (by height: "
+            + " -> ".join(f"{h:g} m {f:g}" for h, f in species_cal.fullness_by_height)
+            + ")",
         )
         chains: list[TreeChainSpec] = []
         instances: dict[str, int] = {}

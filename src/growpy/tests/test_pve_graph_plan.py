@@ -1102,6 +1102,60 @@ class TestTrunkBark:
         assert "bark_zone" in manifest and "MI_scots_pine_bark_zone_h30" in manifest
 
 
+class TestFullnessByHeight:
+    """E119 (a): the ramp scales a young tree's leaf target, not an old one's."""
+
+    @staticmethod
+    def _targets(tmp_path, label, ramp_line):
+        root = tmp_path / label / "forest" / "douglas_fir" / "r10"
+        root.mkdir(parents=True)
+        (tmp_path / label / "skeleton").mkdir()
+        skeleton = _skeleton(tmp_path / label / "skeleton", 0.08).read_text(
+            encoding="utf-8"
+        )
+        for h in ("h10m", "h30m"):
+            name = f"Douglas_Fir_r10_{h}_d30cm_d100_growth_data.json"
+            (root / name).write_text(skeleton, encoding="utf-8")
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        shipped = re.sub(r"(?m)^fullness_by_height = .*$", "", shipped)
+        # test-local: ramp or not regardless of the shipped line; uncarved stub
+        block = "[pve_calibration.species.douglas_fir]\n"
+        assert block in shipped
+        cal = tmp_path / label / "pve_calibration.toml"
+        cal.write_text(
+            shipped.replace(block, block + ramp_line).replace(
+                "carve_trim = 0.15", "carve_trim = 0.0"
+            )
+        )
+        plan = plan_pve_graphs(
+            tmp_path / label / "out", tmp_path / label / "forest", calibration_path=cal
+        )
+        found = {}
+
+        def walk(node):
+            if isinstance(node, dict):
+                if "tree_id" in node and "target_m2" in node:
+                    found[node["tree_id"]] = (node["target_m2"], node["fullness"])
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+
+        walk(json.loads(plan.manifest.read_text(encoding="utf-8")))
+        return found
+
+    def test_a_young_tree_triples_and_an_old_one_holds(self, tmp_path):
+        flat = self._targets(tmp_path, "flat", "")
+        ramp = self._targets(
+            tmp_path, "ramp", "fullness_by_height = [[20.0, 3.6], [25.0, 1.2]]\n"
+        )
+        assert flat["r10_h10m"][1] == flat["r10_h30m"][1] == 1.2
+        assert ramp["r10_h10m"][1] == 3.6
+        assert ramp["r10_h10m"][0] == pytest.approx(3 * flat["r10_h10m"][0], rel=1e-3)
+        assert ramp["r10_h30m"] == flat["r10_h30m"]
+
+
 class TestStepBaseScale:
     """XRFF-681: large twigs put small trees on the one-per-branch floor."""
 

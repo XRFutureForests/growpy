@@ -396,6 +396,9 @@ palette = "twigs"
 # Release 1.1: half-size twigs at a lower leaf amount (round 3 photos, side gap {2.0: 0.242, 2.5: 0.221})
 # 1.2 conifer dressing B2 (owner 2026-11-17, XRFF-686: "yes B2, drop A"): fewer sprays, wider spread; 0.6 x the 1.1 fullness 2
 fullness = 1.2
+# Owner 2026-11-19, E119 (a): young Douglas h05-h20 dressed at 3.6 (dfy36 board), h25-h40 keep 1.2;
+# keyed on the tree's height stage, held flat outside the keys.
+fullness_by_height = [[20.0, 3.6], [25.0, 1.2]]
 
 [pve_calibration.species.douglas_fir.pose]
 # XRFF-686: h10's ~1300 branches sit on the one-per-branch floor at scale 1.0 (1.29-1.66x target); 0.7 lands it at 1.00
