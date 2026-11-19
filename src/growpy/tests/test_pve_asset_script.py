@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from growpy.io.unreal.pve_asset_script import (
+    DEFAULT_CLONE_SOURCES,
     DEFAULT_MASTER_MATERIAL,
     FOLIAGE_SAMPLES,
     PalettePrototype,
@@ -293,7 +294,7 @@ class TestGeneratedScript:
         # untextured beech trunk for a magenta one.
         loop = script.split("for spec in PLAN[", 1)[1]
         vt = loop.index("import_bark_texture(entry, is_normal)")
-        material = loop.index("build_bark_material(spec, master, bark_master)")
+        material = loop.index("build_bark_material(spec, master, spec_master)")
         assert vt < material
 
     def test_it_clones_rather_than_factory_creating(self, script):
@@ -487,8 +488,8 @@ class TestBarkTilePair:
         ast.parse(script)
         assert "'bark_branch_source_material': '/Game/B/b/MI_b'" in script
         loop = script.split("for spec in PLAN[", 1)[1]
-        trunk = loop.index("build_bark_material(spec, master, bark_master)")
-        branch = loop.index("build_bark_material(branch, master, bark_master)")
+        trunk = loop.index("build_bark_material(spec, master, spec_master)")
+        branch = loop.index("build_bark_material(branch, master, spec_master)")
         assert trunk < branch
         assert 'spec["bark_material"] + "_branch"' in loop
 
@@ -583,8 +584,158 @@ class TestBarkTilePair:
         assert "MI_fab_oak_bark'" in script
 
 
+TRUNK_DBH = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
+
+
+class _Asset:
+    """A fake UE object: a path and a parent, editor properties recorded."""
+
+    def __init__(self, path, parent=None):
+        self.path, self.parent, self.writes = path, parent, []
+
+    def get_path_name(self):
+        return self.path + "." + self.path.rsplit("/", 1)[1]
+
+    def get_editor_property(self, name):
+        assert name == "parent"
+        return self.parent
+
+    def set_editor_property(self, name, value):
+        self.writes.append((name, value))
+        if name == "parent":
+            self.parent = value
+
+
+class _Eal:
+    def __init__(self, assets):
+        self.assets = dict(assets)
+
+    def does_asset_exist(self, path):
+        return path in self.assets
+
+    def load_asset(self, path):
+        return self.assets.get(path)
+
+    def duplicate_asset(self, src, dst):
+        self.assets[dst] = _Asset(dst, self.assets[src].parent)
+        return self.assets[dst]
+
+    def save_asset(self, path, only_if_is_dirty=True):
+        return True
+
+
+class TestBarkMasterGuard:
+    """2026-11-19 (decision (a)): a plan never silently moves a bark MI's master."""
+
+    MI = "/Game/T/Materials/european_beech/MI_european_beech_bark"
+
+    @staticmethod
+    def _build_bark_material(tmp_path, eal, allow=False):
+        """The generated script's build_bark_material, run on fakes."""
+        from unittest import mock
+
+        script = generate_pve_asset_script(
+            tmp_path, _plan(allow_bark_reparent=allow)
+        ).read_text(encoding="utf-8")
+        defs = script.split("USD_STUB = ", 1)[1].split('print("=" * 64)', 1)[0]
+        plan_line = script.split("PLAN = ", 1)[1].split("\neal = ", 1)[0]
+        mel = mock.MagicMock()
+        mel.get_material_instance_texture_parameter_value.side_effect = lambda mi, p: (
+            _Asset("/Game/T/" + p.replace(" ", ""))
+        )
+        ns = {"unreal": mock.MagicMock(), "eal": eal, "mel": mel, "failures": []}
+        exec("PLAN = " + plan_line + "\nUSD_STUB = " + defs, ns)
+        return ns["build_bark_material"]
+
+    def _spec(self):
+        return {
+            "species": "european_beech",
+            "bark_material": self.MI,
+            "bark_color": {"asset": "/Game/T/BaseColor"},
+            "bark_normal": {"asset": "/Game/T/Normal"},
+            "bark_source_material": "",
+            "bark_source_textures": True,
+        }
+
+    def _eal(self, mi_parent):
+        plugin = _Asset(DEFAULT_MASTER_MATERIAL)
+        trunk = _Asset(TRUNK_DBH)
+        assets = {
+            DEFAULT_MASTER_MATERIAL: plugin,
+            TRUNK_DBH: trunk,
+            "/Game/T/BaseColor": _Asset("/Game/T/BaseColor"),
+            "/Game/T/Normal": _Asset("/Game/T/Normal"),
+            DEFAULT_CLONE_SOURCES[0]: _Asset(DEFAULT_CLONE_SOURCES[0], plugin),
+        }
+        if mi_parent is not None:
+            assets[self.MI] = _Asset(self.MI, assets[mi_parent])
+        return _Eal(assets)
+
+    def test_a_release_cannot_reparent_an_existing_mi(self, tmp_path):
+        eal = self._eal(mi_parent=DEFAULT_MASTER_MATERIAL)
+        build = self._build_bark_material(tmp_path, eal)
+        problems = build(self._spec(), DEFAULT_MASTER_MATERIAL, TRUNK_DBH)
+        assert len(problems) == 1
+        assert f"_bark parent is {DEFAULT_MASTER_MATERIAL}, " in problems[0]
+        assert f"plan wants {TRUNK_DBH}; reparent explicitly" in problems[0]
+        assert eal.assets[self.MI].writes == []  # untouched
+
+    def test_allow_bark_reparent_moves_it(self, tmp_path):
+        eal = self._eal(mi_parent=DEFAULT_MASTER_MATERIAL)
+        build = self._build_bark_material(tmp_path, eal, allow=True)
+        assert build(self._spec(), DEFAULT_MASTER_MATERIAL, TRUNK_DBH) == []
+        assert eal.assets[self.MI].parent.path == TRUNK_DBH
+
+    def test_an_mi_on_its_master_or_a_new_clone_is_built(self, tmp_path):
+        on_master = self._eal(mi_parent=TRUNK_DBH)
+        build = self._build_bark_material(tmp_path, on_master)
+        assert build(self._spec(), DEFAULT_MASTER_MATERIAL, TRUNK_DBH) == []
+        new = self._eal(mi_parent=None)  # cloned from a plugin sample, then parented
+        build = self._build_bark_material(tmp_path, new)
+        assert build(self._spec(), DEFAULT_MASTER_MATERIAL, TRUNK_DBH) == []
+        assert new.assets[self.MI].parent.path == TRUNK_DBH
+
+    def test_each_species_carries_its_master_into_the_script(self, tmp_path):
+        spec = build_species_asset_spec(
+            "european_beech", bark_master_material=TRUNK_DBH
+        )
+        script = generate_pve_asset_script(
+            tmp_path, PVEAssetPlan(species=(spec,))
+        ).read_text(encoding="utf-8")
+        assert f"'bark_master_material': '{TRUNK_DBH}'" in script
+        assert "'allow_bark_reparent': False" in script
+        loop = script.split("for spec in PLAN[", 1)[1]
+        assert 'spec_master = spec["bark_master_material"] or bark_master' in loop
+        # the per-species master must exist before anything is touched
+        head = script.split("for spec in PLAN[", 1)[0]
+        assert "species_masters" in head and "master material not found" in head
+
+    def test_a_schema_folder_species_master_is_refused(self):
+        spec = build_species_asset_spec(
+            "european_beech", bark_master_material="/Game/XRFF/Forest/Data/MA_X"
+        )
+        with pytest.raises(ValueError, match="refusing"):
+            PVEAssetPlan(species=(spec,))
+
+
 class TestCli:
     """growpy-pve-assets: the runnable form of the step."""
+
+    def test_the_calibration_master_or_an_explicit_override_reaches_the_script(
+        self, tmp_path
+    ):
+        from growpy.tools.pve_assets import main
+
+        main(["european_beech", "--output-dir", str(tmp_path)])
+        text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
+        assert f"'bark_master_material': '{TRUNK_DBH}'" in text
+        other = "/Game/Test/MA_Other"
+        main(["european_beech", "--output-dir", str(tmp_path),
+              "--bark-master-material", other, "--allow-bark-reparent"])  # fmt: skip
+        text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
+        assert f"'bark_master_material': '{other}'" in text
+        assert f"'bark_master_material': '{TRUNK_DBH}'" not in text
+        assert "'allow_bark_reparent': True" in text
 
     def test_named_species_write_a_script_and_succeed(self, tmp_path):
         from growpy.tools.pve_assets import main

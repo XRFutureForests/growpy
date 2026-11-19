@@ -655,8 +655,13 @@ class SpeciesCalibration:
     # tree height, so it is a ramp over tree height (m -> Blend Height).
     bark_upper_source: str | None = None
     bark_blend_height_by_height: tuple[tuple[float, float], ...] | None = None
+    # Parent of MI_<species>_bark (+ _branch, _young): the species block's
+    # ``bark_master_material``, else the [pve_calibration] default (2026-11-19:
+    # an empty plan master put three species back on PVE's MA_Foliage_Trees).
+    bark_master_material: str | None = None
 
     def __post_init__(self) -> None:
+        _check_master(f"species {self.species!r}", self.bark_master_material)
         if (self.bark_upper_source is None) != (
             self.bark_blend_height_by_height is None
         ):
@@ -933,8 +938,12 @@ class PVECalibration:
     # ``{material = <MegaPlants bark MI>, y_scale = <W/H of its texture>}``.
     # A table of its own for the same reason as the bone reduction one.
     bark_source_per_species: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # ``[pve_calibration] bark_master_material``: the bark parent of every species
+    # without its own; None leaves the asset plan's master.
+    bark_master_material: str | None = None
 
     def __post_init__(self) -> None:
+        _check_master("[pve_calibration]", self.bark_master_material)
         if self.schema_version != SCHEMA_VERSION:
             raise ValueError(
                 f"pve_calibration schema_version {self.schema_version} is not "
@@ -973,11 +982,15 @@ class PVECalibration:
                 f"calibration for {species!r} cannot record what decimation its "
                 f"growth JSONs carry"
             )
-        return _with_bark_source(
-            _with_bone_reduction(
-                _species(species, data, derived=True), self.bone_reduction_per_species
+        return _with_bark_master(
+            _with_bark_source(
+                _with_bone_reduction(
+                    _species(species, data, derived=True),
+                    self.bone_reduction_per_species,
+                ),
+                self.bark_source_per_species,
             ),
-            self.bark_source_per_species,
+            self.bark_master_material,
         )
 
 
@@ -1220,6 +1233,7 @@ def _species(
             str(k): float(v) for k, v in (data.get("crown_floor") or {}).items()
         },
         build_from=str(data.get("build_from", "measured")),
+        bark_master_material=data.get("bark_master_material"),
         derived=derived,
     )
 
@@ -1231,6 +1245,23 @@ def _with_bone_reduction(
     if species.species not in per_species:
         return species
     return replace(species, bone_reduction_strength=per_species[species.species])
+
+
+def _check_master(where: str, path: str | None) -> None:
+    """A bark master must be a project content path (``/Game/...``)."""
+    if path is not None and not (isinstance(path, str) and path.startswith("/Game/")):
+        raise ValueError(
+            f"{where} bark_master_material must be a /Game/ content path, got {path!r}"
+        )
+
+
+def _with_bark_master(
+    species: SpeciesCalibration, default: str | None
+) -> SpeciesCalibration:
+    """The species with the calibration's bark master unless it names its own."""
+    if species.bark_master_material is not None or default is None:
+        return species
+    return replace(species, bark_master_material=default)
 
 
 def _with_bark_source(
@@ -1329,20 +1360,26 @@ def load_pve_calibration(path: Path | str | None = None) -> PVECalibration:
     bark_sources = {
         str(k): dict(v) for k, v in (data.get("bark_source_per_species") or {}).items()
     }
+    bark_master = data.get("bark_master_material")
+    _check_master("[pve_calibration]", bark_master)  # before a species inherits it
     calibration = PVECalibration(
         schema_version=int(data.get("schema_version", 0)),
         profile_mean=float(data["profile_mean"]),
         profile_pin=str(data["profile_pin"]),
         species={
-            name: _with_bark_source(
-                _with_bone_reduction(_species(name, species_data), per_species),
-                bark_sources,
+            name: _with_bark_master(
+                _with_bark_source(
+                    _with_bone_reduction(_species(name, species_data), per_species),
+                    bark_sources,
+                ),
+                bark_master,
             )
             for name, species_data in sorted(data.get("species", {}).items())
         },
         defaults=defaults,
         bone_reduction_per_species=per_species,
         bark_source_per_species=bark_sources,
+        bark_master_material=bark_master,
     )
     logger.debug(
         "loaded PVE calibration from %s: %d species, %d trees",

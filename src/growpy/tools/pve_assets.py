@@ -172,9 +172,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--bark-master-material",
         default="",
-        help="material to parent bark instances to when it is not the master, "
-        "e.g. a project copy of MA_Foliage_Trees with a trunk-DBH offset "
-        "(XRFF_Twin: /Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH)",
+        help="material to parent bark instances to, overriding every species' "
+        "bark_master_material in the calibration (default: the calibration's)",
+    )
+    parser.add_argument(
+        "--allow-bark-reparent",
+        action="store_true",
+        help="move an existing bark MI to its bark master (default: report the "
+        "mismatch and change nothing)",
     )
     parser.add_argument(
         "--bark-zone-master-material",
@@ -232,6 +237,10 @@ def main(argv: list[str] | None = None) -> int:
                     )
                     if upper
                     else (),
+                    # an explicit --bark-master-material wins over the calibration
+                    bark_master_material=args.bark_master_material
+                    or species_cal.bark_master_material
+                    or "",
                 )
             )
         except (FileNotFoundError, KeyError, ValueError) as err:
@@ -251,6 +260,7 @@ def main(argv: list[str] | None = None) -> int:
             master_material=args.master_material,
             bark_master_material=args.bark_master_material,
             bark_zone_master_material=args.bark_zone_master_material,
+            allow_bark_reparent=args.allow_bark_reparent,
         ),
     )
 

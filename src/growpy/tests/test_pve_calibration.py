@@ -1036,6 +1036,57 @@ def test_young_bark_needs_a_tile_pair_and_picks_thin_trees(tmp_path):
         young_bark(sp, 5.0, {})
 
 
+class TestBarkMaster:
+    """2026-11-19 (decision (a)): each species names the parent of its bark MIs."""
+
+    TRUNK_DBH = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
+
+    def test_the_shipped_default_reaches_blocks_and_derived_species(self):
+        shipped = load_pve_calibration()
+        assert shipped.bark_master_material == self.TRUNK_DBH
+        for name in ("douglas_fir", "european_beech", "scots_pine"):
+            assert shipped.for_species(name).bark_master_material == self.TRUNK_DBH
+        derived = shipped.for_species(DERIVED_CONIFER, habit="conifer")
+        assert derived.derived and derived.bark_master_material == self.TRUNK_DBH
+
+    def test_a_species_block_overrides_the_default(self, tmp_path):
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        block = "[pve_calibration.species.scots_pine]\n"
+        assert block in shipped
+        local = tmp_path / "pve_calibration.toml"
+        own = 'bark_master_material = "/Game/X/MA_Pine"\n'
+        local.write_text(shipped.replace(block, block + own), encoding="utf-8")
+        cal = load_pve_calibration(local)
+        assert cal.for_species("scots_pine").bark_master_material == "/Game/X/MA_Pine"
+        assert cal.for_species("douglas_fir").bark_master_material == self.TRUNK_DBH
+
+    def test_no_key_leaves_the_plan_master(self):
+        assert _species().bark_master_material is None
+
+    @pytest.mark.parametrize(
+        "master",
+        [
+            "/ProceduralVegetationEditor/SampleAssets/Materials/MasterMaterials/MA_Foliage_Trees",
+            "D:/Unreal/MA_X",
+            "",
+        ],
+    )
+    def test_a_master_outside_game_is_refused(self, tmp_path, master):
+        with pytest.raises(ValueError, match="/Game/ content path"):
+            _species(bark_master_material=master)
+        shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        local = tmp_path / "pve_calibration.toml"
+        local.write_text(
+            shipped.replace(
+                f'bark_master_material = "{self.TRUNK_DBH}"',
+                f'bark_master_material = "{master}"',
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ValueError, match=r"\[pve_calibration\] bark_master"):
+            load_pve_calibration(local)
+
+
 class TestFullnessByHeight:
     """Owner 2026-11-19, E119 (a): young Douglas dressed at 3.6, h25+ keep 1.2."""
 

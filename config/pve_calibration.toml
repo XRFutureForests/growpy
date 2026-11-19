@@ -135,6 +135,8 @@ bark_source_per_species.silver_birch = { material = "/Game/00_XRFF/30_Forest/Mat
 # Owner 2026-11-19 (fox bark, "BZ150 with our orange"): the trunk blends plated (low) into orange
 # (high) on the two-bark master, one MI per height class (Blend Height is absolute: 2.0 at 20 m, 1.5 at 30 m).
 bark_source_per_species.scots_pine = { trunk = "fab_pine_bark_plated", branch = "fab_pine_bark_orange_branch", upper = "fab_pine_bark_orange_branch", blend_height_by_height = [[20.0, 2.0], [30.0, 1.5]] }
+# Parent of every MI_<species>_bark (+ _branch, _young); a species block may name its own (2026-11-19, decision (a)).
+bark_master_material = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
 
 # HALF A CONTRACT EACH. `profile_mean` is the mean radial multiplier of the PVE
 # trunk profile; growpy divides emitted radii by it so a tape-measured DBH

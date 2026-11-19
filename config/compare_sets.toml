@@ -223,3 +223,19 @@ rows = [
     { label = "SPB2 stronger ladder scots_pine", pattern = "/Game/PVE_686/lad2_scots_pine/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
     { label = "SPA compounds scots_pine", pattern = "/Game/PVE_686/smlt_scots_pine/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h10m", "r07_h20m"] },
 ]
+
+[compare.sets.pine12_tr0]
+description = "release 1.2 Scots pine (tr0 ladder, mpparts, E124 crown base, BZ150): the 11 shipped trees beside MegaPlants A/B, for the crown opacity floor 0.75 (owner)"
+rows = [
+    { label = "R10 pine 1.2", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h05m", "r10_h10m", "r10_h15m", "r10_h20m", "r10_h25m", "r10_h30m"] },
+    { label = "R07 pine 1.2", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r07_h05m", "r07_h10m", "r07_h15m", "r07_h20m", "r07_h25m"] },
+    { label = "MP megaplants", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B"] },
+]
+
+[compare.sets.barkparent]
+description = "bark master restore record (owner (a) 2026-11-19): trunks of the three species whose bark MIs drifted to PVE's master, shot before and after the reparent to TrunkDBH"
+rows = [
+    { label = "DF douglas", pattern = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_{cell}", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "BE beech", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r10_h20m", "r10_h30m"] },
+    { label = "SP pine", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h20m", "r10_h30m"] },
+]

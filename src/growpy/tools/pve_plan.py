@@ -82,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
             "that trips it is re-planned lower"
         ),
     )
+    parser.add_argument(
+        "--allow-bark-reparent",
+        action="store_true",
+        help="let the asset script move an existing bark MI to the species' bark "
+        "master (default: report the mismatch and change nothing)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -112,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         species=args.species or None,
         max_assembly_instances=args.max_instances,
         static_twins=config.unreal_pve_static_twins,
+        allow_bark_reparent=args.allow_bark_reparent,
     )
     if plan.script is None:
         logger.error(

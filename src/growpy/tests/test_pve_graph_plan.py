@@ -584,6 +584,26 @@ class TestPlanEndToEnd:
         assert bark_aspect_y_scale(tall) == pytest.approx(0.25)
         assert bark_aspect_y_scale(tmp_path / "absent.png") is None
 
+    def test_the_asset_script_names_each_species_bark_master(
+        self, tmp_path, forest_root
+    ):
+        # 2026-11-19 (decision (a)): the plan wrote PVE's MA_Foliage_Trees as the
+        # bark master of every species; each species now carries the calibration's.
+        trunk_dbh = "/Game/00_XRFF/30_Forest/Materials/MA_Foliage_Trees_TrunkDBH"
+        plan = plan_pve_graphs(tmp_path, forest_root, content_root="/Game/PVE_Test")
+        script = plan.asset_script.read_text(encoding="utf-8")
+        species = script.split("'species': [", 1)[1]
+        assert species.count(f"'bark_master_material': '{trunk_dbh}'") == 2
+        assert "'allow_bark_reparent': False" in script
+        allowed = plan_pve_graphs(
+            tmp_path / "allow",
+            forest_root,
+            content_root="/Game/PVE_Test",
+            allow_bark_reparent=True,
+        )
+        text = allowed.asset_script.read_text(encoding="utf-8")
+        assert "'allow_bark_reparent': True" in text
+
     def test_every_chain_carries_grove_bark_wraps(self, tmp_path, forest_root):
         # 2026-10-07: the fixture's stub skeletons cannot be read, so each
         # chain takes the fallback every real catalog tree measured.

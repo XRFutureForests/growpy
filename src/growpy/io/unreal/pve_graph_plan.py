@@ -1234,6 +1234,7 @@ def plan_pve_graphs(
     max_assembly_instances: int = 60_000,
     tree_triangle_cap: float = 400e6,
     static_twins: bool = False,
+    allow_bark_reparent: bool = False,
 ) -> PVEGraphPlanResult:
     """Author graph scripts for every species in a finished forest export.
 
@@ -1283,6 +1284,8 @@ def plan_pve_graphs(
             ``SM_<name>`` under ``<content_root>/CatalogStatic/<species>``, for
             the surround forest (owner, 2026-10-21). Roughly doubles the export
             time; oak static builds ran 16-18 min each.
+        allow_bark_reparent: Let the asset script move an existing bark MI to
+            the species' bark master; by default it reports the mismatch.
 
     Returns:
         What was planned, including a ``skipped`` line per tree left out.
@@ -1347,6 +1350,7 @@ def plan_pve_graphs(
                 bark_young_source_material=bark_young_source(species_cal),
                 bark_zone_source_material=upper,
                 bark_zone_upper_tiling=upper_tiling,
+                bark_master_material=species_cal.bark_master_material or "",
             )
             palette_areas = prototype_leaf_areas(assets)
         except (FileNotFoundError, KeyError, ValueError) as err:
@@ -1546,7 +1550,10 @@ def plan_pve_graphs(
     # produced, rather than for every calibrated species: the palette a graph
     # names is the palette that graph needs.
     asset_script = generate_pve_asset_script(
-        output_dir, PVEAssetPlan(species=tuple(asset_specs))
+        output_dir,
+        PVEAssetPlan(
+            species=tuple(asset_specs), allow_bark_reparent=allow_bark_reparent
+        ),
     )
 
     manifest = write_coverage_manifest(output_dir, graphs, details=details)

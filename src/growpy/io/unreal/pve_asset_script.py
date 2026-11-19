@@ -239,6 +239,9 @@ class SpeciesAssetSpec:
     bark_zone_source_material: str = ""
     bark_zone_upper_tiling: tuple[float, float] = (1.0, 1.0)
     bark_zone_heights: tuple[tuple[int, float], ...] = ()
+    # Parent of this species' bark MIs (pve_calibration bark_master_material).
+    # Empty: the plan's bark master.
+    bark_master_material: str = ""
 
     def __post_init__(self) -> None:
         if self.bark_zone_heights and not (
@@ -342,6 +345,10 @@ class PVEAssetPlan:
     # Parent of the bark zone instances (MI_<species>_bark_zone_h<NN>): our
     # two-bark copy of the plugin's TwoBarkBlend with the trunk-DBH offset.
     bark_zone_master_material: str = DEFAULT_BARK_ZONE_MASTER
+    # False (default): an existing bark MI on another parent is reported, not
+    # reparented (2026-11-19: a release silently moved three species off the
+    # catalog master). True: reparent it (--allow-bark-reparent).
+    allow_bark_reparent: bool = False
 
     def __post_init__(self) -> None:
         if not self.species:
@@ -350,6 +357,7 @@ class PVEAssetPlan:
             self.master_material,
             self.bark_master_material,
             self.bark_zone_master_material,
+            *(s.bark_master_material for s in self.species),
         ):
             if master.startswith(_FORBIDDEN_MASTER_PREFIX):
                 raise ValueError(
@@ -448,6 +456,7 @@ def build_species_asset_spec(
     bark_zone_source_material: str = "",
     bark_zone_upper_tiling: tuple[float, float] = (1.0, 1.0),
     bark_zone_heights: tuple[tuple[int, float], ...] = (),
+    bark_master_material: str = "",
 ) -> SpeciesAssetSpec:
     """Resolve one species' palette and bark sources from disk.
 
@@ -529,6 +538,7 @@ def build_species_asset_spec(
         bark_zone_source_material=bark_zone_source_material,
         bark_zone_upper_tiling=bark_zone_upper_tiling,
         bark_zone_heights=bark_zone_heights,
+        bark_master_material=bark_master_material,
     )
 
 
@@ -569,6 +579,7 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
         "master_material": plan.master_material,
         "bark_master_material": plan.bark_master_material or plan.master_material,
         "bark_zone_master_material": plan.bark_zone_master_material,
+        "allow_bark_reparent": plan.allow_bark_reparent,
         "bark_zone_blend": dict(BARK_ZONE_BLEND),
         "clone_sources": list(plan.clone_sources),
         "species": [
@@ -605,6 +616,7 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
                 "bark_zone_source_material": s.bark_zone_source_material,
                 "bark_zone_upper_tiling": list(s.bark_zone_upper_tiling),
                 "bark_zone_heights": [list(h) for h in s.bark_zone_heights],
+                "bark_master_material": s.bark_master_material,
                 "foliage": _foliage_payload(s),
             }
             for s in plan.species
@@ -865,13 +877,16 @@ def build_bark_material(spec, master, bark_master):
 
     Repaired IN PLACE rather than replaced: exported meshes reference the
     material by path, so every tree already exported picks a fix up with no
-    re-export. Clone sources are checked against ``master``; the instance ends
-    up parented to ``bark_master`` (the same unless the plan names another).
+    re-export. Clone sources are checked against ``master``; a new instance is
+    parented to ``bark_master``. An EXISTING instance on another parent is left
+    alone and reported (2026-11-19: releases silently moved three species off
+    the catalog master) unless the plan allows the reparent explicitly.
     """
     mi_path = spec["bark_material"]
     color = spec["bark_color"]["asset"]
     normal = spec["bark_normal"]["asset"]
 
+    cloned = False
     if not eal.does_asset_exist(mi_path):
         source = resolve_clone_source(master)
         if source is None:
@@ -879,6 +894,7 @@ def build_bark_material(spec, master, bark_master):
         print("   cloning %s -> %s" % (source, mi_path))
         if eal.duplicate_asset(source, mi_path) is None:
             return ["duplicate_asset failed: %s -> %s" % (source, mi_path)]
+        cloned = True
 
     mi = eal.load_asset(mi_path)
     master_asset = eal.load_asset(bark_master)
@@ -887,6 +903,9 @@ def build_bark_material(spec, master, bark_master):
 
     before = _path_of(mi.get_editor_property("parent"))
     if before != bark_master:
+        if not cloned and not PLAN["allow_bark_reparent"]:
+            return ["%s parent is %s, plan wants %s; reparent explicitly "
+                    "(--allow-bark-reparent)" % (mi_path, before, bark_master)]
         print("   reparenting %s (was %s)" % (spec["species"], before))
         mi.set_editor_property("parent", master_asset)
 
@@ -1169,7 +1188,8 @@ print("=" * 64)
 
 master = PLAN["master_material"]
 bark_master = PLAN["bark_master_material"]
-for path in (master, bark_master):
+species_masters = [s["bark_master_material"] for s in PLAN["species"]]
+for path in sorted(set([master, bark_master] + [m for m in species_masters if m])):
     if eal.load_asset(path) is None:
         raise RuntimeError("master material not found: %s" % path)
 zone_master = PLAN["bark_zone_master_material"]
@@ -1202,7 +1222,9 @@ for spec in PLAN["species"]:
         if problem:
             failures.append(problem)
 
-    failures.extend(build_bark_material(spec, master, bark_master))
+    # The species' own bark master (pve_calibration) unless it names none.
+    spec_master = spec["bark_master_material"] or bark_master
+    failures.extend(build_bark_material(spec, master, spec_master))
     # Tile pair (XRFF-679): generations 1+ read MI_<species>_bark_branch, built
     # by the same routine -- same master, values and textures from its source.
     if spec["bark_branch_source_material"]:
@@ -1210,14 +1232,14 @@ for spec in PLAN["species"]:
         branch["bark_material"] = spec["bark_material"] + "_branch"
         branch["bark_source_material"] = spec["bark_branch_source_material"]
         branch["bark_source_textures"] = True
-        failures.extend(build_bark_material(branch, master, bark_master))
+        failures.extend(build_bark_material(branch, master, spec_master))
     # Young bark: generation 0 of thin trees reads MI_<species>_bark_young.
     if spec.get("bark_young_source_material"):
         young = dict(spec)
         young["bark_material"] = spec["bark_material"] + "_young"
         young["bark_source_material"] = spec["bark_young_source_material"]
         young["bark_source_textures"] = True
-        failures.extend(build_bark_material(young, master, bark_master))
+        failures.extend(build_bark_material(young, master, spec_master))
     # Bark zone: generation 0 of the other trees reads MI_<species>_bark_zone_h<NN>.
     for stage, blend_height in spec["bark_zone_heights"]:
         failures.extend(build_zone_material(spec, stage, blend_height, zone_master))
