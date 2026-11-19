@@ -1111,6 +1111,8 @@ class TestCrownBase:
             name = f"Scots_Pine_r10_{h}_d30cm_d100_growth_data.json"
             (root / name).write_text(skeleton, encoding="utf-8")
         shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        # test-local: drop the shipped pine crown base (pine 1.2) before adding the ramp
+        shipped = re.sub(r"(?m)^crown_base_(by_height|max_share) = .*\n", "", shipped)
         block = "[pve_calibration.species.scots_pine]\n"
         assert block in shipped
         # test-local, uncarved (the stub skeleton has no meristem data)
@@ -1137,9 +1139,9 @@ class TestCrownBase:
             for c in g.chains
         }
         assert got == {
-            "SK_ScotsPine_r10_h05m": (5, 1.0, 0.3, "XRFF_CrownBase"),
-            "SK_ScotsPine_r10_h15m": (15, 2.5, 0.3, "XRFF_CrownBase"),
-            "SK_ScotsPine_r10_h30m": (30, 9.0, 0.3, "XRFF_CrownBase"),
+            "SK_ScotsPine_r10_h05m": (5, 1.0, 0.3, "XRFF_CrownBase_r10_h05m"),
+            "SK_ScotsPine_r10_h15m": (15, 2.5, 0.3, "XRFF_CrownBase_r10_h15m"),
+            "SK_ScotsPine_r10_h30m": (30, 9.0, 0.3, "XRFF_CrownBase_r10_h30m"),
         }
         manifest = json.loads(plan.manifest.read_text(encoding="utf-8"))
         meshes = {m["mesh_name"]: m for g in manifest["graphs"] for m in g["meshes"]}
@@ -1147,10 +1149,10 @@ class TestCrownBase:
             "stage_m": 15,
             "height_m": 2.5,
             "max_share": 0.3,
-            "node": "XRFF_CrownBase",
+            "node": "XRFF_CrownBase_r10_h15m",
         }
         body = plan.script.read_text(encoding="utf-8")
-        assert "'node': 'XRFF_CrownBase'" in body
+        assert "'node': 'XRFF_CrownBase_r10_h15m'" in body
 
     def test_a_species_without_the_key_gets_no_node(self, tmp_path):
         plan = self._plan(tmp_path, "")

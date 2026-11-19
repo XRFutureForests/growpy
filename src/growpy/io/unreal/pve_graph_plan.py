@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 
 from growpy.config.ue_layout import TREES_ROOT
 from growpy.io.unreal.pve_graph_builder import (
+    CROWN_BASE_NODE,
     DEFAULT_SAPLING_WIND_SETTINGS,
     DEFAULT_TREE_WIND_SETTINGS,
     BarkSetup,
@@ -523,6 +524,8 @@ def crown_base_edit(species_cal, tree_id: str) -> CrownBaseEdit | None:
         stage_m=stage,
         height_m=species_cal.crown_base_for(stage),
         max_share=species_cal.crown_base_max_share,
+        # one node per chain, findable when a graph holds several trees
+        node=f"{CROWN_BASE_NODE}_{tree_id}",
     )
 
 

@@ -7,6 +7,7 @@ a silent edit to them is the expensive failure this file exists to catch.
 
 from __future__ import annotations
 
+import re
 import tomllib
 from pathlib import Path
 
@@ -156,7 +157,9 @@ class TestShippedCalibration:
         assert conifer.derived and broadleaf.derived
         for name in PROFILE_CONIFERS:  # C1-C4: spruce profile, default fullness
             cal = shipped.for_species(name, habit="conifer")
-            assert not cal.derived and cal.pose.orient == "RANDOM_ROLL", name
+            # pine 1.2 (owner 2026-11-19): the MegaPlants parts' AIM_FACE pose
+            orient = "AIM_FACE" if name == "scots_pine" else "RANDOM_ROLL"
+            assert not cal.derived and cal.pose.orient == orient, name
             # 1.2 B2 (XRFF-686): 0.6 x the 1.1 fullness (spruce/Douglas 2.0, fir/pine 4.0)
             assert cal.fullness == (1.2 if name in ("norway_spruce", "douglas_fir") else 2.4), name
             assert cal.phyllotaxy_formation == "DISTICHOUS", name
@@ -1076,6 +1079,8 @@ class TestCrownBaseByHeight:
 
     def test_it_parses_from_a_species_block(self, tmp_path):
         shipped = Path("config/pve_calibration.toml").read_text(encoding="utf-8")
+        # test-local: drop the shipped pine crown base (pine 1.2) before adding keys
+        shipped = re.sub(r"(?m)^crown_base_(by_height|max_share) = .*\n", "", shipped)
         block = "[pve_calibration.species.scots_pine]\n"
         assert block in shipped
         local = tmp_path / "pve_calibration.toml"

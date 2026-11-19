@@ -12,4 +12,5 @@ leaf_area_m2 = 0.456
 faces = 2576
 nanite_triangles = 1071779
 palette_name = "scots_pine_mp_p06"
-status = "active interim"
+status = "interim, third-party (MegaPlants), to be replaced by the route-3 builder"
+catalog_use = "pine 1.2 shipped dressing (owner 2026-11-19); the UE assets live in UE content only, never in git; XRFFTwin only on the owner's port decision"
