@@ -292,7 +292,7 @@ radius = 7
 height_m = 5.2
 dbh_cm = 4.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h05m_d04cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r07/Douglas_Fir_r07_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -300,14 +300,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:32:01+01:00"
+grown = "2026-11-19T11:47:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h05m"
-twigs = 517
-leaf_area_m2 = 4.3
-leaf_area_target_m2 = 3.4
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 703
+leaf_area_m2 = 10.3
+leaf_area_target_m2 = 10.3
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 825
 target.dbh_m = { value = 0.04, p25 = 0.038, p75 = 0.041, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
@@ -320,7 +320,7 @@ radius = 7
 height_m = 10.3
 dbh_cm = 9.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h10m_d09cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r07/Douglas_Fir_r07_h10m_d09cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -328,14 +328,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:33:57+01:00"
+grown = "2026-11-19T11:47:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h10m"
-twigs = 1269
-leaf_area_m2 = 16.9
-leaf_area_target_m2 = 16.8
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 1431
+leaf_area_m2 = 50.0
+leaf_area_target_m2 = 50.3
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 1708
 target.dbh_m = { value = 0.094, p25 = 0.088, p75 = 0.096, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
@@ -348,7 +348,7 @@ radius = 7
 height_m = 15.1
 dbh_cm = 15.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h15m_d15cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r07/Douglas_Fir_r07_h15m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -356,14 +356,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:38:00+01:00"
+grown = "2026-11-19T11:47:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h15m"
-twigs = 1118
-leaf_area_m2 = 40.5
-leaf_area_target_m2 = 40.9
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 2119
+leaf_area_m2 = 122.7
+leaf_area_target_m2 = 122.6
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 1188
 target.dbh_m = { value = 0.151, p25 = 0.144, p75 = 0.157, inside = true, n = 2 }
 target.crown_base_m = { value = 5.0, p25 = 2.467, p75 = 7.451, inside = true, n = 2 }
@@ -376,7 +376,7 @@ radius = 7
 height_m = 20.2
 dbh_cm = 21.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r07/Douglas_Fir_r07_h20m_d22cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r07/Douglas_Fir_r07_h20m_d22cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -384,14 +384,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:43:51+01:00"
+grown = "2026-11-19T11:47:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r07_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r07_h20m"
-twigs = 1015
-leaf_area_m2 = 80.6
-leaf_area_target_m2 = 80.9
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 3467
+leaf_area_m2 = 242.0
+leaf_area_target_m2 = 242.6
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 792
 target.dbh_m = { value = 0.216, p25 = 0.205, p75 = 0.224, inside = true, n = 3 }
 target.crown_base_m = { value = 10.0, p25 = 2.842, p75 = 8.581, inside = false, n = 3 }
@@ -534,8 +534,8 @@ leaf_area_target_m2 = 1000.1
 plan = "unreal_scripts_douglas_fir_h45_2026-11-19"
 bones = 2415
 target.dbh_m = { value = 0.812, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
-target.crown_base_m = { value = 21.5, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
-target.crown_radius_m = { value = 9.624, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
+target.crown_base_m = { value = 22.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
+target.crown_radius_m = { value = 9.413, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
 
 [trees.douglas_fir.r10_h05m]
 species = "douglas_fir"
@@ -544,7 +544,7 @@ radius = 10
 height_m = 5.2
 dbh_cm = 4.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h05m_d04cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r10/Douglas_Fir_r10_h05m_d04cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -552,14 +552,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:32:05+01:00"
+grown = "2026-11-19T11:47:01+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h05m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h05m"
-twigs = 537
-leaf_area_m2 = 4.3
-leaf_area_target_m2 = 3.4
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 686
+leaf_area_m2 = 10.2
+leaf_area_target_m2 = 10.3
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 826
 target.dbh_m = { value = 0.04, p25 = 0.038, p75 = 0.041, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 1.438, p75 = 4.343, inside = false, n = 0 }
@@ -572,7 +572,7 @@ radius = 10
 height_m = 10.3
 dbh_cm = 9.5
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h10m_d09cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r10/Douglas_Fir_r10_h10m_d09cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -580,14 +580,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:34:12+01:00"
+grown = "2026-11-19T11:47:02+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h10m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h10m"
-twigs = 1601
-leaf_area_m2 = 16.9
-leaf_area_target_m2 = 16.8
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 1436
+leaf_area_m2 = 49.9
+leaf_area_target_m2 = 50.3
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 2101
 target.dbh_m = { value = 0.094, p25 = 0.088, p75 = 0.096, inside = true, n = 0 }
 target.crown_base_m = { value = 0.5, p25 = 2.022, p75 = 6.105, inside = false, n = 0 }
@@ -600,7 +600,7 @@ radius = 10
 height_m = 15.1
 dbh_cm = 15.1
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h15m_d15cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r10/Douglas_Fir_r10_h15m_d15cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -608,14 +608,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:38:15+01:00"
+grown = "2026-11-19T11:47:02+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h15m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h15m"
-twigs = 1390
-leaf_area_m2 = 40.7
-leaf_area_target_m2 = 40.9
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 2109
+leaf_area_m2 = 121.7
+leaf_area_target_m2 = 122.6
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 1718
 target.dbh_m = { value = 0.151, p25 = 0.144, p75 = 0.157, inside = true, n = 2 }
 target.crown_base_m = { value = 3.5, p25 = 2.467, p75 = 7.451, inside = true, n = 2 }
@@ -628,7 +628,7 @@ radius = 10
 height_m = 20.2
 dbh_cm = 21.6
 generator = "grove"
-growth_json = "D:/Git/work/growpy/data/output/forest/douglas_fir/r10/Douglas_Fir_r10_h20m_d22cm_full_growth_data.json"
+growth_json = "D:/Git/work/growpy/data/output/forest_douglas_young_2026-11-19/douglas_fir/r10/Douglas_Fir_r10_h20m_d22cm_full_growth_data.json"
 twig_set = "twigs"
 twig_entries = ["douglas_fir__pacific_silver_fir_foliage", "douglas_fir__pacific_silver_fir_foliage_a", "douglas_fir__pacific_silver_fir_foliage_b", "douglas_fir__pacific_silver_fir_foliage_c", "douglas_fir__pacific_silver_fir_foliage_d", "douglas_fir__pacific_silver_fir_foliage_e", "douglas_fir__pacific_silver_fir_foliage_f", "douglas_fir__pacific_silver_fir_foliage_g", "douglas_fir__pacific_silver_fir_foliage_h"]
 material = "/Game/Generated/Trees/Materials/douglas_fir/MI_douglas_fir_bark"
@@ -636,14 +636,14 @@ bark_trunk = "fab_douglas_fir_bark"
 bark_branch = "fab_douglas_fir_bark"
 structure_settings = { drop_shaded = 0.15, drop_obsolete = 0.15, turn_up_in_shade = 0.0, turn_to_horizon = 0.1, add_angle = 0.8, add_only_on_end = 0.8, bend_mass = 0.7, shade_area = 2.0 }
 settings_since = "2026-11-18T22:21:40+01:00"
-grown = "2026-11-19T00:44:05+01:00"
+grown = "2026-11-19T11:47:02+01:00"
 variant = "summer"
 mesh = "/Game/Generated/Trees/Catalog/douglas_fir/SK_DouglasFir_r10_h20m"
 static_mesh = "/Game/Generated/Trees/CatalogStatic/douglas_fir/SM_DouglasFir_r10_h20m"
-twigs = 1005
-leaf_area_m2 = 81.9
-leaf_area_target_m2 = 80.8
-plan = "unreal_scripts_douglas_fir_r12_2026-11-19"
+twigs = 3424
+leaf_area_m2 = 241.9
+leaf_area_target_m2 = 242.6
+plan = "unreal_scripts_douglas_fir_young_2026-11-19"
 bones = 1196
 target.dbh_m = { value = 0.216, p25 = 0.205, p75 = 0.224, inside = true, n = 3 }
 target.crown_base_m = { value = 7.0, p25 = 2.842, p75 = 8.581, inside = true, n = 3 }
@@ -787,7 +787,7 @@ plan = "unreal_scripts_douglas_fir_h45_2026-11-19"
 bones = 2036
 target.dbh_m = { value = 0.812, p25 = 0.791, p75 = 1.013, inside = true, n = 0 }
 target.crown_base_m = { value = 22.0, p25 = 4.232, p75 = 12.78, inside = false, n = 0 }
-target.crown_radius_m = { value = 9.289, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
+target.crown_radius_m = { value = 9.011, p25 = 4.415, p75 = 5.458, inside = false, n = 0 }
 
 [trees.european_beech.r07_h05m]
 species = "european_beech"
