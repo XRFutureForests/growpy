@@ -234,7 +234,7 @@ min_point_spacing = 0.0
 # always take priority when given.
 [unreal.watchdog]
 # editor_exe = "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Binaries\\Win64\\UnrealEditor.exe"
-# uproject = "D:\\Unreal\\XRFF_Twin\\XRFF_Twin.uproject"
+# uproject = "D:\\Unreal\\XRFFTwinSandbox\\XRFFTwinSandbox.uproject"
 
 # --- per-species decimation fraction (XRFF-466, 2026-09-16) ---
 # Overrides [unreal.growth_data_json] min_branch_radius_fraction above, keyed by
