@@ -231,6 +231,7 @@ class CompareJob:
     assembly_tris: bool = False
     contexts: list[str] = field(default_factory=lambda: ["light"])
     crown_base: dict[str, float] = field(default_factory=dict)
+    limb: dict[str, float] = field(default_factory=dict)
     sweep: list[list] = field(default_factory=list)
 
     @classmethod
@@ -358,6 +359,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON mesh name -> crown base (m) for the crown view",
     )
     parser.add_argument(
+        "--limb",
+        type=Path,
+        help="JSON mesh name -> height (m) of a limb-end close-up view (E131)",
+    )
+    parser.add_argument(
         "--sweep",
         type=Path,
         help="exposure test tiles: '<label part> <bias> <brightness>' lines",
@@ -391,7 +397,9 @@ def main(argv: list[str] | None = None) -> int:
         else {}
     )
     job = CompareJob.for_set(
-        cset, args.sets, out, contexts, crown_base=crown, sweep=_sweep(args.sweep)
+        cset, args.sets, out, contexts, crown_base=crown,
+        limb=json.loads(args.limb.read_text(encoding="utf-8")) if args.limb else {},
+        sweep=_sweep(args.sweep),
     )
     job_path = job.write(out / "compare_job.json")
     steps = session_steps(job_path, out, contexts)
