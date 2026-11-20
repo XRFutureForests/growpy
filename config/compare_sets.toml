@@ -239,3 +239,13 @@ rows = [
     { label = "BE beech", pattern = "/Game/Generated/Trees/Catalog/european_beech/SK_EuropeanBeech_{cell}", cells = ["r10_h20m", "r10_h30m"] },
     { label = "SP pine", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h20m", "r10_h30m"] },
 ]
+
+[compare.sets.e131]
+description = "E131 young pine crowns: shipped 1.2 against three PVE limb-reach trim arms (2026-11-20)"
+rows = [
+    { label = "SHIP pine 1.2 as shipped (tr0 ladder, E124 crown base)", pattern = "/Game/Generated/Trees/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h05m", "r10_h10m", "r10_h15m", "r10_h20m", "r07_h05m", "r07_h10m", "r07_h15m", "r07_h20m"] },
+    { label = "NONE no trim, fullness raised (fill spacing 0.35 m)", pattern = "/Game/PVE_PINEPAD/yp_none/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h05m", "r10_h10m", "r10_h15m", "r10_h20m", "r07_h05m", "r07_h10m", "r07_h15m", "r07_h20m"] },
+    { label = "HALF crown halfway between today and p75", pattern = "/Game/PVE_PINEPAD/yp_half/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h05m", "r10_h10m", "r10_h15m", "r10_h20m", "r07_h05m", "r07_h10m", "r07_h15m", "r07_h20m"] },
+    { label = "P75 crown radius at the target sheet p75", pattern = "/Game/PVE_PINEPAD/yp_p75/Catalog/scots_pine/SK_ScotsPine_{cell}", cells = ["r10_h05m", "r10_h10m", "r10_h15m", "r10_h20m", "r07_h05m", "r07_h10m", "r07_h15m", "r07_h20m"] },
+    { label = "MP MegaPlants Baltic pine A/B", pattern = "/Game/Megaplant_Library/Tree_Baltic_Pine/Tree_Baltic_Pine_01/Tree_Baltic_Pine_01_{cell}", cells = ["A", "B"] },
+]

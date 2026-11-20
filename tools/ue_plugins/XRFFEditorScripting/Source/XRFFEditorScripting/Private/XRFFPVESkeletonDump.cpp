@@ -313,6 +313,11 @@ FString UXRFFPVESkeletonDump::DumpPVESkeleton(UObject* Run, const FString& Node,
 
 FString UXRFFPVESkeletonDump::MarkCrownBaseRemoval(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare)
 {
+	return MarkCrownTrim(Run, Node, CrownBaseM, MaxShare, 0.0f);
+}
+
+FString UXRFFPVESkeletonDump::MarkCrownTrim(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare, float ReachM)
+{
 	using namespace XRFFPVEDump;
 	UPCGDefaultExecutionSource* Source = AsRun(Run);
 	if (!Source || Source->GetExecutionState().IsGenerating() || !Source->GetGraph())
@@ -432,6 +437,54 @@ FString UXRFFPVESkeletonDump::MarkCrownBaseRemoval(UObject* Run, const FString& 
 		}
 		Stack.Append(Children[B]);
 	}
+	// limb-reach trim (E131): parents are walked before their children, so a child sees its attachment vertex's mark
+	int32 Trimmed = 0, Whole = 0;
+	if (ReachM > 0.0f)
+	{
+		const float Reach2 = FMath::Square(ReachM * 100.0f);
+		for (const TPair<float, int32>& L : FirstOrder)
+		{
+			if (Remove.Contains(L.Value))
+			{
+				continue;
+			}
+			const FVector3f Axis = (*Pos)[(*BPoints)[L.Value][0]];
+			Stack.Reset();
+			Stack.Add(L.Value);
+			while (Stack.Num() > 0)
+			{
+				const int32 B = Stack.Pop();
+				const TArray<int32>& Pts = (*BPoints)[B];
+				if (Pts.Num() == 0)
+				{
+					continue;
+				}
+				const int32 Bud0 = (*Bud)[Pts[0]];
+				int32 K = 1;  // first point to go
+				if (!(Bud0 >= 0 && Bud0 <= MaxBud && Removed[Bud0]))
+				{
+					while (K < Pts.Num() && FMath::Square((*Pos)[Pts[K]].X - Axis.X) + FMath::Square((*Pos)[Pts[K]].Y - Axis.Y) <= Reach2)
+					{
+						++K;
+					}
+				}
+				if (K < Pts.Num())
+				{
+					++(K > 1 ? Trimmed : Whole);
+				}
+				for (int32 I = K; I < Pts.Num(); ++I)
+				{
+					const int32 BudNo = (*Bud)[Pts[I]];
+					if (BudNo >= 0 && BudNo <= MaxBud && !Removed[BudNo])
+					{
+						Removed[BudNo] = true;
+						++Marked;
+					}
+				}
+				Stack.Append(Children[B]);
+			}
+		}
+	}
 	// write ManualEditSettings.RemovedPoints (and size RelativeOffsets to match) through reflection
 	UPCGSettings* Settings = Target->GetSettings();
 	FStructProperty* ParamsProp = Settings ? CastField<FStructProperty>(Settings->GetClass()->FindPropertyByName(TEXT("ManualEditSettings"))) : nullptr;
@@ -464,9 +517,10 @@ FString UXRFFPVESkeletonDump::MarkCrownBaseRemoval(UObject* Run, const FString& 
 	}
 	Settings->PostEditChange();
 	Settings->MarkPackageDirty();
-	const FString Out = FString::Printf(TEXT("removed %d of %d first-order limbs below %.2f m (%d below the line, %d points marked)%s"),
+	const FString Out = FString::Printf(TEXT("removed %d of %d first-order limbs below %.2f m (%d below the line, %d points marked)%s%s"),
 		Remove.Num(), FirstOrder.Num(), CrownBaseM, Below, Marked,
-		Below > Remove.Num() ? *FString::Printf(TEXT(", CAPPED at %.2f"), MaxShare) : TEXT(""));
+		Below > Remove.Num() ? *FString::Printf(TEXT(", CAPPED at %.2f"), MaxShare) : TEXT(""),
+		ReachM > 0.0f ? *FString::Printf(TEXT("; reach %.2f m: %d branches trimmed, %d removed whole"), ReachM, Trimmed, Whole) : TEXT(""));
 	UE_LOG(LogXRFFPVEDump, Display, TEXT("PVE_CROWNBASE %s: %s"), *Target->GetName(), *Out);
 	return Out;
 }

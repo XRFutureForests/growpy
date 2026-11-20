@@ -127,6 +127,7 @@ def look(bias, brightness):
 
 # crown view framing: mesh name -> crown base in m (growpy-ue-compare --crown-base; absent -> the old fixed aim)
 CROWN_BASE = job.get("crown_base") or {}
+LIMB = job.get("limb") or {}
 shots = []  # (actor, location, rotation, fov, file name[, bias, brightness])
 for a in trees:
     origin, extent = a.get_actor_bounds(False)
@@ -161,6 +162,17 @@ for a in trees:
                 unreal.Rotator(roll=0.0, pitch=5.0, yaw=0.0),
                 45.0,
                 name + "_crown",
+            )
+        )
+    if mesh_name in LIMB:
+        # limb-end close-up (E131): 5 m from the crown's +Y edge at the given height, edge 1.5 m inside the frame
+        shots.append(
+            (
+                a,
+                unreal.Vector(origin.x - 500.0, origin.y + extent.y - 150.0, LIMB[mesh_name] * 100.0),
+                zero,
+                40.0,
+                name + "_limb",
             )
         )
     shots.append(

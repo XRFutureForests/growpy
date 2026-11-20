@@ -50,6 +50,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
 	static FString MarkCrownBaseRemoval(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare);
 
+	/** MarkCrownBaseRemoval plus a limb-reach trim (register E131), in one RemovedPoints array: per kept first-order
+	 *  limb the axis is its attachment on the trunk; walking each branch of its subtree from the base, the first point
+	 *  farther (horizontal) than ReachM metres from that axis and every point after it are marked, and a child branch
+	 *  whose attachment vertex is marked goes whole. The trunk is never cut; ReachM <= 0 trims nothing. PVE's Manual
+	 *  Edit thins a trimmed branch by its kept share of points. Returns the crown-base text plus
+	 *  "; reach <r> m: <t> branches trimmed, <w> removed whole", or "ERROR: ...". */
+	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
+	static FString MarkCrownTrim(UObject* Run, const FString& Node, float CrownBaseM, float MaxShare, float ReachM);
+
 	/** Stop and forget a run. */
 	UFUNCTION(BlueprintCallable, Category = "XRFF|PVE")
 	static void ReleasePVERun(UObject* Run);
