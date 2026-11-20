@@ -73,7 +73,7 @@ height_interval = 5
 # cycle 0 (a snapshot cannot be added to a finished run). Each species stops
 # at its own Max Height in tree_asset_lookup.csv, set from the database on
 # 2026-09-22 (measured + SILVA-projected heights, p99): beech/spruce/fir 40,
-# Douglas fir 45, oak 35, ash/linden/pine/maple 30, birch/cherry 25 -- 74
+# Douglas fir 45, oak 35 (40 since 2026-11-20, E132), ash/linden/pine/maple 30, birch/cherry 25 -- 74
 # models per radius, 222 rows. This cap only stops nothing being taller than
 # the tallest species. Memory, not time, is the
 # limit: at h25 three species in parallel already OOMed a 63.5 GB host, so

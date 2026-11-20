@@ -112,3 +112,22 @@ class TestWarnUncapturedMilestones:
         with caplog.at_level("WARNING"):
             _warn_uncaptured_milestones({}, {"X": ceiling}, 5.0, 140)
         assert f"{expected_stages} stage(s) missing" in caplog.text
+
+
+def test_oak_ceiling_40_is_inside_its_allometry_range():
+    """E132 (2026-11-20): oak's ladder is raised to h40 because the H-D table covers it.
+
+    A ceiling above the allometry's height range would extrapolate the DBH silently,
+    which is why ash (31.4 m), birch (26 m) and maple (31.4 m) stay at their ceilings.
+    """
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3]
+    lookup = pd.read_csv(root / "config" / "tree_asset_lookup.csv")
+    row = lookup.set_index("Common Name")
+    assert row.loc["European oak", "Max Height"] == 40
+    table = root / "data" / "assets" / "allometry" / "european_oak.json"
+    if not table.exists():
+        pytest.skip("data/assets is absent (CI)")
+    assert json.loads(table.read_text())["height_range_m"][1] >= 40
