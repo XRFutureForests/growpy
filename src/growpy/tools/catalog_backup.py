@@ -17,7 +17,7 @@ Incremental: a file is copied when it is missing on the share or differs in size
 modification time; nothing is deleted on the share. Writes ``MANIFEST_keep.csv``
 (path, bytes, sha256, mtime). Run after each finished species and at each release.
 
-    python -m growpy.tools.catalog_backup [--dry-run] [--project D:/Unreal/XRFF_Twin]
+    python -m growpy.tools.catalog_backup [--dry-run] [--project D:/Unreal/XRFFTwinSandbox]
 """
 
 import argparse
@@ -38,7 +38,7 @@ SHARE = Path(
     r"\\unfnrd02.public.ads.uni-freiburg.de\unfnrd04\UNFN_XRLab\40_SideProjects"
     r"\tree_catalog"
 )
-PROJECT = Path("D:/Unreal/XRFF_Twin")
+PROJECT = Path("D:/Unreal/XRFFTwinSandbox")
 LADDER = re.compile(r"^[a-z_]+/r\d\d/[^/]+$")
 PLAN_COPY = re.compile(r"_full_growth_data\.\w+\.json$")
 
