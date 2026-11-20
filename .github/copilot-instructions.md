@@ -88,7 +88,7 @@ export_twigs_from_blend(blend_file, output_dir)
 ## Python Coding Standards
 
 - **Style**: Minimal, clean code with shallow indentation  
-- **Formatting**: Use Black formatter (88 char line length)
+- **Formatting**: Use the Ruff formatter (`ruff format`, 88 char line length)
 - **Comments**: Minimal comments, let code be self-documenting
 - **Control Flow**: Avoid complex if/else chains, prefer early returns
 - **Error Handling**: Simple, meaningful error messages (avoid complex try/except chains)
@@ -268,7 +268,7 @@ the-grove/
 - **PostgreSQL/PostGIS**: Spatial database operations
 - **Docker**: Containerized development environment (use `docker compose`)
 - **mamba/conda**: Environment and package management
-- **Black**: Code formatting
+- **Ruff**: Code formatting and linting
 - **GitLab**: Source control and CI/CD
 - **Linear**: Project management with MCP integration
 - **VS Code**: Primary IDE with Copilot integration
@@ -379,7 +379,7 @@ the-grove/
 - **PostgreSQL/PostGIS**: Spatial database operations
 - **Docker**: Containerized development environment (use `docker compose`)
 - **mamba/conda**: Environment and package management
-- **Black**: Code formatting
+- **Ruff**: Code formatting and linting
 - **GitLab**: Source control and CI/CD
 - **Linear**: Project management with MCP integration
 - **VS Code**: Primary IDE with Copilot integration

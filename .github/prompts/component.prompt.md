@@ -11,7 +11,7 @@
    - Follow package-style imports
 
 2. **Code Style**:
-   - Use Black formatting (88 char line length)
+   - Use Ruff formatting (88 char line length)
    - Minimal comments, self-documenting code
    - Shallow indentation, avoid nested if/else
    - Early returns for error conditions

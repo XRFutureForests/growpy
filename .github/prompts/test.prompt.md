@@ -24,7 +24,7 @@
    - Keep tests independent and isolated
 
 4. **Code Style**:
-   - Follow Black formatting
+   - Follow Ruff formatting
    - Minimal comments, descriptive test names
    - Use type hints where helpful
    - Clean, readable assertions
