@@ -11,8 +11,7 @@
         "vscode": {
             "extensions": [
                 "ms-python.python",
-                "ms-python.black-formatter",
-                "ms-python.flake8",
+                "charliermarsh.ruff",
                 "ms-toolsai.jupyter",
                 "GitHub.copilot",
                 "GitHub.copilot-chat",
@@ -21,7 +20,7 @@
             "settings": {
                 "python.defaultInterpreterPath": "/opt/conda/envs/growpy/bin/python",
                 "python.terminal.activateEnvironment": true,
-                "python.formatting.provider": "black",
+                "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" },
                 "editor.formatOnSave": true,
                 "editor.inlineSuggest.enabled": true,
                 "python.analysis.extraPaths": [

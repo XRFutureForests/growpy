@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7.0.0", "black>=22.0.0", "ruff>=0.0.250", "mypy>=1.0.0"]
+dev = ["pytest>=7.0.0", "ruff>=0.2.0"]
 export = ["usd-core>=23.11"]
 monitor = ["psutil>=5.9.0"]
 species = ["pygbif>=0.6.0"]
@@ -112,11 +112,3 @@ ignore = ["E402"]
 # enabling C901 today would add ~20 advisory findings to an existing backlog.
 # Re-enable by adding "C90" to select once that backlog is down.
 max-complexity = 15
-
-[tool.mypy]
-python_version = "3.12"
-files = ["src/growpy"]
-exclude = "src/the_grove_23"
-ignore_missing_imports = true
-warn_unused_ignores = true
-no_implicit_optional = true

@@ -5,7 +5,7 @@
 ## Review Checklist
 
 ### 1. **Python Code Quality**
-- [ ] Code follows Black formatting standards
+- [ ] Code passes `ruff format --check` and `ruff check`
 - [ ] Type hints are used appropriately
 - [ ] Functions have clear, descriptive names
 - [ ] Minimal comments, self-documenting code

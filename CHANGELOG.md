@@ -5,6 +5,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-20 — Ruff is the only formatter and linter
+
+#### Removed
+
+- `black` and `mypy` leave the `dev` extra, and `[tool.mypy]` leaves `pyproject.toml`:
+  Ruff formats and lints, and no script, test or hook ran mypy. The `ruff` floor rises
+  from 0.0.250 to 0.2.0 so the `[tool.ruff.lint]` section is read. The devcontainer and
+  the Copilot instructions name Ruff instead of Black and flake8.
+
 ### 2026-11-18 — Tree catalog moves to TreeLibrary
 
 #### Changed
