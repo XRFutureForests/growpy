@@ -156,9 +156,9 @@ the-grove/
 
 - **MANDATORY Conda/Mamba**: ONLY use conda or mamba for Python environment management - NEVER use pip venv, virtualenv, poetry, pipenv, or any other Python environment solutions
 - **Conda Environment**: ALWAYS ensure the custom conda environment is activated before running Python commands
-- **Environment Activation**: Use `conda activate <project-name>` or `mamba activate <project-name>` before executing any Python-related tasks
-- **Environment Creation**: Use `mamba create -n <project-name> python=3.x` for new environments
-- **Package Installation**: Use `mamba install` or `conda install` when possible, `pip install` only when packages unavailable in conda-forge
+- **Environment Activation**: Use `conda activate growpy` before executing any Python-related tasks
+- **Environment Creation**: Use `conda env create -f environment.yml`, then `pip install -e ".[dev]"`
+- **Package Installation**: Add packages to `environment.yml` (conda-forge) when possible, `pip install` only when packages unavailable in conda-forge
 - **Docker Commands**: Always use `docker compose` (with space) instead of `docker-compose` (with hyphen)
 - **Python Execution**: Verify environment is active with correct Python interpreter before running scripts
 

@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### 2026-11-20 — Ruff is the only formatter and linter
 
+#### Changed
+
+- `environment.yml` resolves from conda-forge only (`nodefaults` replaces `defaults`).
+
 #### Removed
 
 - `black` and `mypy` leave the `dev` extra, and `[tool.mypy]` leaves `pyproject.toml`:
