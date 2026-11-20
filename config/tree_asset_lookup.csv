@@ -4,7 +4,7 @@ Norway spruce,norway_spruce,Picea abies,5284884,Pinaceae - Fir.seed.json,Pacific
 Scots pine,scots_pine,Pinus sylvestris,5285637,Pinaceae - Scots pine.seed.json,ScotsPineTwig,Pinaceae_Scots_pine,#aea59bff,#97a381ee,"Pine,Scotch pine",Fir70.jpg,Kiefer,30,7,slow_conifer,yes
 Silver fir,silver_fir,Abies alba,2685484,Pinaceae - Fir.seed.json,PacificSilverFirTwig,Pinaceae_Fir,#b9b1a4ff,#849085ea,Fir,Fir70.jpg,Tanne,40,8,slow_conifer,yes
 Grand fir,grand_fir,Abies grandis,2685361,Pinaceae - Grand fir.seed.json,PacificSilverFirTwig,Pinaceae_Grand_fir,#7f6659ff,#2d6b23ff,,Fir70.jpg,,35,8,slow_conifer,
-European oak,european_oak,Quercus robur,2878688,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#b8aea0ff,#96a281e1,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg,Eiche,35,12,slow_broadleaf,yes
+European oak,european_oak,Quercus robur,2878688,Fagaceae - European oak.seed.json,EuropeanOakTwig,Fagaceae_European_oak,#b8aea0ff,#96a281e1,"Oak,Common oak,Pedunculate oak,English oak",NorthernRedOak60.jpg,Eiche,40,12,slow_broadleaf,yes
 Red oak,red_oak,Quercus rubra,2880539,Fagaceae - Red oak.seed.json,RedOakTwig,Fagaceae_Red_oak,#b8aea0ff,#9ca780de,Northern red oak,NorthernRedOak60.jpg,Roteiche,,,slow_broadleaf,
 White oak,white_oak,Quercus alba,2879737,Fagaceae - White oak.seed.json,EuropeanOakTwig,Fagaceae_White_oak,#998c7fff,#47932dff,,NorthernRedOak60.jpg,,,,slow_broadleaf,
 Sweet chestnut,sweet_chestnut,Castanea sativa,5333294,Fagaceae - Sweet chestnut.seed.json,,Fagaceae_Sweet_chestnut,#66594cff,#4ca53fff,,SweetChestnut40.jpg,Edelkastanie,,,slow_broadleaf,
