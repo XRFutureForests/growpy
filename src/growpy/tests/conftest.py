@@ -11,6 +11,7 @@ bpy is only present in the growpy conda env, so its absence is tolerated.
 """
 
 import importlib.util
+from pathlib import Path
 
 import pytest
 
@@ -56,6 +57,12 @@ def _grove_available() -> bool:
 
 _HAVE_GROVE = _grove_available()
 collect_ignore = [] if _HAVE_GROVE else list(_GROVE_DEPENDENT)
+
+# These read the converted twig prototypes under the gitignored data/assets/ (absent on CI).
+# shortcut: whole modules, so CI also skips their asset-free tests; split them if CI coverage matters.
+_ASSET_DEPENDENT = ["test_pve_asset_script.py", "test_pve_graph_plan.py", "test_pve_offline_solve.py"]
+if not (Path(__file__).resolve().parents[3] / "data" / "assets").is_dir():
+    collect_ignore += _ASSET_DEPENDENT
 
 
 # Tests that reach Grove code lazily (at run time, not import time) would fail without it;
