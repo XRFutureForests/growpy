@@ -251,12 +251,12 @@ min_point_spacing = 0.0
 #   * the five conifers -- at 0.06 they already keep 433-3,016 branches and run
 #     at 1-19 instances per branch. A lower fraction buys no look and costs
 #     branch geometry to mesh.
-#   * sycamore maple and wild cherry -- they sit AT the one-instance-per-branch
+#   * (superseded 2026-11-20, maple and cherry are tabled below) sycamore maple and wild cherry -- they sit AT the one-instance-per-branch
 #     floor (1.0-4.2 per branch), so more branches would raise their instance
 #     count and their leaf area rather than spread the same foliage wider.
 #     Their crowns are too sparse, which is the opposite defect and not this one.
 [unreal.growth_data_json.min_branch_radius_fraction_per_species]
-common_ash = 0.02
+common_ash = 0.20
 # 0.03, not 0.02 (2026-09-16): 0.02 is 82,408 bones at r16_h15m and UE will
 # not open it. With min_point_spacing 0.2 below, 0.03 is 19,240 bones there
 # and <= 22,342 at h25 (the 0.06 catalog opened at 27,526-29,828), keeping
@@ -271,16 +271,31 @@ common_ash = 0.02
 # 2026-11-17 (owner, E101 cut sheet): 0.20, in effect a flat 25 mm cut diameter under the bound below; the
 # only cut that put the compound-dressed beech inside the +-15 % leaf-area guard at h10 and h20 (arm B).
 european_beech = 0.20
-european_oak = 0.02
-silver_birch = 0.02
-small_leaved_linden = 0.02
+# 2026-11-20 (owner, broadleaf bone cut): the beech fraction for every release-2 broadleaf. The fraction
+# only sets the cut on young trees; from about h15 the absolute bound below does (cut = min(fraction *
+# trunk base radius, bound)). The old 0.02 (0.06 default for maple and cherry) left 4.8-30k bones at h20.
+european_oak = 0.20
+silver_birch = 0.20
+small_leaved_linden = 0.20
+sycamore_maple = 0.20
+wild_cherry = 0.20
 
 # --- per-species bound on that cut, metres of radius (owner 2026-11-16) ---
 # The fraction scales with the trunk, so a 35-40 m beech would be cut at 4-5 cm.
 # The cut is bounded by the largest twig-catalog compound (L bin, 12-25 mm cut
 # diameter): 0.0125 m radius = 25 mm. Not listed: no bound.
+# 2026-11-20 broadleaf cut diameters (radius x 2): the smallest that keeps every E121 h20 tree (seeds
+# 512/1/4, r07/r10, 0.2 m spacing) at or below 2,150 bones, rounded up to 0.5 mm. Solved on the real
+# cut functions (_decimate_growth_data + _resample_growth_data). Ash 25 mm (= beech), oak 35, birch 39,
+# linden 47, maple 27.5, cherry 62 mm. Cherry is the outlier: few, thick limbs.
 [unreal.growth_data_json.max_branch_cut_radius_per_species]
 european_beech = 0.0125
+common_ash = 0.0125
+european_oak = 0.0175
+silver_birch = 0.0195
+small_leaved_linden = 0.0235
+sycamore_maple = 0.01375
+wild_cherry = 0.031
 
 # --- per-species point spacing (XRFF-471, 2026-09-16) ---
 # Overrides [unreal.growth_data_json] min_point_spacing above, keyed by
@@ -290,6 +305,12 @@ european_beech = 0.0125
 # 3.6 points per branch and fir at 4.7, beech at 12.
 [unreal.growth_data_json.min_point_spacing_per_species]
 european_beech = 0.2
+common_ash = 0.2
+european_oak = 0.2
+silver_birch = 0.2
+small_leaved_linden = 0.2
+sycamore_maple = 0.2
+wild_cherry = 0.2
 
 # --- per-species crown-base cut (XRFF-476, 2026-09-17) ---
 # Listing a species drops every side branch attached BELOW the tree's own
