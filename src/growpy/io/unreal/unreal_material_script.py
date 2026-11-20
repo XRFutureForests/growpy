@@ -12,6 +12,7 @@ import json
 import logging
 from typing import Any
 
+from growpy.config.ue_layout import MATERIALS_DIR, TREES_DIR, TWIGS_DIR
 from .pve_asset_script import DEFAULT_MASTER_MATERIAL
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def _build_material_script(
         # (docs/guides/unreal-import.md troubleshooting), but it does NOT match
         # a project that keeps MA_Foliage_Trees alongside ST_TreeCatalogEntry
         # in the template dir, which is the normal layout.
-        parent_material_path = f"{project_path}/Materials/MA_Foliage_Trees"
+        parent_material_path = f"{project_path}/{MATERIALS_DIR}/MA_Foliage_Trees"
     # Leaf textures and foliage meshes live under Instances/ and are named
     # after the TWIG ASSET, not the tree: douglas fir's foliage is
     # "pacific_silver_fir_*". Emit the reverse map so those assets can be
@@ -92,7 +93,7 @@ print("GrowPy Post-Import: Assign MA_Foliage_Trees Material Instances")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-MATERIALS_PATH = IMPORT_PATH + "/Materials"
+MATERIALS_PATH = IMPORT_PATH + "/{MATERIALS_DIR}"
 PARENT_MATERIAL_PATH = "{parent_material_path}"
 # The plugin's own master, which every cloned reference instance is parented
 # to. Used when the project keeps no copy at PARENT_MATERIAL_PATH (XRFF_Twin
@@ -440,19 +441,19 @@ for ad in all_assets:
 
     # Derive the species standardized-name from the path. The layout is sorted
     # by TYPE, so the species is not the first segment any more:
-    #   Catalog/<species>/...   one finished tree
-    #   Foliage/<asset>/...     shared twig or spray -- species is in the NAME,
+    #   Trees/<species>/...     one finished tree
+    #   Twigs/<asset>/...       shared twig or spray -- species is in the NAME,
     #                           because one twig can serve several species
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Foliage":
+    if parts and parts[0] == "{TWIGS_DIR}":
         name = str(ad.asset_name)
         for token in ("_foliage_", "_twigs_combined_", "_foliage"):
             idx = name.find(token)
             if idx > 0:
                 species_found.add(name[:idx])
                 break
-    elif len(parts) > 1 and parts[0] == "Catalog":
+    elif len(parts) > 1 and parts[0] == "{TREES_DIR}":
         species_found.add(parts[1])
 
 print(f"Found {{len(mesh_assets)}} mesh assets covering {{len(species_found)}} species")
@@ -479,11 +480,11 @@ for ad in all_assets:
 
     rel = pkg[len(IMPORT_PATH):].lstrip("/") if pkg.startswith(IMPORT_PATH) else pkg
     parts = rel.split("/")
-    if parts and parts[0] == "Foliage":
+    if parts and parts[0] == "{TWIGS_DIR}":
         # One twig serves several species, so a leaf texture belongs to all of
         # them, not one.
         owners = _species_from_instances_name(str(ad.asset_name))
-    elif len(parts) > 1 and parts[0] == "Catalog":
+    elif len(parts) > 1 and parts[0] == "{TREES_DIR}":
         owners = [parts[1]]
     else:
         owners = []

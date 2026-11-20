@@ -655,7 +655,7 @@ class GrowPyConfig:
     # that had all already exported and logged.
     unreal_pve_triangle_cap: float = 120e6
     # Also export each tree as a static Nanite mesh (SM_<name> under
-    # <pve_content_root>/CatalogStatic/<species>) for the surround forest,
+    # <pve_content_root>/TreesStatic/<species>) for the surround forest,
     # where skinned instances cost CPU per component and per instance.
     unreal_pve_static_twins: bool = False
     # Content Browser base for the wind/PVE post-import scripts. Empty means

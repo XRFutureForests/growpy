@@ -21,8 +21,8 @@ desktop:
 
 Usage::
 
-    growpy-pve-export /Game/Generated/Trees/Graphs/PVG_SilverFir_1 /Game/Generated/Trees/Graphs/PVG_SilverFir_2
-    growpy-pve-export /Game/PVE_Test/Graphs/PVG_Wind_Probe --no-save --keep-open
+    growpy-pve-export <root>/Structures/PVG_SilverFir_1 <root>/Structures/PVG_SilverFir_2
+    growpy-pve-export /Game/PVE_Test/Structures/PVG_Wind_Probe --no-save --keep-open
     growpy-pve-export ... --log "D:/Unreal/XRLabDB 5.8/Saved/Logs/XRLabDB.log"
 
 The log path defaults to ``<uproject dir>/Saved/Logs/<project>.log`` from
@@ -42,6 +42,8 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+from growpy.config.ue_layout import STRUCTURES_PATH
 
 logger = logging.getLogger("growpy.pve_export")
 
@@ -103,7 +105,7 @@ import unreal
 
 # Every dirty package under the content root, not just the export folder:
 # the export converts each palette static mesh into a skeletal-mesh part
-# (SKM_<name>, beside the static mesh under <Species>/Foliage/...) and the
+# (SKM_<name>, beside the static mesh under Twigs/<species>/...) and the
 # tree's Nanite assembly references those parts by path. Unsaved, they are
 # gone with the editor session and every tree reloads as a bare skeleton
 # ("Failed to build Nanite Assembly part from skeletal mesh (SKM_...)",
@@ -386,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "graphs",
         nargs="+",
-        help="PVE graph asset paths, e.g. /Game/Generated/Trees/Graphs/PVG_SilverFir_1",
+        help=f"PVE graph asset paths, e.g. {STRUCTURES_PATH}/PVG_SilverFir_1",
     )
     parser.add_argument(
         "--log",

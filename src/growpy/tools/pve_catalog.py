@@ -30,7 +30,7 @@ collapsed r00 and r07 onto one key and called the open-grown tree competed.
 Usage::
 
     growpy-pve-catalog data/output/forest/unreal_scripts/pve_export_manifest.json
-    growpy-pve-catalog <manifest> --catalog /Game/Generated/Trees/DT_TreeCatalog --no-pcg
+    growpy-pve-catalog <manifest> --catalog <TREES_ROOT>/DT_TreeCatalog --no-pcg
 """
 
 from __future__ import annotations

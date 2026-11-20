@@ -80,7 +80,12 @@ import logging
 from dataclasses import dataclass
 from pathlib import Path
 
-from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
+from growpy.config.ue_layout import (
+    MATERIALS_DIR,
+    SCHEMA_ROOT,
+    TREES_ROOT,
+    TWIGS_DIR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -287,9 +292,9 @@ class SpeciesAssetSpec:
     def foliage_folder(self) -> str:
         """Where the palette prototypes live.
 
-        The species folder under ``Foliage/`` IS the palette -- assets are
+        The species folder under ``Twigs/`` IS the palette -- assets are
         sorted by type, not by the pipeline that produced them, so there is no
-        second ``/Foliage`` level inside it.
+        second ``/Twigs`` level inside it.
         """
         return self.content_folder
 
@@ -522,11 +527,11 @@ def build_species_asset_spec(
 
     return SpeciesAssetSpec(
         species=species,
-        content_folder=f"{content_root}/Foliage/{folder_name or species}",
+        content_folder=f"{content_root}/{TWIGS_DIR}/{folder_name or species}",
         prototypes=prototypes,
         bark_color=color,
         bark_normal=normal,
-        materials_folder=f"{content_root}/Materials/{folder_name or species}",
+        materials_folder=f"{content_root}/{MATERIALS_DIR}/{folder_name or species}",
         foliage_color=foliage_color,
         foliage_normal=foliage_normal,
         foliage_params=foliage_params,
@@ -1170,7 +1175,7 @@ def trees_in_open_level():
     gallery level open that overflowed the GPU-scene scatter buffer and took
     the editor down while the new material instance was saved (2026-09-25).
     """
-    roots = sorted(set(s["content_folder"].rsplit("/Foliage/", 1)[0] + "/"
+    roots = sorted(set(s["content_folder"].rsplit("/{twigs_dir}/", 1)[0] + "/"
                        for s in PLAN["species"]))
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
     found = 0
@@ -1292,7 +1297,8 @@ def generate_pve_asset_script(
     output_dir.mkdir(parents=True, exist_ok=True)
     script_path = output_dir / script_name
     script_path.write_text(
-        _SCRIPT_TEMPLATE.format(plan=_plan_payload(plan)), encoding="utf-8"
+        _SCRIPT_TEMPLATE.format(plan=_plan_payload(plan), twigs_dir=TWIGS_DIR),
+        encoding="utf-8",
     )
     logger.info(
         "Generated PVE asset script: %s (%d species, %d prototype(s))",

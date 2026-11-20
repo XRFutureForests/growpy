@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pytest
 
+from growpy.config.ue_layout import MATERIALS_PATH, TWIGS_PATH
 from growpy.io.unreal.pve_asset_script import (
     DEFAULT_CLONE_SOURCES,
     DEFAULT_MASTER_MATERIAL,
@@ -109,13 +110,13 @@ class TestSpecResolution:
 
     def test_folder_name_can_be_overridden(self):
         spec = build_species_asset_spec("european_beech", folder_name="Beech")
-        assert spec.content_folder == "/Game/Generated/Trees/Foliage/Beech"
-        assert spec.materials_folder == "/Game/Generated/Trees/Materials/Beech"
+        assert spec.content_folder == f"{TWIGS_PATH}/Beech"
+        assert spec.materials_folder == f"{MATERIALS_PATH}/Beech"
 
     def test_the_palette_and_the_materials_are_sorted_by_type(self):
         spec = build_species_asset_spec("european_beech")
-        assert spec.foliage_folder == "/Game/Generated/Trees/Foliage/european_beech"
-        assert spec.bark_folder == "/Game/Generated/Trees/Materials/european_beech"
+        assert spec.foliage_folder == f"{TWIGS_PATH}/european_beech"
+        assert spec.bark_folder == f"{MATERIALS_PATH}/european_beech"
 
     def test_content_root_can_be_overridden(self):
         spec = build_species_asset_spec("silver_fir", content_root="/Game/PVE_Test")
@@ -166,7 +167,7 @@ class TestSpecResolution:
     def test_the_foliage_material_sits_with_the_bark(self):
         spec = build_species_asset_spec("european_beech")
         assert spec.foliage_material == (
-            "/Game/Generated/Trees/Materials/european_beech/MI_european_beech_foliage"
+            f"{MATERIALS_PATH}/european_beech/MI_european_beech_foliage"
         )
 
 
@@ -768,7 +769,7 @@ class TestCli:
         main(["european_beech", "--output-dir", str(tmp_path),
               "--content-root", "/Game/PVE_Test"])
         text = (tmp_path / "growpy_pve_assets.py").read_text(encoding="utf-8")
-        assert "/Game/PVE_Test/Foliage/european_beech" in text
+        assert "/Game/PVE_Test/Twigs/european_beech" in text
 
 
 class TestCompoundPaletteExistingParts:

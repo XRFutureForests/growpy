@@ -13,7 +13,8 @@ import os
 
 import unreal
 
-ROOT = "/Game/Generated/Trees/Catalog"
+# Runs in the editor, where growpy is not importable: ue_layout.TREES_PATH.
+ROOT = "/Game/00_XRFF/30_Forest/TreeLibrary/Trees"
 registry = unreal.AssetRegistryHelpers.get_asset_registry()
 flt = unreal.ARFilter(
     package_paths=[ROOT],

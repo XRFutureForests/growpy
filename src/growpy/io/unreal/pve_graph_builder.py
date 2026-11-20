@@ -130,7 +130,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from growpy.config.ue_layout import TREES_ROOT
+from growpy.config.ue_layout import STRUCTURES_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ def static_twin_name(mesh_name: str) -> str:
     """The static twin's asset name: ``SK_X`` -> ``SM_X``.
 
     The surround forest finds a plot tree's twin by this rule plus the folder
-    swap ``Catalog/`` -> ``CatalogStatic/`` (``PCG_ForestStatic`` derives the
+    swap ``Trees/`` -> ``TreesStatic/`` (``PCG_ForestStatic`` derives the
     path in the graph), so the two must stay in step.
     """
     return "SM_" + (mesh_name[3:] if mesh_name.startswith("SK_") else mesh_name)
@@ -752,7 +752,7 @@ class PVEGraphSpec:
     palette_meshes: tuple[str, ...]
     bark_material: str
     export_folder: str
-    graph_folder: str = f"{TREES_ROOT}/Graphs"
+    graph_folder: str = STRUCTURES_PATH
     profile_asset: str = (
         "/ProceduralVegetationEditor/SampleAssets/StarterContent"
         "/Trunk_Profiles/Trunk_Profiles_01"

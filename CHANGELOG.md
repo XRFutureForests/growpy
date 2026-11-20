@@ -5,6 +5,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-18 — Tree catalog moves to TreeLibrary
+
+#### Changed
+
+- The tree catalog root (`ue_layout.TREES_ROOT`, `[unreal] project_path` /
+  `pve_content_root`) moves from `/Game/Generated/Trees` to
+  `/Game/00_XRFF/30_Forest/TreeLibrary` (owner 2026-11-18). growpy writes there from the
+  next full regeneration; nothing is moved in the editor, and the old root stays
+  (`LEGACY_TREES_ROOT`) until the new one is verified.
+- Subfolders are renamed: `Graphs` -> `Structures`, `GraphsStatic` ->
+  `StructuresStatic`, `Foliage` -> `Twigs`, `Catalog` -> `Trees`, `CatalogStatic`
+  -> `TreesStatic`; `Materials`, `Wind` and `DT_TreeCatalog` keep their names.
+  Bark intake instances go to `Materials/Bark`, vendor part copies to
+  `Twigs/ThirdParty/<pack>`. Every path derives from `ue_layout`.
+
+#### Added
+
+- `growpy-tree-catalog build` also writes `data/input/catalog_index.toml`: one
+  generated row per catalog component (structure, twig, spray, compound,
+  material, tree) with source, licence, path, cost fields where known and status.
+- `growpy-twig-catalog`: sources `greenleaf` and `fab`; a vendor `source_ref` may
+  be a pack path `pack:<Pack>/<path>` (`resolve_pack_ref` maps it to `/Game/` or
+  `/Game/10_ThirdPartyAssets/`); optional `nanite_triangles`, `textures` and
+  `status` (`candidate`, `shipped <release>`, `held <release>`, `retired`) are
+  checked when present. The eight MegaPlants pine entries use pack paths.
+
 ### 2026-11-13 — Bark tile pair: one material per branch generation (XRFF-679)
 
 #### Added

@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from growpy.config.ue_layout import SCHEMA_ROOT, TREES_ROOT
+from growpy.config.ue_layout import SCHEMA_ROOT, TREES_DIR, TREES_ROOT, TWIGS_DIR
 from growpy.utils.color import hex_to_linear_rgba as _hex_to_linear_rgba
 from growpy.utils.color import load_species_colors as _load_species_colors
 from growpy.utils.color import srgb_to_linear as _srgb_to_linear
@@ -218,9 +218,9 @@ def _build_consolidation_script(project_path: str) -> str:
 
     When Unreal imports tree assembly USDAs, it follows external references to
     twig files and re-imports them into each tree's local folder — even though
-    batch 0 already imported the shared copies into Foliage/.  This script
+    batch 0 already imported the shared copies into Twigs/.  This script
     finds those local duplicates, redirects all references to the shared
-    Foliage version via consolidate_assets(), and deletes the leftovers.
+    Twigs version via consolidate_assets(), and deletes the leftovers.
     """
     return f"""
 import unreal
@@ -232,12 +232,12 @@ print("GrowPy Post-Import: Consolidate Duplicate Twig Assets")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-FOLIAGE_PATH = IMPORT_PATH + "/Foliage"
+FOLIAGE_PATH = IMPORT_PATH + "/{TWIGS_DIR}"
 
 asset_registry = unreal.AssetRegistryHelpers.get_asset_registry()
 asset_tools = unreal.AssetToolsHelpers.get_asset_tools()
 
-# Step 1: Build lookup of canonical foliage assets in Foliage/
+# Step 1: Build lookup of canonical foliage assets in {TWIGS_DIR}/
 instances_assets = asset_registry.get_assets_by_path(FOLIAGE_PATH, recursive=True)
 canonical = {{}}  # asset_name -> asset_path
 for asset in instances_assets:
@@ -245,7 +245,7 @@ for asset in instances_assets:
     if "_foliage" in name.lower():
         canonical[name] = str(asset.package_name)
 
-print(f"Found {{len(canonical)}} canonical foliage assets in Foliage/")
+print(f"Found {{len(canonical)}} canonical foliage assets in {TWIGS_DIR}/")
 
 if not canonical:
     print("No shared foliage assets found — skipping consolidation")
@@ -255,7 +255,7 @@ else:
     duplicates = []  # (duplicate_path, canonical_path)
     for asset in all_assets:
         asset_path = str(asset.package_name)
-        # Skip assets already in Foliage/
+        # Skip assets already in {TWIGS_DIR}/
         if asset_path.startswith(FOLIAGE_PATH):
             continue
         name = str(asset.asset_name)
@@ -380,7 +380,7 @@ for asset_data in all_assets:
     # Skip the shared foliage library (twigs and sprays, not tree assemblies).
     # This guard is what keeps them out of DT_TreeCatalog -- it must track the
     # folder name, or every twig is catalogued as a tree.
-    if "/Foliage/" in pkg:
+    if "/{TWIGS_DIR}/" in pkg:
         continue
     assemblies.append((asset_name, pkg))
 
@@ -637,7 +637,7 @@ def _get_ue_world():
 def _fixup_dest_redirectors(dest_path):
     """Resolve and delete ObjectRedirectors under dest_path before import.
 
-    Prior runs + batch_99_consolidate move shared twigs to /Foliage/ and
+    Prior runs + batch_99_consolidate move shared twigs to /Twigs/ and
     leave ObjectRedirectors behind. USDStageImporter then crashes UE with
     "Renaming an object on top of an existing object is not allowed" when
     it tries to create a new SkeletalMesh at a redirector's path.
@@ -977,7 +977,7 @@ def generate_unreal_import_script(
         blocks += 'print("Importing shared twig/foliage instances...")\n'
         for inst_file in sorted_instances:
             inst_path = str(inst_file.resolve()).replace("\\", "/")
-            blocks += _build_import_block(inst_path, "Foliage", inst_file.stem)
+            blocks += _build_import_block(inst_path, TWIGS_DIR, inst_file.stem)
 
         batch_name = "import_batch_00_instances.py"
         batch_label = f"Shared instances ({len(sorted_instances)} files)"
@@ -1003,12 +1003,12 @@ def generate_unreal_import_script(
             for usd_file in sorted(variant_trees):
                 usd_path = str(usd_file.resolve()).replace("\\", "/")
                 # Type-sorted layout: every finished tree mesh lands under
-                # Catalog/<species>/, whichever route produced it. The surround
+                # Trees/<species>/, whichever route produced it. The surround
                 # radius is deliberately NOT a folder -- it is a token in the
                 # asset name, which is what the catalog builder parses, and a
                 # radius folder is the only reason the two routes could not
                 # share a destination.
-                dest_subpath = f"Catalog/{species_folder}"
+                dest_subpath = f"{TREES_DIR}/{species_folder}"
 
                 is_assembly = "_assembly" in usd_file.stem
                 wind_json = ""

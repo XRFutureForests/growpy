@@ -34,7 +34,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from growpy.config.ue_layout import TREES_ROOT
+from growpy.config.ue_layout import TREES_DIR, TREES_ROOT, TWIGS_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ print("GrowPy Post-Import: Import Auxiliary Textures")
 print("=" * 60)
 
 IMPORT_PATH = "{project_path}"
-FOLIAGE_PATH = IMPORT_PATH + "/Foliage"
+FOLIAGE_PATH = IMPORT_PATH + "/{twigs_folder}"
 TEXTURES_DIR = r"{textures_dir}"
 TWIGS_DIR = r"{twigs_dir}"
 
@@ -112,7 +112,7 @@ def _configure(task, kind):
 
 
 # --- bark normals: beside each species' existing bark diffuse ---------------
-# Bark textures come in with the tree mesh, so they sit under Catalog/<species>/.
+# Bark textures come in with the tree mesh, so they sit under Trees/<species>/.
 # The layout is sorted by type, so the species is parts[1], not parts[0].
 bark_targets = {{}}
 for a in ar.get_assets_by_path(IMPORT_PATH, True):
@@ -125,7 +125,7 @@ for a in ar.get_assets_by_path(IMPORT_PATH, True):
     pkg = str(a.package_name)
     rel = pkg[len(IMPORT_PATH):].lstrip("/")
     parts = rel.split("/")
-    if len(parts) < 2 or parts[0] != "Catalog":
+    if len(parts) < 2 or parts[0] != "{trees_folder}":
         continue
     bark_targets[(parts[1], pkg.rsplit("/", 1)[0])] = name
 
@@ -231,6 +231,8 @@ def generate_texture_import_script(
     root = Path("data/assets")
     body = _TEXTURE_SCRIPT.format(
         project_path=project_path,
+        twigs_folder=TWIGS_DIR,
+        trees_folder=TREES_DIR,
         textures_dir=str((textures_dir or root / "textures").resolve()).replace(
             "\\", "/"
         ),

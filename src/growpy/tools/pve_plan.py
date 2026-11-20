@@ -22,6 +22,8 @@ import logging
 import sys
 from pathlib import Path
 
+from growpy.config.ue_layout import STRUCTURES_DIR
+
 logger = logging.getLogger("growpy.pve_plan")
 
 
@@ -110,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
         output_dir,
         forest_root,
         content_root=content_root,
-        graph_folder=f"{content_root}/Graphs",
+        graph_folder=f"{content_root}/{STRUCTURES_DIR}",
         triangle_cap=config.unreal_pve_triangle_cap,
         nanite_shape_preservation=args.shape,
         collision_generation=args.collision,

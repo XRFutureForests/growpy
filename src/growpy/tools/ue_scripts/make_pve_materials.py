@@ -41,7 +41,7 @@ PVE_MASTER = (
 # disabled; it is the fallback, not the default.
 FALLBACK_MASTER = "/Game/XRFF/Forest/Data/MA_Foliage_Trees"
 
-TARGET_ROOT = "/Game/Generated/Trees/Materials"
+TARGET_ROOT = "/Game/00_XRFF/30_Forest/TreeLibrary/Materials"
 
 
 def _load_master():

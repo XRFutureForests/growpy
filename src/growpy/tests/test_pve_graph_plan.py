@@ -742,7 +742,7 @@ class TestPlanEndToEnd:
         graph_text = plan.script.read_text(encoding="utf-8")
         asset_text = plan.asset_script.read_text(encoding="utf-8")
         # whatever palette the species wears (flat twigs, or compounds since 1.2 beech)
-        foliage = r"/Game/PVE_Test/Foliage/[\w/]+/StaticMeshes/SM_\w+"
+        foliage = r"/Game/PVE_Test/Twigs/[\w/]+/StaticMeshes/SM_\w+"
         meshes = set(re.findall(foliage, graph_text))
         assert meshes
         assert all(mesh in asset_text for mesh in meshes)
@@ -777,8 +777,8 @@ class TestPlanEndToEnd:
         assert on.graphs
         for graph in on.graphs:
             species = graph.export_folder.rsplit("/", 1)[1]
-            assert graph.export_folder == f"{root}/Catalog/{species}"
-            assert graph.static_export_folder == f"{root}/CatalogStatic/{species}"
+            assert graph.export_folder == f"{root}/Trees/{species}"
+            assert graph.static_export_folder == f"{root}/TreesStatic/{species}"
 
 
 class TestPipelineWiring:

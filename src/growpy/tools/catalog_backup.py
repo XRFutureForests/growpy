@@ -4,8 +4,8 @@ The catalog lives in the UE project (no version control) and its skeletons in gr
 ``data/output`` (gitignored); both sit on one local disk. This mirrors, under
 ``<share>/tree_catalog/``:
 
-* ``XRFF_Twin/Content/Generated/Trees/``: the catalog itself (graphs, meshes, twigs,
-  materials);
+* ``XRFF_Twin/Content/<ue_layout.TREES_ROOT>/``: the catalog itself (graphs, meshes,
+  twigs, materials);
 * ``growpy/data/output/forest/``: per species the ``r??`` ladders the catalog is built
   from (growth JSONs, TAMF, icons) without the USD exports and without the plan's
   ``.carve``/``.floor`` copies (``growpy-pve-plan`` rewrites them), plus every
@@ -30,6 +30,8 @@ import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
+
+from growpy.config.ue_layout import TREES_ROOT, content_relpath
 
 REPO = Path(__file__).resolve().parents[3]
 SHARE = Path(
@@ -58,8 +60,8 @@ def sources(project: Path) -> list[tuple[Path, str, Callable[[str], bool]]]:
     """(source root, path under the share, keep(relative posix path))."""
     return [
         (
-            project / "Content/Generated/Trees",
-            "XRFF_Twin/Content/Generated/Trees",
+            project / content_relpath(TREES_ROOT),
+            f"XRFF_Twin/{content_relpath(TREES_ROOT)}",
             lambda r: True,
         ),
         (REPO / "data/output/forest", "growpy/data/output/forest", keep_forest),
