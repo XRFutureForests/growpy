@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from growpy.io.unreal.pve_growth_data_exporter import build_growth_data_json
 
 
@@ -299,3 +301,45 @@ def test_max_branch_cut_radius_bounds_the_fraction_cut(monkeypatch):
         skel, min_branch_radius_fraction=0.07, max_branch_cut_radius=0.0125
     )
     assert [round(t, 4) for t in seen] == [0.021, 0.0125]
+
+
+def _fed_tree(**kw):
+    """Trunk 0-1-2-3 (up), one child 1-4-5 off point 1."""
+    pts = [(0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3), (1, 0, 1.5), (2, 0, 2)]
+    skel = SimpleNamespace(
+        points=pts,
+        poly_lines=[[0, 1, 2, 3], [1, 4, 5]],
+        point_attribute_radius=[0.1] * 6,
+    )
+    from growpy.io.unreal.pve_growth_data_exporter import build_growth_data_json
+
+    return build_growth_data_json(skel, **kw)
+
+
+def test_bud_attributes_are_constants_unless_derived():
+    """Default: the catalog's parametric distributors are untouched."""
+    a = _fed_tree()["points"]["attributes"]
+    const = {(1.0, 0.0, 0.0, 0.0, 1.0, 0.0)}
+    assert set(map(tuple, a["budHormoneLevels"]["values"])) == const
+    assert set(a["plantGradient"]["values"]) == {1.0}
+
+
+def test_derived_bud_attributes_follow_the_engine_formulas():
+    """E136: hormone distributors keep points with Ethylene <= threshold."""
+    a = _fed_tree(derive_bud_attributes=True)["points"]["attributes"]
+    g = a["plantGradient"]["values"]
+    assert g[:4] == pytest.approx([1.0, 2 / 3, 1 / 3, 0.0])  # trunk lerps 1 -> 0
+    assert g[4] == pytest.approx(1 / 3)  # child: from 2/3, halfway
+    assert g[5] == 0.0
+    h = a["budHormoneLevels"]["values"]
+    assert h[3][4] == 0.0 and h[0][4] == 1.0  # Ethylene = g
+    assert h[3][1] == pytest.approx(1.0)  # Axillary 0.35 at the base, 1 at tips
+    assert h[0][1] == pytest.approx(0.35)
+    assert all(row[0] == 1.0 for row in h)
+    dev = a["budDevelopment"]["values"]
+    assert dev[0][1] == 4 and dev[3][1] == 1  # BudAge 1 + g * 3
+    assert dev[2][2] == dev[1][2]  # BranchAge
+    st = a["budStatus"]["values"]
+    assert st[3][0] == 1 and st[5][0] == 1  # tips
+    assert st[1][2] == 1 and st[1][6] == 1  # attach: 1 child
+    assert st[0][3] == 1  # root
