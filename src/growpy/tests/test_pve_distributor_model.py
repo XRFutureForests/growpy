@@ -652,3 +652,43 @@ class TestWhorledBudCount:
         )
         one = simulate_placements(path, _spec())
         assert len(simulate_placements(path, spec)) == 2 * len(one)
+
+
+class TestCloseSamples:
+    """The engine does not merge samples that land close together (E134 linden)."""
+
+    def test_dense_samples_on_a_short_span_all_count(self, tmp_path):
+        # relative_start 0.99 puts every sample in the last 1 % of its branch,
+        # far under 1 mm apart at this density; merging them left 16,359
+        # instances where the editor logged 68,809.
+        path = _tree(tmp_path)
+        count = len(
+            simulate_placements(
+                path, _spec(branch_density=5000, relative_start=0.99)
+            )
+        )
+        assert count > 3 * 5000
+
+    LINDEN = Path(
+        "data/tmp/e134/small_leaved_linden/forest/small_leaved_linden/r07/"
+        "Small_Leaved_Linden_r07_h10m_d14cm_full_growth_data.json"
+    )
+
+    @pytest.mark.skipif(not LINDEN.is_file(), reason="E134 linden plan is scratch")
+    def test_linden_r07_h10m_reproduces_the_logged_instances(self):
+        import dataclasses
+
+        from growpy.config.paths import get_species_growth_habit
+        from growpy.config.pve_calibration import load_pve_calibration
+        from growpy.io.unreal.pve_graph_plan import _pose_distributor
+
+        cal = load_pve_calibration().for_species(
+            "small_leaved_linden", habit=get_species_growth_habit("small_leaved_linden")
+        )
+        spec = dataclasses.replace(
+            _pose_distributor(cal, 1, relative_start=0.85),
+            branch_density=5820,
+            generation_band=(cal.ladder.main_generation_start, None),
+        )
+        # logged 68,809 = these placements + the apex instance
+        assert len(simulate_placements(self.LINDEN, spec)) + 1 == 68809
