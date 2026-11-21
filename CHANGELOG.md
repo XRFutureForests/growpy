@@ -5,6 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-21 — Growth JSON: engine-derived bud attributes (opt-in)
+
+#### Added
+
+- `derive_engine_attributes()` and `build_growth_data_json(derive_bud_attributes=True)` fill `budHormoneLevels`, `budDevelopment`, `budStatus`, `budLightDetected` (proxy) and `plantGradient` with PVE's own formulas instead of constants. The hormone-based distributors of Epic's graphs keep only points with `Ethylene <= threshold` and placed nothing on an imported Grove skeleton (E136 step 2). Off by default: the catalog's parametric route is unchanged.
+
 ### 2026-11-20 — Ruff is the only formatter and linter
 
 #### Changed

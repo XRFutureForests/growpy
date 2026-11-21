@@ -576,6 +576,131 @@ def _resample_growth_data(data: dict, min_point_spacing: float) -> dict:
     return {"points": out_points, "primitives": out_prims}
 
 
+def derive_engine_attributes(data: dict) -> dict:
+    """Fill the per-point attributes PVE's hormone-based distributors read, as the
+    engine computes them (in place; returns ``data``).
+
+    ``build_growth_data_json`` writes ``budHormoneLevels`` / ``budLightDetected`` /
+    ``budDevelopment`` / ``budStatus`` / ``plantGradient`` as constants, which suits
+    the parametric distributors but starves the hormone-based ones:
+    ``PVHormoneDistributionHelper`` keeps only points whose ``Ethylene <=
+    threshold`` and normalises the plant / branch gradient over them, so with
+    Ethylene = 1 everywhere nothing is placed (E136 step 2: Epic's spruce tail
+    placed 0 ``Branch_`` and 0 ``Branch_Hanging`` on an imported Grove skeleton,
+    against 10 / 71 on the native tree at h10). The JSON importer never recomputes
+    these (``AddGrowthMissingData`` fills only scales, lengths and hierarchy
+    numbers), so this does what
+    ``PV::AttributesHelper::RecomputeAllGrowthDataAttributes`` does on the branch-
+    hierarchy import path, from the same formulas (UE 5.8
+    ``PVAttributesHelper.cpp``):
+
+    * ``plantGradient`` (ComputePointPlantGradient): trunk base 1; along every
+      branch a straight lerp to 0 at its tip; a side branch starts from the gradient
+      of its attach point;
+
+    * ``budHormoneLevels`` (ComputeBudHormoneLevels), order Apical, Axillary,
+      AxillaryInhibition, Radical, Ethylene, Cytokinin: ``[1, 0.35 + 0.65 * (1 - g),
+      0, 0, g, 0]``;
+
+    * ``budDevelopment`` (ComputeBudDevelopment), order Generation, BudAge,
+      BranchAge, AgeSenescence, LightSenescence, RelativeBudAge: BudAge = round(1 +
+      g * (longest branch in points - 1)), BranchAge = the BudAge of the branch's
+      first own point; Generation is kept;
+
+    * ``budStatus`` (ComputeBudStatus): tip = apical meristem, dormant; plant root =
+      axillary seed; a point with child branches = axillary with ``NumTriggered`` =
+      child count; everything else triggered + inactive;
+
+    * ``budLightDetected`` order Availible, Resource, Branch, Collision: a PROXY
+      (the engine's estimate needs hull and ground gradients): Availible rises with
+      height from 0.3 to 1.0, Branch = mean of the branch's points. No tail
+      distributor of the spruce graph activates the light condition.
+
+    Apply it to the FINAL skeleton, after decimation and resampling: the gradient
+    lerps over the points a branch has left.
+    """
+    from .pve_distributor_model import _walk_order
+
+    def flat(v):
+        return v[0] if isinstance(v, list) else v
+
+    pts_attr = data["points"]["attributes"]
+    positions = data["points"]["positions"]
+    n = len(positions)
+    prim = data["primitives"]
+    branches = prim["points"]
+    number = [flat(v) for v in prim["attributes"]["branchNumber"]["values"]]
+    parent = [flat(v) for v in prim["attributes"]["branchParentNumber"]["values"]]
+    order, roots = _walk_order(parent, number)
+    root_set = set(roots)
+
+    g = [0.0] * n
+    for b in order:
+        pts = branches[b]
+        if not pts:
+            continue
+        base = 1.0 if b in root_set else g[pts[0]]
+        for i in range(0 if b in root_set else 1, len(pts)):
+            alpha = i / (len(pts) - 1) if len(pts) > 1 else 0.0
+            g[pts[i]] = base * (1.0 - alpha)
+
+    max_age = max((len(p) for p in branches), default=1)
+    age = [1] * n
+    old_dev = pts_attr.get("budDevelopment", {}).get("values")
+    gen = [row[0] for row in old_dev] if old_dev else [1] * n
+    children_at: dict[tuple[int, int], int] = {}
+    num_to_idx = {v: i for i, v in enumerate(number)}
+    for b, par in enumerate(parent):
+        pi = num_to_idx.get(par, -1)
+        if b not in root_set and pi >= 0 and branches[b]:
+            key = (pi, branches[b][0])
+            children_at[key] = children_at.get(key, 0) + 1
+
+    development = [[gen[i], 1, 1, 0, 0, 1] for i in range(n)]
+    status = [[0, 0, 0, 0, 0, 1, 1, 1, 0, 0] for _ in range(n)]
+    hormones = [[1.0, 1.0, 0.0, 0.0, 1.0, 0.0] for _ in range(n)]
+    ys = [p[1] for p in positions]
+    y0, y1 = min(ys), max(ys)
+    span = (y1 - y0) or 1.0
+    light_pt = [0.3 + 0.7 * (y - y0) / span for y in ys]
+    light = [[light_pt[i], 0.0, 0.0, 0.0] for i in range(n)]
+    for b in order:
+        pts = branches[b]
+        if not pts:
+            continue
+        own = pts if b in root_set else pts[1:]
+        for p in own:
+            age[p] = int(1 + g[p] * (max_age - 1) + 0.5)
+            hormones[p] = [1.0, 0.35 + 0.65 * (1.0 - g[p]), 0.0, 0.0, g[p], 0.0]
+        if own:
+            branch_age = age[pts[0]] if b in root_set else age[pts[1]]
+            for p in own:
+                development[p][1:] = [age[p], branch_age, 0, 0, age[p]]
+        for k, p in enumerate(pts):
+            if k == 0 and b not in root_set:
+                continue  # the attach point is the parent's
+            if k == len(pts) - 1:
+                status[p] = [1, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+            elif k == 0:
+                status[p] = [0, 0, 1, 1, 1, 0, 0, 1, 0, 0]
+            elif children_at.get((b, p)):
+                status[p][2], status[p][6] = 1, children_at[(b, p)]
+        mean_light = sum(light_pt[p] for p in own) / len(own) if own else 0.0
+        for p in own:
+            light[p][2] = mean_light
+
+    def put(name, values):
+        entry = pts_attr[name]
+        entry["values"] = values
+
+    put("plantGradient", g)
+    put("budHormoneLevels", hormones)
+    put("budDevelopment", development)
+    put("budStatus", status)
+    put("budLightDetected", light)
+    return data
+
+
 def build_growth_data_json(
     skeleton: Any,
     profile_mean: float = 1.0,
@@ -585,6 +710,7 @@ def build_growth_data_json(
     min_point_spacing: float = 0.0,
     crown_base_cut_m: float | None = None,
     max_branch_cut_radius: float | None = None,
+    derive_bud_attributes: bool = False,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -626,6 +752,11 @@ def build_growth_data_json(
             big tree is not cut above the largest compound part that replaces
             what is removed (beech: 0.07 x base radius, at most 12.5 mm, i.e. a
             25 mm cut diameter; owner 2026-11-16). None: no bound.
+
+        derive_bud_attributes: Fill the hormone, development, status, light and
+            plant-gradient attributes with the engine's own formulas
+            (:func:`derive_engine_attributes`) instead of constants. Off by
+            default: the catalog's parametric distributors do not need them.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -794,7 +925,8 @@ def build_growth_data_json(
     built = _decimate_growth_data(built, threshold)
     if crown_base_cut_m is not None:
         built = _prune_below_height(built, crown_base_cut_m)
-    return _resample_growth_data(built, min_point_spacing)
+    built = _resample_growth_data(built, min_point_spacing)
+    return derive_engine_attributes(built) if derive_bud_attributes else built
 
 
 def generate_growth_data_from_grove(
