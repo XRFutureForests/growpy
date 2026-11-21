@@ -223,6 +223,10 @@ def _read_log_from(log: Path, offset: int) -> str:
         return fh.read().decode("utf-8", errors="replace")
 
 
+_NANITE_BUILD_ERROR = re.compile(
+    r"Merged Nanite assembly has too many transforms[^\r\n]*"
+    r"|Failed to build Nanite for [^\r\n]*"
+)
 _PROFILE_TITLE = re.compile(r"LogPCG:\s+-+ .*\[.*\] -+")
 _PROFILE_SEP = re.compile(r"LogPCG:\s+-{40,}\s*$")
 _PROFILE_EXPORT_ROW = re.compile(r"LogPCG:\s+PVExport\s+\d+\s")
@@ -355,6 +359,11 @@ def export_graphs(
                 name, log, expected, export_timeout, locate=True, toolbar=toolbar
             )
         ok = rc == 0
+        nanite_err = _NANITE_BUILD_ERROR.search(_read_log_from(log, offset))
+        if ok and nanite_err:
+            # The export reports success, but the mesh is saved without Nanite.
+            logger.error("  Nanite build failed: %s", nanite_err.group(0))
+            ok = False
         if ok and save:
             folders = sorted(
                 {

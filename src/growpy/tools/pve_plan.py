@@ -75,13 +75,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--max-instances",
         type=int,
-        default=60_000,
+        default=36_000,
         help=(
-            "cap on foliage instances per tree (default 60000). The Nanite "
+            "cap on foliage instances per tree (default 36000). The Nanite "
             "build of a Voxelize export asserts (Bits <= Mask, "
-            "NaniteResources.h:93) above roughly 40k instances of a 2-material "
-            "palette -- linden r16_h25m at 57.6k, 2026-09-16 -- so a species "
-            "that trips it is re-planned lower"
+            "NaniteResources.h:93) once the hierarchy needs more than 65,535 "
+            "nodes: FHierarchyLocation::SetNodeIndex has 16 bits and every "
+            "assembly instance adds root-group nodes. Seen at 50,970 (linden "
+            "r10_h15m) and 54,074 (birch r07_h20m) instances; ash at 34,715 "
+            "builds. Above 65,535 the assembly build errors out instead "
+            "('too many transforms') and the mesh is saved without Nanite"
         ),
     )
     parser.add_argument(

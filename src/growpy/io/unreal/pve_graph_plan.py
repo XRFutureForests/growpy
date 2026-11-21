@@ -1236,7 +1236,7 @@ def plan_pve_graphs(
     import_all_palettes: bool = True,
     calibration_path: Path | None = None,
     species: Sequence[str] | None = None,
-    max_assembly_instances: int = 60_000,
+    max_assembly_instances: int = 36_000,
     tree_triangle_cap: float = 400e6,
     static_twins: bool = False,
     allow_bark_reparent: bool = False,
@@ -1277,9 +1277,10 @@ def plan_pve_graphs(
         calibration_path: Override for the tracked calibration file.
         species: Standardized names to plan; None plans every species found.
         max_assembly_instances: Ceiling on the instances an offline solve may
-            ask for -- 65,000 is Epic's Nanite assembly cap and an assembly
-            past it fails to build; 60,000 leaves room for the tip cap and
-            apex layers. A capped tree lands short of its leaf area and says
+            ask for. The Nanite build asserts once the assembly's hierarchy
+            passes 65,535 nodes (NaniteResources.h:93, 16-bit node index),
+            which happens near 40-50k instances; 36,000 sits just above the
+            largest verified build (ash, 34,715). A capped tree lands short of its leaf area and says
             so in the manifest (``capped``).
         tree_triangle_cap: Ceiling on one tree's predicted foliage triangles;
             an ash r16_h25m solved to 806 M on 2026-09-15, which no click
