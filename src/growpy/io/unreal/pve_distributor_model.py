@@ -643,9 +643,13 @@ def simulate_placements(
                     + (positions[point_b][k] - positions[point_a][k]) * alpha
                     for k in range(3)
                 ]
+            # Only a sample on the branch root is dropped. The engine does not
+            # merge samples that land close together along the branch: linden
+            # r07_h10m (density 5,820, relative_start 0.85, samples 0.3 mm
+            # apart) logged 68,809 instances where merging within 1 mm gave
+            # 16,359 (E134, 2026-11-21).
             if _dist(position, previous) < 0.001:
                 continue
-            previous = position
 
             plant_gradient = (1.0 - pg[point_a]) + (
                 (1.0 - pg[point_b]) - (1.0 - pg[point_a])
