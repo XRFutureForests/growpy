@@ -330,3 +330,15 @@ scots_pine,5,45,69.01,0.5,1.1104
 scots_pine,5,45,69.01,0.7,1.0788
 scots_pine,5,45,69.01,1,1.0365
 scots_pine,5,45,69.01,1.3,1
+# sycamore_maple: NOT TapeS (no sycamore model). Median d(h)/d(1.3 m) of 167 Wytham Woods sycamore QSM trunks with DBH < 20 cm (median 11 cm), tier C,
+# E137 DBH filter 0.8-1.25, >= 4 trunk cylinders under 1.3 m and none of the first three longer than 0.5 m. p25-p75 at 0 m: 1.076-1.175. Cylinders are 0.15-0.5 m,
+# so values below 0.2 m are the first cylinder's. Bigger trees are too coarsely cylindered to use; one curve is used for every DBH (clamped). Not produced by base_flare_targets.R:
+# re-add this block if the R script regenerates the file.
+sycamore_maple,,,10,0,1.1251
+sycamore_maple,,,10,0.1,1.124
+sycamore_maple,,,10,0.2,1.1156
+sycamore_maple,,,10,0.3,1.1032
+sycamore_maple,,,10,0.5,1.0647
+sycamore_maple,,,10,0.7,1.0319
+sycamore_maple,,,10,1,1.0079
+sycamore_maple,,,10,1.3,1
