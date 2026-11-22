@@ -275,8 +275,10 @@ def main(argv=None) -> int:
     dump = json.loads((raw / "dump.json").read_text(encoding="utf-8"))
     mesh_tags = dump.get("mesh_tags", {})
     (root / "graphs").mkdir(exist_ok=True)
-    rows, summary = [], {}
+    rows, summary, growth = [], {}, {}
     for pkg, info in dump["assets"].items():
+        if info.get("growth_data"):
+            growth[pkg] = {"file_mb": info.get("file_mb"), **info["growth_data"], "t3d": info.get("t3d")}
         if not info.get("t3d"):
             continue
         name = pkg.strip("/").replace("/", "__")
@@ -293,6 +295,7 @@ def main(argv=None) -> int:
             w = csv.DictWriter(f, fieldnames=list(rows[0]))
             w.writeheader()
             w.writerows(rows)
+    (root / "growth_data.json").write_text(json.dumps(growth, indent=1), encoding="utf-8")
     (root / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(len(summary), "assets,", len(rows), "distributor layers ->", root)
     return 0
