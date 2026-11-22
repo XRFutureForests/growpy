@@ -11,7 +11,7 @@ import traceback
 
 import unreal
 
-OUT = os.environ.get("PVE59_OUT", r"D:\Git\work\growpy\data\output\pve59_extract\raw")
+OUT = os.environ.get("PVE59_OUT", "data/output/pve59_extract/raw")
 GRAPH = "/Game/PVE_E143/r1_au04s2_c27p5/Structures/PVG_SycamoreMaple_1"
 DONE = os.path.join(OUT, "export_done.json")
 sub = unreal.get_editor_subsystem(unreal.ProceduralVegetationEditorSubsystem)

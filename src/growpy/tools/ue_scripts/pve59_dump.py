@@ -11,7 +11,7 @@ import traceback
 
 import unreal
 
-OUT = os.environ.get("PVE59_OUT", r"D:\Git\work\growpy\data\output\pve59_extract\raw")
+OUT = os.environ.get("PVE59_OUT", "data/output/pve59_extract/raw")
 os.makedirs(os.path.join(OUT, "t3d"), exist_ok=True)
 ar = unreal.AssetRegistryHelpers.get_asset_registry()
 ar.wait_for_completion()

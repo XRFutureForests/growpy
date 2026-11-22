@@ -6,7 +6,7 @@ import traceback
 
 import unreal
 
-OUT = os.path.join(os.environ.get("PVE59_OUT", r"D:\Git\work\growpy\data\output\pve59_extract\raw"), "gvref")
+OUT = os.path.join(os.environ.get("PVE59_OUT", "data/output/pve59_extract/raw"), "gvref")
 os.makedirs(OUT, exist_ok=True)
 P = "/Game/GVBroadleafPresets/Meshes/Trees/Maple/SK_GV_Maple_Vol_4_Tree_E_v1_low"
 res = {}

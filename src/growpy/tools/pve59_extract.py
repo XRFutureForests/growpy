@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_DIR = Path(r"D:\Git\work\growpy\data\output\pve59_extract")
+DEFAULT_DIR = Path("data/output/pve59_extract")
 
 # ------------------------------------------------------------------ UE text values
 

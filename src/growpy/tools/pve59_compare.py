@@ -1,6 +1,6 @@
 """E144: per-graph distributor comparison table (comparison.md + comparison.csv) from pve59_extract's graphs/*.json.
 
-    python -m growpy.tools.pve59_compare <extract dir>
+    python -m growpy.tools.pve59_compare <extract dir> [<pve_export_manifest.json>]
 
 One row per graph, distributor layers aggregated (min / median / max), parts from the registry tags. The E143 row also
 carries the plan values of the pve_export_manifest (what growpy asked for). Internal analysis of third-party packs.
@@ -15,7 +15,7 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(r"D:\Git\work\growpy\data\output\pve59_extract")
+ROOT = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/output/pve59_extract")
 PICK = [  # (label, graph json stem suffix)
     ("GV maple (Simple_Maple)", "PVE_GV_Simple_Maple"), ("GV conifer", "PVE_GV_Conifer"), ("GV sycamore (58 variations)", "PVE_GV_SycamoreMaple"),
     ("GV oak 01 (34)", "PVE_GV_EnglishOak_01"), ("GV oak 02 (18)", "PVE_GV_EnglishOak_02"), ("GV oak 03 (10)", "PVE_GV_EnglishOak_03"),
@@ -99,9 +99,9 @@ for label, stem in PICK:
             row["export"] = json.dumps({k: ex.get(k) for k in ("ExportMeshType", "NaniteShapePreservation", "bCreateNaniteFoliage", "CollisionGeneration") if k in ex}, default=str)
     rows.append(row)
 
-man = json.loads(Path(r"D:\Git\work\growpy\data\tmp\maple_pilot\r1_au04s2\c27p5\plan\pve_export_manifest.json").read_text(encoding="utf-8"))
+man = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8")) if len(sys.argv) > 2 else {"graphs": [{"meshes": [{}]}]}  # optional: the plan manifest to quote
 m = man["graphs"][0]["meshes"][0]
-plan = {k: m[k] for k in ("branch_density", "relative_start", "base_scale", "randomize_scale", "randomize_axil_angle", "spacing_ramp", "layers", "instances_per_branch", "predicted_instances", "branches", "height_m")}
+plan = {k: m.get(k) for k in ("branch_density", "relative_start", "base_scale", "randomize_scale", "randomize_axil_angle", "spacing_ramp", "layers", "instances_per_branch", "predicted_instances", "branches", "height_m")}
 (ROOT / "comparison.json").write_text(json.dumps({"rows": rows, "our_plan_manifest_r1_au04s2_h20": plan}, indent=1), encoding="utf-8")
 keys = []
 for r in rows:
