@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """E144 offline half: T3D of PVE graphs (from ue_scripts/pve59_dump.py) -> one JSON per graph + comparison tables.
 
     python -m growpy.tools.pve59_extract <extract dir>      (default data/output/pve59_extract)
@@ -72,7 +73,9 @@ def parse_val(s: str, i: int = 0):
 
 def read_t3d(path: Path) -> str:
     b = path.read_bytes()
-    return b.decode("utf-16" if b[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8", errors="replace")
+    return b.decode(
+        "utf-16" if b[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8", errors="replace"
+    )
 
 
 def parse_t3d(path: Path) -> dict:
@@ -84,17 +87,34 @@ def parse_t3d(path: Path) -> dict:
     stack: list[dict] = []
     for ln in text.splitlines():
         t = ln.strip()
-        m = re.match(r'Begin Object (?:Class=\S+ )?Name="([^"]+)"(?: Archetype="[^"]*")? ExportPath="([^"]*)"', t)
+        m = re.match(
+            r'Begin Object (?:Class=\S+ )?Name="([^"]+)"(?: Archetype="[^"]*")? ExportPath="([^"]*)"',
+            t,
+        )
         if m:
             name, ep = m.groups()
             cm = re.match(r"/Script/([A-Za-z]+)\.(\w+)'", ep)
-            stack.append({"name": name, "ep": ep, "mod": cm.group(1) if cm else "", "cls": cm.group(2) if cm else "", "props": {}})
+            stack.append(
+                {
+                    "name": name,
+                    "ep": ep,
+                    "mod": cm.group(1) if cm else "",
+                    "cls": cm.group(2) if cm else "",
+                    "props": {},
+                }
+            )
             continue
         if t.startswith("End Object"):
             o = stack.pop()
-            parts = o["ep"].rstrip("'\"").split("'")[-1].split(":")[-1].split(".")  # graph . node . obj
+            parts = (
+                o["ep"].rstrip("'\"").split("'")[-1].split(":")[-1].split(".")
+            )  # graph . node . obj
             if o["mod"] == "ProceduralVegetation" and len(parts) >= 3:
-                nodes[parts[-2]] = {"class": o["cls"], "settings_object": o["name"], "props": o["props"]}
+                nodes[parts[-2]] = {
+                    "class": o["cls"],
+                    "settings_object": o["name"],
+                    "props": o["props"],
+                }
             elif o["cls"] == "PCGPin" and len(parts) >= 3:
                 lab = o["props"].get("Properties", {})
                 if isinstance(lab, dict) and "Label" in lab:
@@ -102,9 +122,13 @@ def parse_t3d(path: Path) -> dict:
             elif o["cls"] == "PCGEdge" and "InputPin" in o["props"]:
                 a = o["props"]["InputPin"].rstrip("'").split(":")[-1].split(".")
                 b2 = o["props"]["OutputPin"].rstrip("'").split(":")[-1].split(".")
-                edges.append({"from": a[-2], "from_pin": a[-1], "to": b2[-2], "to_pin": b2[-1]})
+                edges.append(
+                    {"from": a[-2], "from_pin": a[-1], "to": b2[-2], "to_pin": b2[-1]}
+                )
             elif o["cls"] == "PCGNode" and len(parts) >= 2:
-                nodes.setdefault(parts[-1], {"class": "PCGNode", "props": {}})["node_props"] = o["props"]
+                nodes.setdefault(parts[-1], {"class": "PCGNode", "props": {}})[
+                    "node_props"
+                ] = o["props"]
             continue
         if stack and "=" in t and not t.startswith("Begin"):
             k, v = t.split("=", 1)
@@ -123,7 +147,11 @@ def parse_t3d(path: Path) -> dict:
     for e in edges:
         e["from_label"] = pins.get(f"{e['from']}.{e['from_pin']}")
         e["to_label"] = pins.get(f"{e['to']}.{e['to_pin']}")
-    refs = sorted(set(re.findall(r'"?(/(?:Game|ProceduralVegetationEditor)/[A-Za-z0-9_/]+)', text)))
+    refs = sorted(
+        set(
+            re.findall(r'"?(/(?:Game|ProceduralVegetationEditor)/[A-Za-z0-9_/]+)', text)
+        )
+    )
     return {"source": path.name, "nodes": nodes, "edges": edges, "refs": refs}
 
 
@@ -154,47 +182,116 @@ def normalise_distributor(props: dict) -> dict:
     out = {"mode": mode}
     if mode == "ParametricSettings":
         P = props.get("ParametricSettings", {})
-        sp, ph, an, sc = (g(P, k, default={}) for k in ("SpacingSettings", "PhyllotaxySettings", "AngleSettings", "ScaleSettings"))
+        sp, ph, an, sc = (
+            g(P, k, default={})
+            for k in (
+                "SpacingSettings",
+                "PhyllotaxySettings",
+                "AngleSettings",
+                "ScaleSettings",
+            )
+        )
         out |= {
-            "density": sp.get("BranchDensity", 45), "rel_start": sp.get("RelativeStart", 0.0), "rel_end": sp.get("RelativeEnd", 1.0),
-            "gen_start": sp.get("StartGeneration", 0) if sp.get("LimitStartGeneration") else None,
-            "gen_end": sp.get("EndGeneration", 0) if sp.get("LimitEndGeneration") else None,
-            "spacing_basis": sp.get("SpacingBasis", "Plant"), "spacing_ramp": ramp(sp.get("SpacingRamp")),
+            "density": sp.get("BranchDensity", 45),
+            "rel_start": sp.get("RelativeStart", 0.0),
+            "rel_end": sp.get("RelativeEnd", 1.0),
+            "gen_start": sp.get("StartGeneration", 0)
+            if sp.get("LimitStartGeneration")
+            else None,
+            "gen_end": sp.get("EndGeneration", 0)
+            if sp.get("LimitEndGeneration")
+            else None,
+            "spacing_basis": sp.get("SpacingBasis", "Plant"),
+            "spacing_ramp": ramp(sp.get("SpacingRamp")),
             "phyllotaxy": f"{ph.get('PhyllotaxyType', 'Spiral')}/{ph.get('PhyllotaxyFormation', 'Octastichous')}",
-            "single_bud_tip": ph.get("bSingleBudTip", True), "phyllo_add_angle": ph.get("PhyllotaxyAdditionalAngle", 0.0),
+            "single_bud_tip": ph.get("bSingleBudTip", True),
+            "phyllo_add_angle": ph.get("PhyllotaxyAdditionalAngle", 0.0),
             "node_buds": [ph.get("MinimumNodeBuds", 2), ph.get("MaximumNodeBuds", 3)],
-            "rotation": an.get("Rotation", 0.0), "axil": an.get("AxilAngle", 35.0),
-            "axil_random": [an.get("RandomizeAxilAngleMinimum", 0.0), an.get("RandomizeAxilAngleMaximum", 0.0)],
-            "axil_ramp_basis": an.get("AxilAngleRampBasis", "Plant"), "axil_ramp": ramp(an.get("AxilAngleRamp")),
-            "scale_basis": sc.get("ScaleRampBasis", "Plant"), "base_scale": sc.get("BaseScale", 1.0),
+            "rotation": an.get("Rotation", 0.0),
+            "axil": an.get("AxilAngle", 35.0),
+            "axil_random": [
+                an.get("RandomizeAxilAngleMinimum", 0.0),
+                an.get("RandomizeAxilAngleMaximum", 0.0),
+            ],
+            "axil_ramp_basis": an.get("AxilAngleRampBasis", "Plant"),
+            "axil_ramp": ramp(an.get("AxilAngleRamp")),
+            "scale_basis": sc.get("ScaleRampBasis", "Plant"),
+            "base_scale": sc.get("BaseScale", 1.0),
             "branch_scale_impact": sc.get("BranchScaleImpact", 0.0),
-            "scale_random": [sc.get("RandomizeScaleMinimum", 1.0), sc.get("RandomizeScaleMaximum", 1.0)],
-            "scale_ramp": ramp(sc.get("ScaleRamp")) if ramp(sc.get("ScaleRamp")) != "default" else [[0.0, 1.0], [1.0, 0.1]],
+            "scale_random": [
+                sc.get("RandomizeScaleMinimum", 1.0),
+                sc.get("RandomizeScaleMaximum", 1.0),
+            ],
+            "scale_ramp": ramp(sc.get("ScaleRamp"))
+            if ramp(sc.get("ScaleRamp")) != "default"
+            else [[0.0, 1.0], [1.0, 0.1]],
         }
     else:
         H = props.get("HormoneBasedSettings", {})
-        ds, sc, an, ph = (g(H, k, default={}) for k in ("DistributionSettings", "ScaleSettings", "AngleSettings", "PhyllotaxySettings"))
+        ds, sc, an, ph = (
+            g(H, k, default={})
+            for k in (
+                "DistributionSettings",
+                "ScaleSettings",
+                "AngleSettings",
+                "PhyllotaxySettings",
+            )
+        )
         out |= {
-            "ethylene": ds.get("EthyleneThreshold", 0.85), "instance_spacing": ds.get("InstanceSpacing", 0.3),
-            "spacing_ramp": ramp(ds.get("InstanceSpacingRamp")), "spacing_ramp_effect": ds.get("InstanceSpacingRampEffect", 0.0),
+            "ethylene": ds.get("EthyleneThreshold", 0.85),
+            "instance_spacing": ds.get("InstanceSpacing", 0.3),
+            "spacing_ramp": ramp(ds.get("InstanceSpacingRamp")),
+            "spacing_ramp_effect": ds.get("InstanceSpacingRampEffect", 0.0),
             "max_per_branch": ds.get("MaxPerBranch", -1),
-            "base_scale": sc.get("BaseScale", 1.0), "min_scale": sc.get("MinScale", 0.5), "max_scale": sc.get("MaxScale", 1.0),
-            "scale_random": [sc.get("RandomScaleMin", 1.0), sc.get("RandomScaleMax", 1.0)], "branch_scale_impact": sc.get("BranchScaleImpact", 0.0),
+            "base_scale": sc.get("BaseScale", 1.0),
+            "min_scale": sc.get("MinScale", 0.5),
+            "max_scale": sc.get("MaxScale", 1.0),
+            "scale_random": [
+                sc.get("RandomScaleMin", 1.0),
+                sc.get("RandomScaleMax", 1.0),
+            ],
+            "branch_scale_impact": sc.get("BranchScaleImpact", 0.0),
             "scale_ramp": ramp(sc.get("ScaleRamp")),
-            "axil": an.get("AxilAngle", 35.0) if an.get("OverrideAxilAngle", True) else "inherited", "axil_ramp": ramp(an.get("AxilAngleRamp")),
-            "axil_ramp_upper": an.get("AxilAngleRampUpperValue", 45.0), "axil_ramp_effect": an.get("AxilAngleRampEffect", 0.0),
+            "axil": an.get("AxilAngle", 35.0)
+            if an.get("OverrideAxilAngle", True)
+            else "inherited",
+            "axil_ramp": ramp(an.get("AxilAngleRamp")),
+            "axil_ramp_upper": an.get("AxilAngleRampUpperValue", 45.0),
+            "axil_ramp_effect": an.get("AxilAngleRampEffect", 0.0),
             "phyllotaxy": f"{ph.get('PhyllotaxyType', 'Alternate')}/{ph.get('PhyllotaxyFormation', 'Octastichous')}",
-            "single_bud_tip": ph.get("bSingleBudTip", True), "node_buds": [ph.get("MinimumNodeBuds", 2), ph.get("MaximumNodeBuds", 3)],
+            "single_bud_tip": ph.get("bSingleBudTip", True),
+            "node_buds": [ph.get("MinimumNodeBuds", 2), ph.get("MaximumNodeBuds", 3)],
         }
     V = props.get("VectorSettings", {})
-    out["aim"] = [(v.get("Vector1") if v.get("bDualVectors") else None, v.get("Vector2", "BranchUpFlatten"), v.get("Vector2Strength", 1.0), v.get("BlendAttribute", "PlantGradient"))
-                  for v in g(V, "AimVectorSettings", "AimVectors", default=[])]
-    out["face"] = [(v.get("Vector1") if v.get("bDualVectors") else None, v.get("Vector2", "Branch"), v.get("Vector2Strength", 1.0))
-                   for v in g(V, "FaceVectorSettings", "FaceVectors", default=[])]
-    out["rpy"] = [(v.get("Mode", "Roll"), v.get("MinStrength", 0.0), v.get("MaxStrength", 0.0)) for v in g(V, "RollPitchYawSettings", "RollPitchYaw", default=[])]
+    out["aim"] = [
+        (
+            v.get("Vector1") if v.get("bDualVectors") else None,
+            v.get("Vector2", "BranchUpFlatten"),
+            v.get("Vector2Strength", 1.0),
+            v.get("BlendAttribute", "PlantGradient"),
+        )
+        for v in g(V, "AimVectorSettings", "AimVectors", default=[])
+    ]
+    out["face"] = [
+        (
+            v.get("Vector1") if v.get("bDualVectors") else None,
+            v.get("Vector2", "Branch"),
+            v.get("Vector2Strength", 1.0),
+        )
+        for v in g(V, "FaceVectorSettings", "FaceVectors", default=[])
+    ]
+    out["rpy"] = [
+        (v.get("Mode", "Roll"), v.get("MinStrength", 0.0), v.get("MaxStrength", 0.0))
+        for v in g(V, "RollPitchYawSettings", "RollPitchYaw", default=[])
+    ]
     C = props.get("ConditionSettings", {})
-    out["conditions"] = {k: dict(Weight=v.get("Weight", 1.0), Offset=v.get("Offset", 0.0)) for k, v in C.items()
-                         if isinstance(v, dict) and k in ("Light", "Scale", "UpAlignment", "Tip", "Health", "Height", "Generation")}
+    out["conditions"] = {
+        k: dict(Weight=v.get("Weight", 1.0), Offset=v.get("Offset", 0.0))
+        for k, v in C.items()
+        if isinstance(v, dict)
+        and k
+        in ("Light", "Scale", "UpAlignment", "Tip", "Health", "Height", "Generation")
+    }
     out["cond_cutoff"] = [C.get("CutoffThreshold", 0.3), C.get("MinimumCandidates", 1)]
     return out
 
@@ -202,7 +299,7 @@ def normalise_distributor(props: dict) -> dict:
 def chain_order(nodes: dict, edges: list) -> list[str]:
     """Topological order of node names along the (linear) chain; branches appended in edge order."""
     down = {e["from"]: [] for e in edges}
-    indeg = {n: 0 for n in nodes}
+    indeg = dict.fromkeys(nodes, 0)
     for e in edges:
         down.setdefault(e["from"], []).append(e["to"])
         indeg[e["to"]] = indeg.get(e["to"], 0) + 1
@@ -226,7 +323,11 @@ def summarise(t: dict, mesh_tags: dict) -> dict:
     nodes, edges = t["nodes"], t["edges"]
     order = chain_order(nodes, edges)
     ups = lambda n: [e for e in edges if e["to"] == n]  # noqa: E731
-    out = {"order": [(n, nodes[n]["class"]) for n in order if n in nodes], "distributors": [], "other": {}}
+    out = {
+        "order": [(n, nodes[n]["class"]) for n in order if n in nodes],
+        "distributors": [],
+        "other": {},
+    }
     for n in order:
         c = nodes.get(n)
         if not c:
@@ -235,14 +336,20 @@ def summarise(t: dict, mesh_tags: dict) -> dict:
         if cls == "PVFoliageDistributorSettings":
             d = normalise_distributor(p)
             d["node"] = n
-            pal = [nodes[e["from"]] for e in ups(n) if nodes.get(e["from"], {}).get("class") == "PVFoliagePaletteSettings"]
+            pal = [
+                nodes[e["from"]]
+                for e in ups(n)
+                if nodes.get(e["from"], {}).get("class") == "PVFoliagePaletteSettings"
+            ]
             parts = []
             for pc in pal:
                 infos = pc["props"].get("FoliageInfos", [])
                 for info in infos:
                     info = dict(info) if isinstance(info, dict) else {"Mesh": str(info)}
                     mp = mesh_pkg(info.get("Mesh", ""))
-                    info["tags"] = {k: v for k, v in mesh_tags.get(mp, {}).items() if k != "class"}
+                    info["tags"] = {
+                        k: v for k, v in mesh_tags.get(mp, {}).items() if k != "class"
+                    }
                     parts.append(info)
             d["parts"] = parts
             out["distributors"].append(d)
@@ -260,18 +367,61 @@ def ramp_s(r) -> str:
 
 
 def layer_row(name: str, i: int, d: dict) -> dict:
-    row = {"graph": name, "layer": i, "node": d["node"], "mode": d["mode"].replace("Settings", "")}
-    keys = ("density", "rel_start", "rel_end", "gen_start", "gen_end", "spacing_basis", "spacing_ramp", "ethylene", "instance_spacing", "max_per_branch",
-            "base_scale", "scale_basis", "scale_random", "scale_ramp", "min_scale", "max_scale", "branch_scale_impact", "phyllotaxy", "single_bud_tip", "node_buds",
-            "axil", "axil_random", "axil_ramp", "rotation", "aim", "face", "rpy", "conditions", "cond_cutoff")
+    row = {
+        "graph": name,
+        "layer": i,
+        "node": d["node"],
+        "mode": d["mode"].replace("Settings", ""),
+    }
+    keys = (
+        "density",
+        "rel_start",
+        "rel_end",
+        "gen_start",
+        "gen_end",
+        "spacing_basis",
+        "spacing_ramp",
+        "ethylene",
+        "instance_spacing",
+        "max_per_branch",
+        "base_scale",
+        "scale_basis",
+        "scale_random",
+        "scale_ramp",
+        "min_scale",
+        "max_scale",
+        "branch_scale_impact",
+        "phyllotaxy",
+        "single_bud_tip",
+        "node_buds",
+        "axil",
+        "axil_random",
+        "axil_ramp",
+        "rotation",
+        "aim",
+        "face",
+        "rpy",
+        "conditions",
+        "cond_cutoff",
+    )
     for k in keys:
         v = d.get(k)
-        row[k] = ramp_s(v) if k.endswith("ramp") and v is not None else (json.dumps(v) if isinstance(v, (list, dict)) else v)
+        row[k] = (
+            ramp_s(v)
+            if k.endswith("ramp") and v is not None
+            else (json.dumps(v) if isinstance(v, (list, dict)) else v)
+        )
     row["n_parts"] = len(d["parts"])
-    row["parts"] = "; ".join(p.get("Mesh", "").split("/")[-1].split(".")[0] for p in d["parts"])
+    row["parts"] = "; ".join(
+        p.get("Mesh", "").split("/")[-1].split(".")[0] for p in d["parts"]
+    )
     tri = [p["tags"].get("Triangles") for p in d["parts"] if p.get("tags")]
     row["part_triangles"] = ",".join(str(x) for x in tri if x)
-    row["part_extra"] = json.dumps([{k: v for k, v in p.items() if k not in ("Mesh", "tags")} for p in d["parts"]][:3])
+    row["part_extra"] = json.dumps(
+        [{k: v for k, v in p.items() if k not in ("Mesh", "tags")} for p in d["parts"]][
+            :3
+        ]
+    )
     return row
 
 
@@ -284,24 +434,48 @@ def main(argv=None) -> int:
     rows, summary, growth = [], {}, {}
     for pkg, info in dump["assets"].items():
         if info.get("growth_data"):
-            growth[pkg] = {"file_mb": info.get("file_mb"), **info["growth_data"], "t3d": info.get("t3d")}
+            growth[pkg] = {
+                "file_mb": info.get("file_mb"),
+                **info["growth_data"],
+                "t3d": info.get("t3d"),
+            }
         if not info.get("t3d"):
             continue
         name = pkg.strip("/").replace("/", "__")
         t = parse_t3d(Path(info["t3d"]))
-        s = summarise(t, mesh_tags) if info["class"] == "ProceduralVegetation" else {"order": [], "distributors": [], "other": {}}
-        rec = {"asset": pkg, "class": info["class"], "export_nodes": info.get("export_nodes"), "refs": t["refs"], "edges": t["edges"], "summary": s,
-               "nodes": {n: v for n, v in t["nodes"].items()}}
-        (root / "graphs" / f"{name}.json").write_text(json.dumps(rec, indent=1, default=str), encoding="utf-8")
-        summary[pkg] = {"layers": len(s["distributors"]), "other": {k: v["class"] for k, v in s["other"].items()}}
+        s = (
+            summarise(t, mesh_tags)
+            if info["class"] == "ProceduralVegetation"
+            else {"order": [], "distributors": [], "other": {}}
+        )
+        rec = {
+            "asset": pkg,
+            "class": info["class"],
+            "export_nodes": info.get("export_nodes"),
+            "refs": t["refs"],
+            "edges": t["edges"],
+            "summary": s,
+            "nodes": {n: v for n, v in t["nodes"].items()},
+        }
+        (root / "graphs" / f"{name}.json").write_text(
+            json.dumps(rec, indent=1, default=str), encoding="utf-8"
+        )
+        summary[pkg] = {
+            "layers": len(s["distributors"]),
+            "other": {k: v["class"] for k, v in s["other"].items()},
+        }
         for i, d in enumerate(s["distributors"]):
             rows.append(layer_row(pkg.split("/")[-1], i, d))
     if rows:
-        with open(root / "distributor_layers.csv", "w", newline="", encoding="utf-8") as f:
+        with open(
+            root / "distributor_layers.csv", "w", newline="", encoding="utf-8"
+        ) as f:
             w = csv.DictWriter(f, fieldnames=list(rows[0]))
             w.writeheader()
             w.writerows(rows)
-    (root / "growth_data.json").write_text(json.dumps(growth, indent=1), encoding="utf-8")
+    (root / "growth_data.json").write_text(
+        json.dumps(growth, indent=1), encoding="utf-8"
+    )
     (root / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     print(len(summary), "assets,", len(rows), "distributor layers ->", root)
     return 0

@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """E144 editor-side A/B (growpy-ue-session --run-until-done, ticker): which distributor of the Greenleaf maple graph makes the trees?
 
 The graph holds two parallel branches (hormone-mode distributor -> export node 1, parametric-mode distributor -> export node 2,
@@ -40,10 +41,26 @@ def t3d(a, name):
 def probe(path, name):
     a = unreal.load_asset(path)
     b = a.get_bounds()
-    row = {"origin": [b.origin.x, b.origin.y, b.origin.z], "extent": [b.box_extent.x, b.box_extent.y, b.box_extent.z], "t3d": t3d(a, name)}
+    row = {
+        "origin": [b.origin.x, b.origin.y, b.origin.z],
+        "extent": [b.box_extent.x, b.box_extent.y, b.box_extent.z],
+        "t3d": t3d(a, name),
+    }
     pose = unreal.AnimPoseExtensions.get_reference_pose(a.skeleton)
     names = unreal.AnimPoseExtensions.get_bone_names(pose)
-    row["bones"] = [[str(n)] + [getattr(unreal.AnimPoseExtensions.get_bone_pose(pose, n, unreal.AnimPoseSpaces.WORLD).translation, k) for k in "xyz"] for n in names]
+    row["bones"] = [
+        [str(n)]
+        + [
+            getattr(
+                unreal.AnimPoseExtensions.get_bone_pose(
+                    pose, n, unreal.AnimPoseSpaces.WORLD
+                ).translation,
+                k,
+            )
+            for k in "xyz"
+        ]
+        for n in names
+    ]
     return row
 
 
@@ -59,7 +76,9 @@ def tick(_dt):
         if p == "start":
             a = unreal.load_asset(GRAPH)
             st["asset"] = a
-            st["nodes"] = [(str(e.node_name), e.settings) for e in sub.get_export_settings(a)]
+            st["nodes"] = [
+                (str(e.node_name), e.settings) for e in sub.get_export_settings(a)
+            ]
             res["export_nodes"] = [n for n, _ in st["nodes"]]
             st["exec"] = sub.execute_graph(a)
             st["phase"] = "executing"
@@ -70,7 +89,13 @@ def tick(_dt):
                 ev(f"execution finished has_result={s.has_result}")
                 try:
                     v = st["exec"].get_editor_property("value")
-                    res["execution"] = {"succeeded": v.succeeded, "messages": [[str(m.node_name), str(m.severity), str(m.message)] for m in v.messages]}
+                    res["execution"] = {
+                        "succeeded": v.succeeded,
+                        "messages": [
+                            [str(m.node_name), str(m.severity), str(m.message)]
+                            for m in v.messages
+                        ],
+                    }
                 except Exception as e:
                     res["execution"] = {"read_error": repr(e)}
                 st["phase"] = "next"
@@ -81,9 +106,14 @@ def tick(_dt):
                 return
             node, settings = st["nodes"][st["i"]]
             s2 = settings.copy() if hasattr(settings, "copy") else settings
-            s2.set_editor_property("content_browser_folder", unreal.DirectoryPath(f"/Game/PVE59Out/GV_{st['i']}"))
+            s2.set_editor_property(
+                "content_browser_folder",
+                unreal.DirectoryPath(f"/Game/PVE59Out/GV_{st['i']}"),
+            )
             s2.set_editor_property("mesh_name", f"SK_GVmaple_node{st['i']}")
-            s2.set_editor_property("replace_policy", unreal.PVAssetReplacePolicy.REPLACE)
+            s2.set_editor_property(
+                "replace_policy", unreal.PVAssetReplacePolicy.REPLACE
+            )
             st["cur"] = node
             st["t_exp"] = time.time()
             st["export"] = sub.export_with_settings(st["asset"], node, s2, True, True)
@@ -93,16 +123,33 @@ def tick(_dt):
             s = sub.get_export_state(st["asset"])
             if s.has_result and not s.is_exporting and not s.is_waiting_for_execution:
                 r = s.result
-                nd = [{"node": str(n.node_name), "status": str(n.status), "message": str(n.message), "assets": [str(x) for x in n.created_assets], "warnings": [str(x) for x in n.warnings]} for n in r.nodes]
-                res["exports"][st["cur"]] = {"succeeded": r.succeeded, "seconds": round(time.time() - st["t_exp"], 1), "nodes": nd}
+                nd = [
+                    {
+                        "node": str(n.node_name),
+                        "status": str(n.status),
+                        "message": str(n.message),
+                        "assets": [str(x) for x in n.created_assets],
+                        "warnings": [str(x) for x in n.warnings],
+                    }
+                    for n in r.nodes
+                ]
+                res["exports"][st["cur"]] = {
+                    "succeeded": r.succeeded,
+                    "seconds": round(time.time() - st["t_exp"], 1),
+                    "nodes": nd,
+                }
                 ev(f"export finished {st['cur']} succeeded={r.succeeded}")
                 for n in nd:
                     for path in n["assets"]:
                         if "/SK_" in path:
                             try:
-                                res.setdefault("trees", {})[path] = probe(path.split(".")[0], f"node{st['i']}")
+                                res.setdefault("trees", {})[path] = probe(
+                                    path.split(".")[0], f"node{st['i']}"
+                                )
                             except Exception:
-                                res.setdefault("trees", {})[path] = {"error": traceback.format_exc()[-300:]}
+                                res.setdefault("trees", {})[path] = {
+                                    "error": traceback.format_exc()[-300:]
+                                }
                 st["i"] += 1
                 st["phase"] = "next"
     except Exception:

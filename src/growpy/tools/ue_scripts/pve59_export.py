@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """E144 editor-side export test for UE 5.9 (growpy-ue-session --run-until-done, ticker): ExecuteGraph + Export without dialogs.
 
 Graph: our E143 r1 au04s2 h20 graph (copy in the PVE59Test project). Records timings, execution messages, export result,
@@ -58,18 +59,33 @@ def tick(_dt):
             a = unreal.load_asset(GRAPH)
             st["asset"] = a
             es = sub.get_export_support()
-            res["support"] = [es.nanite_supported, es.nanite_foliage_supported, es.nanite_voxels_supported]
-            res["export_nodes"] = [{"node": str(e.node_name), "settings": str(e.settings)[:1500]} for e in sub.get_export_settings(a)]
+            res["support"] = [
+                es.nanite_supported,
+                es.nanite_foliage_supported,
+                es.nanite_voxels_supported,
+            ]
+            res["export_nodes"] = [
+                {"node": str(e.node_name), "settings": str(e.settings)[:1500]}
+                for e in sub.get_export_settings(a)
+            ]
             st["exec"] = sub.execute_graph(a)
             st["phase"] = "executing"
             ev("execute_graph started")
         elif p == "executing":
             s = sub.get_execution_state(st["asset"])
             if not s.is_running:
-                ev(f"execution finished has_result={s.has_result} out_of_date={s.is_out_of_date}")
+                ev(
+                    f"execution finished has_result={s.has_result} out_of_date={s.is_out_of_date}"
+                )
                 try:
                     v = st["exec"].get_editor_property("value")
-                    res["execution"] = {"succeeded": v.succeeded, "messages": [[str(m.node_name), str(m.severity), str(m.message)] for m in v.messages]}
+                    res["execution"] = {
+                        "succeeded": v.succeeded,
+                        "messages": [
+                            [str(m.node_name), str(m.severity), str(m.message)]
+                            for m in v.messages
+                        ],
+                    }
                 except Exception as e:
                     res["execution"] = {"read_error": repr(e)}
                 st["export"] = sub.export(st["asset"], "", True, True)
@@ -79,9 +95,20 @@ def tick(_dt):
             s = sub.get_export_state(st["asset"])
             if s.has_result and not s.is_exporting and not s.is_waiting_for_execution:
                 r = s.result
-                res["export"] = {"succeeded": r.succeeded, "warnings": [str(w) for w in r.warnings],
-                                 "nodes": [{"node": str(n.node_name), "status": str(n.status), "message": str(n.message),
-                                            "assets": [str(x) for x in n.created_assets], "warnings": [str(x) for x in n.warnings]} for n in r.nodes]}
+                res["export"] = {
+                    "succeeded": r.succeeded,
+                    "warnings": [str(w) for w in r.warnings],
+                    "nodes": [
+                        {
+                            "node": str(n.node_name),
+                            "status": str(n.status),
+                            "message": str(n.message),
+                            "assets": [str(x) for x in n.created_assets],
+                            "warnings": [str(x) for x in n.warnings],
+                        }
+                        for n in r.nodes
+                    ],
+                }
                 ev(f"export finished succeeded={r.succeeded}")
                 res["meshes"] = {}
                 for n in r.nodes:
@@ -89,7 +116,9 @@ def tick(_dt):
                         try:
                             res["meshes"][str(path)] = mesh_facts(str(path))
                         except Exception:
-                            res["meshes"][str(path)] = {"error": traceback.format_exc()[-300:]}
+                            res["meshes"][str(path)] = {
+                                "error": traceback.format_exc()[-300:]
+                            }
                 fin()
                 st["phase"] = "done"
     except Exception:

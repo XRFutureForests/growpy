@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """E144 editor-side dump for the UE 5.9 PVE analysis project (run through growpy-ue-session --run).
 
 Read-only: T3D of every PVE graph / data asset in the project, the 5.9 PVE subsystem API facts (node types, schemas,
@@ -50,21 +51,39 @@ try:
     for t in types:
         try:
             d = sub.describe_node(t)
-            res["node_desc"][t] = {"title": str(d.default_title), "tooltip": str(d.tooltip)}
+            res["node_desc"][t] = {
+                "title": str(d.default_title),
+                "tooltip": str(d.tooltip),
+            }
             s = sub.get_node_schema(t)
-            pin = lambda p: {"label": str(p.label), "type": str(p.type_identifier), "required": bool(p.required), "multi": bool(p.allow_multiple_connections)}  # noqa: E731
-            res["node_schema"][t] = {"in": [pin(p) for p in s.input_pins], "out": [pin(p) for p in s.output_pins]}
+            pin = lambda p: {
+                "label": str(p.label),
+                "type": str(p.type_identifier),
+                "required": bool(p.required),
+                "multi": bool(p.allow_multiple_connections),
+            }  # noqa: E731
+            res["node_schema"][t] = {
+                "in": [pin(p) for p in s.input_pins],
+                "out": [pin(p) for p in s.output_pins],
+            }
         except Exception:
             err("node " + t)
 except Exception:
     err("list_node_types")
 try:
     es = sub.get_export_support()
-    res["export_support"] = {"nanite": es.nanite_supported, "nanite_foliage": es.nanite_foliage_supported, "nanite_voxels": es.nanite_voxels_supported}
+    res["export_support"] = {
+        "nanite": es.nanite_supported,
+        "nanite_foliage": es.nanite_foliage_supported,
+        "nanite_voxels": es.nanite_voxels_supported,
+    }
 except Exception:
     err("export_support")
 try:
-    res["data_assets"] = [{"path": str(a.path), "class": str(a.class_name), "name": str(a.display_name)} for a in sub.list_data_assets()]
+    res["data_assets"] = [
+        {"path": str(a.path), "class": str(a.class_name), "name": str(a.display_name)}
+        for a in sub.list_data_assets()
+    ]
     res["pve_assets"] = [str(p) for p in sub.list_assets()]
 except Exception:
     err("lists")
@@ -79,33 +98,62 @@ for ad in ar.get_assets_by_path("/Game", recursive=True):
     pkg = str(ad.package_name)
     row = {"class": cls}
     try:
-        fs = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir()), pkg[len("/Game/"):] + ".uasset")
-        row["file_mb"] = round(os.path.getsize(fs) / 1e6, 1) if os.path.exists(fs) else None
+        fs = os.path.join(
+            unreal.Paths.convert_relative_path_to_full(
+                unreal.Paths.project_content_dir()
+            ),
+            pkg[len("/Game/") :] + ".uasset",
+        )
+        row["file_mb"] = (
+            round(os.path.getsize(fs) / 1e6, 1) if os.path.exists(fs) else None
+        )
         a = unreal.load_asset(pkg)
         if cls == "ProceduralVegetationGrowthDataAsset":
             # growth data: names + whatever Python can see; the TMap of collections is not exposed (size only for big ones)
             gd = {"variations": []}
             try:
-                gd["variations"] = [str(v.get_editor_property("name")) for v in a.get_editor_property("growth_variations")]
+                gd["variations"] = [
+                    str(v.get_editor_property("name"))
+                    for v in a.get_editor_property("growth_variations")
+                ]
             except Exception as e:
                 gd["variations_error"] = repr(e)
             for prop in ("variants", "json_directory_path"):
                 try:
                     v = a.get_editor_property(prop)
-                    gd[prop] = str(v)[:300] if prop != "variants" else {"type": type(v).__name__, "len": len(v)}
+                    gd[prop] = (
+                        str(v)[:300]
+                        if prop != "variants"
+                        else {"type": type(v).__name__, "len": len(v)}
+                    )
                 except Exception as e:
                     gd[prop] = f"<{type(e).__name__}>"
             row["growth_data"] = gd
-        if not (cls == "ProceduralVegetationGrowthDataAsset" and (row["file_mb"] or 0) > 150):
+        if not (
+            cls == "ProceduralVegetationGrowthDataAsset" and (row["file_mb"] or 0) > 150
+        ):
             row["t3d"] = t3d(a, pkg.strip("/").replace("/", "__"))
         if cls == "ProceduralVegetation":
             try:
                 g = sub.get_graph(a)
-                row["nodes"] = len(g.get_editor_property("nodes")) if hasattr(g, "nodes") else None
+                row["nodes"] = (
+                    len(g.get_editor_property("nodes")) if hasattr(g, "nodes") else None
+                )
                 ex = []
                 for e in sub.get_export_settings(a):
                     st = e.settings
-                    ex.append({"node": str(e.node_name), "settings": {k: str(st.get_editor_property(k)) for k in dir(st) if not k.startswith("_") and not callable(getattr(st, k, None)) and k != "cls"}})
+                    ex.append(
+                        {
+                            "node": str(e.node_name),
+                            "settings": {
+                                k: str(st.get_editor_property(k))
+                                for k in dir(st)
+                                if not k.startswith("_")
+                                and not callable(getattr(st, k, None))
+                                and k != "cls"
+                            },
+                        }
+                    )
                 row["export_nodes"] = ex
             except Exception:
                 row["export_error"] = traceback.format_exc()[-400:]
@@ -116,16 +164,42 @@ for ad in ar.get_assets_by_path("/Game", recursive=True):
 res["assets"] = rows
 
 # --- foliage part tags from the registry (no load)
-TAGS = ("Triangles", "NaniteTriangles", "Vertices", "ApproxSize", "LODs", "NaniteEnabled", "Materials", "Bones", "ImportedBounds")
+TAGS = (
+    "Triangles",
+    "NaniteTriangles",
+    "Vertices",
+    "ApproxSize",
+    "LODs",
+    "NaniteEnabled",
+    "Materials",
+    "Bones",
+    "ImportedBounds",
+)
 parts = {}
 for ad in ar.get_assets_by_path("/Game", recursive=True):
     cls = str(ad.asset_class_path.asset_name)
     if cls not in ("StaticMesh", "SkeletalMesh"):
         continue
     pkg = str(ad.package_name)
-    if "/Instances/" not in pkg and "/Twigs/" not in pkg and "/Trees/" not in pkg and "/Tree_" not in pkg:
+    if (
+        "/Instances/" not in pkg
+        and "/Twigs/" not in pkg
+        and "/Trees/" not in pkg
+        and "/Tree_" not in pkg
+    ):
         continue
-    parts[pkg] = {"class": cls, **{t: str(ad.get_tag_value(t)) for t in TAGS if ad.get_tag_value(t)}}
+    parts[pkg] = {
+        "class": cls,
+        **{t: str(ad.get_tag_value(t)) for t in TAGS if ad.get_tag_value(t)},
+    }
 res["mesh_tags"] = parts
 json.dump(res, open(os.path.join(OUT, "dump.json"), "w", encoding="utf-8"), indent=1)
-print("PVE59_DUMP_DONE", len(rows), "pve assets,", len(parts), "meshes,", len(res["errors"]), "errors")
+print(
+    "PVE59_DUMP_DONE",
+    len(rows),
+    "pve assets,",
+    len(parts),
+    "meshes,",
+    len(res["errors"]),
+    "errors",
+)
