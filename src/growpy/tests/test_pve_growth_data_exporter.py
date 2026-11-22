@@ -343,3 +343,64 @@ def test_derived_bud_attributes_follow_the_engine_formulas():
     assert st[3][0] == 1 and st[5][0] == 1  # tips
     assert st[1][2] == 1 and st[1][6] == 1  # attach: 1 child
     assert st[0][3] == 1  # root
+
+
+class TestBaseFlare:
+    """E147: TapeS butt swell below 1.3 m, DBH untouched."""
+
+    # two tabled DBHs, ratio d(h)/DBH at 0 / 1.0 / 1.3 m
+    ROWS = [
+        (20.0, 0.0, 1.30), (20.0, 1.0, 1.04), (20.0, 1.3, 1.0),
+        (60.0, 0.0, 1.10), (60.0, 1.0, 1.02), (60.0, 1.3, 1.0),
+    ]
+
+    @staticmethod
+    def _trunk(heights, radius=0.2):
+        skel = _make_skeleton(
+            points=[(0.0, 0.0, h) for h in heights],
+            poly_lines=[list(range(len(heights)))],
+        )
+        skel.point_attribute_radius = [radius] * len(heights)
+        return skel
+
+    @staticmethod
+    def _radii(data):
+        values = data["points"]["attributes"]["budLateralMeristem"]["values"]
+        return [m[0] for m in values]
+
+    def test_point_at_1_3_m_is_untouched_and_base_follows_table(self):
+        # radius 0.1 m -> DBH 20 cm (profile_mean 1): the 20 cm curve applies exactly
+        data = build_growth_data_json(
+            self._trunk([0.0, 1.0, 1.3, 2.0], radius=0.1), base_flare=self.ROWS
+        )
+        assert self._radii(data) == pytest.approx([0.13, 0.104, 0.1, 0.1])
+
+    def test_last_point_below_1_3_m_keeps_its_radius(self):
+        # no point at 1.3 m: the 1.0 m point bounds the segment crossing it, so it stays
+        data = build_growth_data_json(
+            self._trunk([0.0, 1.0, 1.6], radius=0.1), base_flare=self.ROWS
+        )
+        assert self._radii(data) == pytest.approx([0.13, 0.1, 0.1])
+
+    def test_dbh_between_and_beyond_tabled_rows(self):
+        # DBH 40 cm: halfway between the curves -> 1.20 at the base
+        mid = build_growth_data_json(
+            self._trunk([0.0, 1.3], radius=0.2), base_flare=self.ROWS
+        )
+        assert self._radii(mid)[0] == pytest.approx(0.2 * 1.20)
+        # DBH 100 cm: clamped to the 60 cm curve
+        big = build_growth_data_json(
+            self._trunk([0.0, 1.3], radius=0.5), base_flare=self.ROWS
+        )
+        assert self._radii(big)[0] == pytest.approx(0.5 * 1.10)
+
+    def test_profile_mean_enters_the_dbh_lookup_not_the_flare(self):
+        # emitted 0.25 = 0.2 / 0.8: DBH reads 40 cm -> ratio 1.20 on the emitted radius
+        data = build_growth_data_json(
+            self._trunk([0.0, 1.3], radius=0.2), profile_mean=0.8, base_flare=self.ROWS
+        )
+        assert self._radii(data) == pytest.approx([0.25 * 1.20, 0.25])
+
+    def test_off_by_default(self):
+        data = build_growth_data_json(self._trunk([0.0, 1.0, 1.3], radius=0.1))
+        assert self._radii(data) == pytest.approx([0.1, 0.1, 0.1])

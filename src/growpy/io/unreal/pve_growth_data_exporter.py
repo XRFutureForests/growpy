@@ -576,6 +576,53 @@ def _resample_growth_data(data: dict, min_point_spacing: float) -> dict:
     return {"points": out_points, "primitives": out_prims}
 
 
+def _apply_base_flare(
+    data: dict, rows: list[tuple[float, float, float]], profile_mean: float
+) -> dict:
+    """Widen the trunk below 1.3 m by the species' butt swell (in place).
+
+    ``rows`` are ``(dbh_cm, h_m, ratio)``: d(h)/DBH from the TapeS taper models
+    (``config/base_flare_targets.csv``). The tree's own DBH, read off the trunk
+    as ``tree_stats`` does, picks the curve, linearly between tabled DBHs and
+    clamped at the ends. Grove's skeleton carries no flare (0 m reads 1.004 x
+    the 1.3 m radius, E147), and PVE meshes one radius per point, so this is
+    the only flare the PVE path gets.
+
+    Runs on the finished JSON, after decimation and resampling: the decimation
+    cut is a fraction of the trunk base radius, so flaring first would drop
+    branches. The last trunk point at or below 1.3 m keeps its radius, so the
+    mesh segment that crosses 1.3 m, and with it the DBH, is unchanged.
+    shortcut: the flare is only as fine as the kept trunk points (often 0 m and
+    ~1 m, a cone between); force-keep points below 1.3 m in the resampler if
+    the icon sheet shows a kink.
+    """
+    import numpy as np
+
+    trunk = data["primitives"]["points"][0] if data["primitives"]["points"] else []
+    if len(trunk) < 2 or not rows:
+        return data
+    pos = data["points"]["positions"]
+    meristem = data["points"]["attributes"]["budLateralMeristem"]["values"]
+    by_h = sorted(trunk, key=lambda i: pos[i][1])
+    base = pos[by_h[0]][1]
+    h = [pos[i][1] - base for i in by_h]
+    r = [meristem[i][0] for i in by_h]
+    dbh_cm = 2.0 * float(np.interp(1.3, h, r)) * profile_mean * 100.0
+
+    dbhs = sorted({d for d, _, _ in rows})
+    curves = []
+    for d in dbhs:
+        knots = sorted((hh, rr) for dd, hh, rr in rows if dd == d)
+        curves.append(([k[0] for k in knots], [k[1] for k in knots]))
+
+    below = [i for i, hi in zip(by_h, h, strict=True) if hi <= 1.3]
+    for i in below[:-1]:
+        hi = pos[i][1] - base
+        at_dbh = [float(np.interp(hi, hk, rk)) for hk, rk in curves]
+        meristem[i][0] *= float(np.interp(dbh_cm, dbhs, at_dbh))
+    return data
+
+
 def derive_engine_attributes(data: dict) -> dict:
     """Fill the per-point attributes PVE's hormone-based distributors read, as the
     engine computes them (in place; returns ``data``).
@@ -711,6 +758,7 @@ def build_growth_data_json(
     crown_base_cut_m: float | None = None,
     max_branch_cut_radius: float | None = None,
     derive_bud_attributes: bool = False,
+    base_flare: list[tuple[float, float, float]] | None = None,
 ) -> dict:
     """
     Build the growth-data JSON for PVE's Growth Data JSON Importer.
@@ -757,6 +805,9 @@ def build_growth_data_json(
             plant-gradient attributes with the engine's own formulas
             (:func:`derive_engine_attributes`) instead of constants. Off by
             default: the catalog's parametric distributors do not need them.
+        base_flare: ``(dbh_cm, h_m, ratio)`` rows of the species' butt swell;
+            widens the trunk below 1.3 m and leaves DBH untouched
+            (:func:`_apply_base_flare`). None: no flare.
 
     Returns:
         Dict matching the validated contract (see module docstring).
@@ -926,6 +977,8 @@ def build_growth_data_json(
     if crown_base_cut_m is not None:
         built = _prune_below_height(built, crown_base_cut_m)
     built = _resample_growth_data(built, min_point_spacing)
+    if base_flare:
+        built = _apply_base_flare(built, base_flare, profile_mean)
     return derive_engine_attributes(built) if derive_bud_attributes else built
 
 
@@ -942,6 +995,7 @@ def generate_growth_data_from_grove(
     min_point_spacing: float = 0.0,
     crown_base_cut_m: float | None = None,
     max_branch_cut_radius: float | None = None,
+    base_flare: list[tuple[float, float, float]] | None = None,
 ) -> dict:
     """
     Build the growth-data JSON from a Grove simulation and write it to disk.
@@ -967,6 +1021,7 @@ def generate_growth_data_from_grove(
             ``build_growth_data_json``.
         max_branch_cut_radius: Upper bound on the fraction's cut, metres. See
             ``build_growth_data_json``.
+        base_flare: Butt-swell rows below 1.3 m. See ``build_growth_data_json``.
 
     Returns:
         The generated growth-data dictionary.
@@ -985,6 +1040,7 @@ def generate_growth_data_from_grove(
         min_point_spacing=min_point_spacing,
         crown_base_cut_m=crown_base_cut_m,
         max_branch_cut_radius=max_branch_cut_radius,
+        base_flare=base_flare,
     )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

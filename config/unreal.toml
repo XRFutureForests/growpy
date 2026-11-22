@@ -218,6 +218,12 @@ profile_mean = 0.8215
 min_branch_radius = 0.0
 min_branch_radius_fraction = 0.06
 min_point_spacing = 0.0
+# Butt swell below 1.3 m (E147, 2026-11-22): species listed here get their trunk widened by the
+# TapeS d(h)/DBH curve in config/base_flare_targets.csv (regenerate with base_flare_targets.R).
+# DBH at 1.3 m is untouched. Grove's skeleton has no flare and PVE meshes one radius per point,
+# so without this the PVE trunk is a cylinder down to the ground. Empty = off; tabled species:
+# european_beech, norway_spruce, silver_fir, scots_pine, douglas_fir.
+base_flare_species = []
 
 # ---------------------------------------------------------------------------
 # SUB-TABLES LAST. A TOML sub-table captures every key that follows it, so
