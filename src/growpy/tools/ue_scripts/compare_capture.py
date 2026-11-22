@@ -175,6 +175,9 @@ for a in trees:
                 name + "_limb",
             )
         )
+    if job.get("base"):
+        # stem-base close-up (E147): eye height 1.6 m, 3.5 m from the stem, aimed at 0.9 m
+        shots.append((a, unreal.Vector(p.x - 350.0, p.y, 160.0), unreal.Rotator(roll=0.0, pitch=-11.0, yaw=0.0), 45.0, name + "_base"))
     shots.append(
         (
             a,

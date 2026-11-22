@@ -21,6 +21,7 @@ from growpy.pipelines.forest_stages import (
     GROWTH_CYCLE_LIMIT,
     SMOOTH_ITERATIONS,
     STAGES,
+    _base_flare_for,
     _growth_data_json_settings,
     _min_branch_radius_fraction_for,
     _min_point_spacing_for,
@@ -843,6 +844,22 @@ class TestMinPointSpacingPerSpecies:
         assert _min_point_spacing_for(settings, "European beech") == 0.2
         assert _min_point_spacing_for(settings, "european_beech") == 0.2
         assert _min_point_spacing_for(settings, "European oak") == 0.0
+
+    def test_base_flare_off_unless_listed(self):
+        assert _base_flare_for(self._BASE, "European beech") is None
+        settings = {**self._BASE, "base_flare_species": ["norway_spruce"]}
+        assert _base_flare_for(settings, "European beech") is None
+
+    def test_base_flare_rows_from_the_shipped_table(self):
+        settings = {**self._BASE, "base_flare_species": ["european_beech"]}
+        rows = _base_flare_for(settings, "European beech")
+        assert rows and all(r == 1.0 for d, h, r in rows if h == 1.3)
+        assert all(1.0 < r < 1.3 for d, h, r in rows if h == 0.0)
+
+    def test_base_flare_listed_without_rows_raises(self):
+        settings = {**self._BASE, "base_flare_species": ["european_oak"]}
+        with pytest.raises(ValueError, match="no rows"):
+            _base_flare_for(settings, "European oak")
 
     def test_the_stage_passes_the_resolved_spacing_to_the_exporter(self):
         ctx = _make_ctx(use_skeletal=True, species_name="European beech")
