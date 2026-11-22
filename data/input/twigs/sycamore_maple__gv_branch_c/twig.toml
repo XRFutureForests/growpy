@@ -1,0 +1,12 @@
+# Greenleaf Vision maple branch part (interim, E143 r3 diagnostic; never shipped: source greenleaf is not a palette source).
+# Long-term route: rebuild per our cut bins (route 3). Not yet measured: cut diameter, leaf area, faces.
+id = "sycamore_maple__gv_branch_c"
+species = "sycamore_maple"
+part_kind = "compound"
+size_bin = "-"
+cut_diameter_mm = []
+source = "greenleaf"
+source_ref = "pack:GVBroadleafPresets/Meshes/Trees/Maple/Instances/SM_GV_Maple_Branch_C"
+licence = "Greenleaf Vision (Fab), Fab Standard; AI usage: No (owner informed 2026-11-22)"
+span_m = 0.53
+status = "candidate"
