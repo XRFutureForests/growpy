@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E731, C408, C416
 """E144 offline half: T3D of PVE graphs (from ue_scripts/pve59_dump.py) -> one JSON per graph + comparison tables.
 
     python -m growpy.tools.pve59_extract <extract dir>      (default data/output/pve59_extract)

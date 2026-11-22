@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E731, C408, C416
 """E144: per-graph distributor comparison table (comparison.md + comparison.csv) from pve59_extract's graphs/*.json.
 
     python -m growpy.tools.pve59_compare <extract dir> [<pve_export_manifest.json>]

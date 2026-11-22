@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E731, C408, C416
 """E144 editor-side dump for the UE 5.9 PVE analysis project (run through growpy-ue-session --run).
 
 Read-only: T3D of every PVE graph / data asset in the project, the 5.9 PVE subsystem API facts (node types, schemas,

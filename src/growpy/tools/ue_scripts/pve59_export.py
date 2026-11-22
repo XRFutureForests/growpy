@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E731, C408, C416
 """E144 editor-side export test for UE 5.9 (growpy-ue-session --run-until-done, ticker): ExecuteGraph + Export without dialogs.
 
 Graph: our E143 r1 au04s2 h20 graph (copy in the PVE59Test project). Records timings, execution messages, export result,

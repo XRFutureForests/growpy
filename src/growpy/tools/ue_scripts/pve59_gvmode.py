@@ -1,4 +1,4 @@
-# ruff: noqa: E501
+# ruff: noqa: E501, E731, C408, C416
 """E144 editor-side A/B (growpy-ue-session --run-until-done, ticker): which distributor of the Greenleaf maple graph makes the trees?
 
 The graph holds two parallel branches (hormone-mode distributor -> export node 1, parametric-mode distributor -> export node 2,
