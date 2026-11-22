@@ -79,8 +79,25 @@ for ad in ar.get_assets_by_path("/Game", recursive=True):
     pkg = str(ad.package_name)
     row = {"class": cls}
     try:
+        fs = os.path.join(unreal.Paths.convert_relative_path_to_full(unreal.Paths.project_content_dir()), pkg[len("/Game/"):] + ".uasset")
+        row["file_mb"] = round(os.path.getsize(fs) / 1e6, 1) if os.path.exists(fs) else None
         a = unreal.load_asset(pkg)
-        row["t3d"] = t3d(a, pkg.strip("/").replace("/", "__"))
+        if cls == "ProceduralVegetationGrowthDataAsset":
+            # growth data: names + whatever Python can see; the TMap of collections is not exposed (size only for big ones)
+            gd = {"variations": []}
+            try:
+                gd["variations"] = [str(v.get_editor_property("name")) for v in a.get_editor_property("growth_variations")]
+            except Exception as e:
+                gd["variations_error"] = repr(e)
+            for prop in ("variants", "json_directory_path"):
+                try:
+                    v = a.get_editor_property(prop)
+                    gd[prop] = str(v)[:300] if prop != "variants" else {"type": type(v).__name__, "len": len(v)}
+                except Exception as e:
+                    gd[prop] = f"<{type(e).__name__}>"
+            row["growth_data"] = gd
+        if not (cls == "ProceduralVegetationGrowthDataAsset" and (row["file_mb"] or 0) > 150):
+            row["t3d"] = t3d(a, pkg.strip("/").replace("/", "__"))
         if cls == "ProceduralVegetation":
             try:
                 g = sub.get_graph(a)
