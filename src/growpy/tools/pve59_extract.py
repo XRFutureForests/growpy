@@ -19,6 +19,9 @@ DEFAULT_DIR = Path(r"D:\Git\work\growpy\data\output\pve59_extract")
 
 # ------------------------------------------------------------------ UE text values
 
+KEY_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*(?:\(\d+\))?)=")
+BIG = 300_000  # property text longer than this is kept as a length only (embedded growth data)
+
 
 def parse_val(s: str, i: int = 0):
     """Parse one UE property value starting at s[i]; returns (value, next index)."""
@@ -26,11 +29,11 @@ def parse_val(s: str, i: int = 0):
         i += 1
         items = []
         while s[i] != ")":
-            m = re.match(r"([A-Za-z_][A-Za-z0-9_]*(?:\(\d+\))?)=", s[i:])
+            m = KEY_RE.match(s, i)
             key = None
             if m:
                 key = m.group(1)
-                i += m.end()
+                i = m.end()
             v, i = parse_val(s, i)
             items.append((key, v))
             if s[i] == ",":
@@ -105,10 +108,13 @@ def parse_t3d(path: Path) -> dict:
             continue
         if stack and "=" in t and not t.startswith("Begin"):
             k, v = t.split("=", 1)
-            try:
-                val, _ = parse_val(v)
-            except Exception:
-                val = v
+            if len(v) > BIG:
+                val = f"<{len(v)} chars>"
+            else:
+                try:
+                    val, _ = parse_val(v)
+                except Exception:
+                    val = v
             km = re.match(r"(\w+)\((\d+)\)$", k)
             if km:
                 stack[-1]["props"].setdefault(km.group(1), []).append(val)
