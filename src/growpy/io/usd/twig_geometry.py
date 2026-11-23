@@ -6,6 +6,7 @@ inside Blender's Python environment (bpy / bmesh).
 """
 
 import logging
+import math
 from pathlib import Path
 
 import bmesh
@@ -177,15 +178,11 @@ def densify_mesh_to_target_edge(
             if current_edge <= target_edge_bu * 1.2:
                 break
 
-            # Calculate how many cuts needed to approximately halve edge length
-            # Each cut=1 roughly halves edge length
+            # Fewest cuts that land within the 20 % tolerance: n cuts divide the
+            # edge by n + 1. A fixed ratio table overshot (a 4 mm target from
+            # 8.7 mm took 2 cuts to 2.9 mm, the same mesh as a 3 mm target, E156).
             ratio = current_edge / target_edge_bu
-            if ratio <= 1.5:
-                cuts = 1
-            elif ratio <= 3:
-                cuts = 2
-            else:
-                cuts = 3  # Don't go too aggressive per iteration
+            cuts = min(3, max(1, math.ceil(ratio / 1.2) - 1))  # max 3 per iteration
 
             # Subdivide
             bm = bmesh.new()
@@ -210,6 +207,15 @@ def densify_mesh_to_target_edge(
                 cuts -= 1
             if cuts == 0:
                 bm.free()
+                # The cap, not the target, decides the mesh here: every finer
+                # target gives the same result (E154: 0.5/1/2 mm identical).
+                logger.warning(
+                    "Densify stopped by the face cap (%d faces) at %.2f mm, "
+                    "target %.2f mm not reached",
+                    face_cap,
+                    current_edge * 1000.0,
+                    target_edge_mm,
+                )
                 break
 
             if edges:
@@ -894,7 +900,9 @@ def _is_likely_tube_component(component, boundary_edge_set):
     return False
 
 
-def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
+def planar_dissolve(
+    obj, angle_deg: float = 1.0, outline_angle_deg: float = 0.0
+) -> tuple[int, int, int, int]:
     """Merge coplanar faces without moving the silhouette.
 
     Densification subdivides flat leaf interiors into thousands of coplanar
@@ -917,6 +925,12 @@ def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
         obj: Blender mesh object, called AFTER the alpha contour cut.
         angle_deg: Max angle between adjacent faces still treated as coplanar.
             Small values (~1 deg) merge only genuinely flat regions.
+        outline_angle_deg: 0 = off. Otherwise also dissolve outline vertices
+            whose two boundary edges turn by less than this angle, so the
+            outline keeps one vertex per this much turn instead of one per
+            densified edge. Runs on the merged faces, before
+            re-triangulation. The planar interior is a fan over the outline,
+            so the triangle count follows the outline vertex count (E156).
 
     Returns:
         (faces_before, faces_after, boundary_edges_before, boundary_edges_after).
@@ -924,8 +938,6 @@ def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
         be near-identical, dropping only where redundant collinear points sat
         on a straight run of contour.
     """
-    import math
-
     mesh = obj.data
     if not mesh or angle_deg <= 0.0:
         return (0, 0, 0, 0)
@@ -943,6 +955,15 @@ def planar_dissolve(obj, angle_deg: float = 1.0) -> tuple[int, int, int, int]:
         edges=list(bm.edges),
         delimit={"MATERIAL", "UV", "SEAM", "SHARP"},
     )
+    if outline_angle_deg > 0.0:
+        # Only outline vertices with exactly two edges (both on the outline):
+        # dissolving one joins its two outline edges and moves nothing else.
+        bmesh.ops.dissolve_limit(
+            bm,
+            angle_limit=math.radians(outline_angle_deg),
+            verts=[v for v in bm.verts if v.is_boundary and len(v.link_edges) == 2],
+            edges=[],
+        )
     # Back to triangles: the exporter and Nanite both want a triangulated mesh,
     # and an n-gon fan over a flat region costs (n - 2) triangles instead of the
     # hundreds the densified version carried.
