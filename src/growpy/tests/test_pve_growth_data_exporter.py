@@ -404,3 +404,13 @@ class TestBaseFlare:
     def test_off_by_default(self):
         data = build_growth_data_json(self._trunk([0.0, 1.0, 1.3], radius=0.1))
         assert self._radii(data) == pytest.approx([0.1, 0.1, 0.1])
+
+
+def test_profile_mean_divides_trunk_radii_only():
+    # PVE applies the trunk profile to the trunk only; branches mesh at face value
+    pts = [(0.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 0.0, 2.0), (1.0, 0.0, 2.0)]
+    skel = _make_skeleton(points=pts, poly_lines=[[0, 1, 2], [2, 3]])
+    skel.point_attribute_radius = [0.2, 0.2, 0.2, 0.1]
+    data = build_growth_data_json(skel, profile_mean=0.8)
+    r = [m[0] for m in data["points"]["attributes"]["budLateralMeristem"]["values"]]
+    assert r == pytest.approx([0.25, 0.25, 0.25, 0.1])
