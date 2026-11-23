@@ -848,8 +848,8 @@ def build_growth_data_json(
         radii = radii + [0.0] * (num_points - len(radii))
     meristem = [
         [
-            # radius (m): Grove raw -> calibrated DBH -> profile-corrected
-            float(radii[i]) * radial_scale / profile_mean,  # 0 LateralMeristem
+            # radius (m): Grove raw -> calibrated; trunk profile fix-up below
+            float(radii[i]) * radial_scale,  # 0 LateralMeristem
             1.0,  # 1 Multiplier
             0.0,  # 2 Inactive
             0.0,  # 3 Davinci
@@ -880,6 +880,11 @@ def build_growth_data_json(
     all_indices = [idx for pl in poly_lines for idx in pl]
     index_offset = min(all_indices) if all_indices else 0
     primitive_points = [[idx - index_offset for idx in pl] for pl in poly_lines]
+
+    # PVE applies its trunk profile to the trunk only (bApplyToBranches false), so
+    # only trunk points carry the profile correction; branches mesh at face value.
+    for i in primitive_points[0]:
+        meristem[i][0] /= profile_mean
 
     hierarchy = build_hierarchy_arrays(None, num_branches, skeleton)
     children_immediate = hierarchy["children"]["values"]
@@ -969,7 +974,9 @@ def build_growth_data_json(
     }
     threshold = min_branch_radius
     if min_branch_radius_fraction > 0.0:
-        cut = _trunk_base_radius(built) * min_branch_radius_fraction
+        # trunk radii carry 1/profile_mean, branch radii do not: undo it so the
+        # cut stays a fraction of the calibrated trunk base radius
+        cut = _trunk_base_radius(built) * profile_mean * min_branch_radius_fraction
         if max_branch_cut_radius is not None:
             cut = min(cut, max_branch_cut_radius)
         threshold = max(threshold, cut)
