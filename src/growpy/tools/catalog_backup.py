@@ -31,7 +31,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from growpy.config.ue_layout import TREES_ROOT, content_relpath
+from growpy.config.ue_layout import LEGACY_TREES_ROOT, TREES_ROOT, content_relpath
 
 REPO = Path(__file__).resolve().parents[3]
 SHARE = Path(
@@ -57,13 +57,23 @@ def keep_forest(rel: str) -> bool:
 
 
 def sources(project: Path) -> list[tuple[Path, str, Callable[[str], bool]]]:
-    """(source root, path under the share, keep(relative posix path))."""
-    return [
-        (
-            project / content_relpath(TREES_ROOT),
-            f"XRFF_Twin/{content_relpath(TREES_ROOT)}",
-            lambda r: True,
-        ),
+    """(source root, path under the share, keep(relative posix path)).
+
+    The catalog root is TREES_ROOT in XRFF_Twin and still LEGACY_TREES_ROOT in the
+    sandbox, so every root that exists is backed up; none at all is an error, not
+    an empty backup.
+    """
+    catalog = [
+        (project / content_relpath(root), f"XRFF_Twin/{content_relpath(root)}")
+        for root in (TREES_ROOT, LEGACY_TREES_ROOT)
+        if (project / content_relpath(root)).is_dir()
+    ]
+    if not catalog:
+        raise SystemExit(
+            f"no tree catalog under {project}: "
+            f"neither {TREES_ROOT} nor {LEGACY_TREES_ROOT}"
+        )
+    return [(src, sub, lambda r: True) for src, sub in catalog] + [
         (REPO / "data/output/forest", "growpy/data/output/forest", keep_forest),
         (REPO / "data/input/materials", "growpy/data/input/materials", lambda r: True),
     ]
