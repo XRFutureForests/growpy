@@ -7,6 +7,7 @@ a silent edit to them is the expensive failure this file exists to catch.
 
 from __future__ import annotations
 
+import dataclasses
 import re
 import tomllib
 from pathlib import Path
@@ -146,7 +147,8 @@ class TestShippedCalibration:
     def test_the_file_is_tracked_and_loads(self, shipped):
         assert CALIBRATION_TOML.is_file()
         # spruce has a block since XRFF-681 (2026-11-12): its pose, no measured rows
-        assert set(shipped.species) == {"european_beech", *PROFILE_CONIFERS}
+        # ash has a block since 2026-11-26 (E182): fullness like beech, no measured rows
+        assert set(shipped.species) == {"european_beech", "common_ash", *PROFILE_CONIFERS}
         assert sum(len(s.trees) for s in shipped.species.values()) == 27
 
     def test_defaults_synthesise_a_species_per_habit(self, shipped):
@@ -183,6 +185,13 @@ class TestShippedCalibration:
             "r10_h30m": 0.40, "r10_h35m": 0.40, "r10_h40m": 0.30,
         }  # fmt: skip
         assert beech.crown_floor_for("r07_h40m") == 0.0
+        # Ash (owner 2026-11-26, E182): own block, fullness like beech, the rest = broadleaf defaults
+        ash = shipped.for_species("common_ash", habit="broadleaf")
+        assert not ash.derived and ash.fullness == 1.5
+        same = ("bone_reduction_strength", "fullness", "derived", "species")  # per-species fields, not habit fields
+        same += tuple(f.name for f in dataclasses.fields(ash) if f.name.startswith("bark_"))
+        keep = {n: getattr(broadleaf, n) for n in same}
+        assert dataclasses.replace(ash, **keep) == broadleaf
         assert broadleaf.crown_floor == {}
         assert conifer.ladder is not None and broadleaf.ladder is not None
         assert broadleaf.pose.jitter and not conifer.pose.jitter
