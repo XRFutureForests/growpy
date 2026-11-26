@@ -204,7 +204,8 @@ def main():
         sky.set_editor_property("directional_light_actor", sun)
     except Exception:
         pass
-    # no BP_GlobalFoliageActor: it drives the foliage MPC (Health) and turned leaves into squares in photos
+    # no BP_GlobalFoliageActor: it drives the foliage MPC (Health) and turned leaves into squares in photos;
+    # compare_capture.py sets Health and the summer Season Strength on the MPC itself, Seasons stays ON
     width = GAP * max(len(t) for _, t in ROWS)
     ground = spawn(
         unreal.StaticMeshActor,

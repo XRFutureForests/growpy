@@ -143,18 +143,47 @@ class TestSpecResolution:
         assert build_species_asset_spec(species).habit == habit
 
     @pytest.mark.parametrize(
-        "species,habit,seasons",
+        "species,habit",
         [
-            ("silver_fir", "conifer", False),
-            ("norway_spruce", "conifer", False),
-            ("european_larch", "conifer", True),
-            ("european_beech", "broadleaf", True),
+            ("silver_fir", "conifer"),
+            ("norway_spruce", "conifer"),
+            ("european_larch", "conifer"),
+            ("european_beech", "broadleaf"),
         ],
     )
-    def test_evergreen_conifers_keep_out_of_the_season(self, species, habit, seasons):
-        # Broadleaves and larch colour in autumn; spruce, fir, pine and
-        # Douglas fir keep their needles green (decision 2026-10-25).
-        assert _spec(species=species, habit=habit).seasons is seasons
+    def test_every_leaf_material_follows_the_season(self, species, habit):
+        # Owner 2026-11-26: Seasons ON everywhere; conifers get a mild evergreen
+        # colour pair instead of the old Seasons-off switch.
+        assert _spec(species=species, habit=habit).seasons is True
+
+    def test_a_conifer_gets_a_mild_evergreen_colour_pair(self, tmp_path):
+        from PIL import Image
+
+        from growpy.io.unreal.pve_asset_script import (
+            EVERGREEN_FLUSH_LIFT,
+            EVERGREEN_WINTER_DARKEN,
+            _foliage_payload,
+        )
+
+        needles = tmp_path / "needles_pve_basecolor.png"
+        Image.new("RGBA", (16, 16), (51, 102, 25, 255)).save(needles)
+        spec = _spec(
+            species="silver_fir",
+            habit="conifer",
+            foliage_color=needles,
+            foliage_normal=needles,
+        )
+        params = _foliage_payload(spec)["params"]
+        mean = [51 / 255, 102 / 255, 25 / 255]
+        for got, c in zip(params["Season Color 2"], mean, strict=True):
+            assert got == pytest.approx(c * EVERGREEN_WINTER_DARKEN, abs=1e-3)
+        for got, c in zip(params["Season Color 1"], mean, strict=True):
+            assert got == pytest.approx(c + EVERGREEN_FLUSH_LIFT * (1 - c), abs=1e-3)
+        winter, flush = params["Season Color 2"], params["Season Color 1"]
+        assert all(w < f for w, f in zip(winter, flush, strict=True))
+        # a broadleaf keeps the params of its own twig (none here)
+        beech = _spec(foliage_color=needles, foliage_normal=needles)
+        assert _foliage_payload(beech)["params"] == {}
 
     def test_missing_foliage_maps_are_named_not_silently_skipped(self, monkeypatch):
         monkeypatch.setattr(
@@ -348,9 +377,10 @@ class TestGeneratedScript:
         assert FOLIAGE_SAMPLES["broadleaf"] in script
         assert FOLIAGE_SAMPLES["conifer"] in script
         assert "def repoint_leaf_materials" in script
-        # The switch is set from the habit, not left as the cloned sample has it.
+        # The switch is set explicitly (on for every habit), not left as cloned.
         assert '"Seasons", fol["seasons"]' in script
-        assert "'seasons': False" in script and "'seasons': True" in script
+        assert "'seasons': True" in script
+        assert "'seasons': False" not in script
 
     def test_leaf_maps_come_before_the_leaf_material_and_the_leaves(self, script):
         loop = script.split("for spec in PLAN[", 1)[1]

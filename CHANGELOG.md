@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### 2026-11-26 — Leaf materials follow the season, conifers on an evergreen curve
+
+#### Changed
+
+- `SpeciesAssetSpec.seasons` is True for every species (conifers were Seasons OFF). The foliage
+  material script still sets the `Seasons` switch explicitly and checks it back.
+- Conifer foliage materials get `Season Color 1` (spring flush: the needle map's mean colour
+  lifted 12 % towards white) and `Season Color 2` (winter: x 0.85) from the needle map, so
+  needles darken a little in winter and never turn brown. A twig's own fall map still wins.
+- `compare_capture.py` sets the foliage MPC's Season Strength to mid-summer (job key
+  `season_strength`, default 0) beside Health, so boards show Seasons-ON leaves green instead of
+  needing Seasons-off material copies.
+
 ### 2026-11-21 — Growth JSON: engine-derived bud attributes (opt-in)
 
 #### Added

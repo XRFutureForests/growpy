@@ -40,6 +40,21 @@ zero = unreal.Rotator(roll=0.0, pitch=0.0, yaw=0.0)
 mpc = unreal.load_asset(
     "/ProceduralVegetationEditor/SampleAssets/Materials/MaterialFunctions/MPC_GlobalFoliageActor"
 )
+# Season: the studio has no foliage actor, so the global Season Strength sits at the MPC default and Seasons-ON
+# leaves render brown. Boards render at mid-summer (job "season_strength", default 0 = summer on
+# BP_TwinClock.SeasonStrengthForDay) instead of Seasons-off material copies. The parameter is found by name
+# (the plugin's spelling is not ours to rely on); None = the MPC has no such scalar.
+SEASON_STRENGTH = float(job.get("season_strength", 0.0))
+SEASON_PARAM = next(
+    (
+        str(p.get_editor_property("parameter_name"))
+        for p in (mpc.get_editor_property("scalar_parameters") if mpc else [])
+        if "season" in str(p.get_editor_property("parameter_name")).lower()
+        and "strength" in str(p.get_editor_property("parameter_name")).lower()
+    ),
+    None,
+)
+print("COMPARE season parameter", SEASON_PARAM, SEASON_STRENGTH)
 unreal.SystemLibrary.execute_console_command(world, "r.TextureStreaming 0")
 os.makedirs(OUT, exist_ok=True)
 rt = unreal.RenderingLibrary.create_render_target2d(
@@ -214,6 +229,8 @@ def aim(i):
         state["settle"] = NEW_TREE_S
     if mpc:  # Health above 1 turns every masked leaf into a square
         unreal.MaterialLibrary.set_scalar_parameter_value(world, mpc, "Health", 1.0)
+        if SEASON_PARAM:  # mid-summer, Seasons switch ON (owner 2026-11-26), not Seasons-off copies
+            unreal.MaterialLibrary.set_scalar_parameter_value(world, mpc, SEASON_PARAM, SEASON_STRENGTH)
     cc.clear_show_only_components()  # show_only_actors is not editable from Python (5.8)
     # forest context (E124, 2026-11-19): only neighbours beyond the subject (camera sits at -X), else the neighbours
     # of the row in front stand between camera and tree

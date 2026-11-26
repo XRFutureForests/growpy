@@ -319,9 +319,10 @@ class SpeciesAssetSpec:
     @property
     def seasons(self) -> bool:
         """Whether the leaves follow the foliage actor's season (the master's
-        ``Seasons`` switch): broadleaves and larch do, evergreen conifers keep
-        their needles green all year."""
-        return self.habit != "conifer" or "larch" in self.species
+        ``Seasons`` switch): every leaf and needle material does (owner
+        2026-11-26). Evergreen conifers react on a mild curve, see
+        :func:`evergreen_season_colors`."""
+        return True
 
     @property
     def palette_meshes(self) -> tuple[str, ...]:
@@ -629,6 +630,36 @@ def _plan_payload(plan: PVEAssetPlan) -> dict:
     }
 
 
+# Evergreen season curve (owner 2026-11-26: Seasons stay ON for conifers, with a
+# slight winter darkening, a spring flush and no autumn brown). The master turns
+# a leaf from its own colour to Season Color 1 and then Season Color 2 as the
+# global Season Strength rises from 4.2 to 8 (winter); spring runs back down
+# through Color 1 to the summer colour. Starting values, judged on the board:
+# winter = the needle colour x 0.85, flush = the needle colour lifted 12 % of
+# the way to white.
+EVERGREEN_WINTER_DARKEN = 0.85
+EVERGREEN_FLUSH_LIFT = 0.12
+
+
+def evergreen_season_colors(color_map: Path) -> dict[str, list[float]]:
+    """``Season Color 1`` (flush) and ``2`` (winter) from the needle map's mean colour.
+
+    Empty when the map cannot be read; the material then keeps the master's
+    default season colours, which turn needles brown.
+    """
+    from growpy.tools.pack_pve_textures import _mean_colour
+
+    mean = _mean_colour(Path(color_map))
+    if mean is None:
+        return {}
+    return {
+        "Season Color 1": [
+            round(c + EVERGREEN_FLUSH_LIFT * (1.0 - c), 4) for c in mean
+        ],
+        "Season Color 2": [round(c * EVERGREEN_WINTER_DARKEN, 4) for c in mean],
+    }
+
+
 def _foliage_payload(s: SpeciesAssetSpec) -> dict | None:
     """The leaf material, its sample, its two maps and its colour parameters."""
     if s.foliage_color is None or s.foliage_normal is None:
@@ -636,6 +667,9 @@ def _foliage_payload(s: SpeciesAssetSpec) -> dict | None:
     params = {}
     if s.foliage_params is not None and Path(s.foliage_params).is_file():
         params = json.loads(Path(s.foliage_params).read_text(encoding="utf-8"))
+    evergreen = s.habit == "conifer" and "larch" not in s.species
+    if evergreen and "Season Color 1" not in params:
+        params.update(evergreen_season_colors(s.foliage_color))
 
     def texture(path: Path) -> dict:
         return {
@@ -1110,8 +1144,8 @@ def build_foliage_material(spec, master):
     seasons = bool(
         mel.get_material_instance_static_switch_parameter_value(check, "Seasons"))
     if seasons != fol["seasons"]:
-        problems.append("%s has Seasons %s, expected %s: broadleaves and larch follow "
-                        "the foliage actor's season, evergreen conifers stay green"
+        problems.append("%s has Seasons %s, expected %s: every leaf material "
+                        "follows the foliage actor's season"
                         % (mi_path, "on" if seasons else "off",
                            "on" if fol["seasons"] else "off"))
     return problems
