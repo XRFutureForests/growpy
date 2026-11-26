@@ -227,8 +227,9 @@ def aim(i):
             t.set_is_temporarily_hidden_in_editor(t != actor)
             t.set_actor_hidden_in_game(t != actor)
         state["settle"] = NEW_TREE_S
-    if mpc:  # Health above 1 turns every masked leaf into a square
-        unreal.MaterialLibrary.set_scalar_parameter_value(world, mpc, "Health", 1.0)
+    if mpc:  # Health 10 as in the twin: at Health 1 Seasons-ON leaves render brown at any Season Strength
+        # (E183 diagnosis 2026-11-26); foliage is opaque now, so the old masked-square limit no longer applies
+        unreal.MaterialLibrary.set_scalar_parameter_value(world, mpc, "Health", float(job.get("health", 10.0)))
         if SEASON_PARAM:  # mid-summer, Seasons switch ON (owner 2026-11-26), not Seasons-off copies
             unreal.MaterialLibrary.set_scalar_parameter_value(world, mpc, SEASON_PARAM, SEASON_STRENGTH)
     cc.clear_show_only_components()  # show_only_actors is not editable from Python (5.8)
