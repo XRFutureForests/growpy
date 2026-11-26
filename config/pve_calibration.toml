@@ -829,6 +829,45 @@ build_instances = 9411
 build_density_source = "measured"
 
 
+# ------------------------------------------------------------------ ash ----
+
+# Owner 2026-11-26 (E182): "calibrate the ash fullness like beech". Under the broadleaf x6
+# default the ash leaf-area target (Forrester at the tree's DBH x 6) was 1.6-7.9x what the
+# shipped h20-h30 cells carry and 24x the beech target at h20, so the solve sat on the
+# instance cap from h20 up. Beech method: own block, fullness 1.5 (beech: x2 judged right,
+# owner thinned to 1.5 on 2026-09-21); E182 offline plans at 1.5 reach the target to h20
+# and stay under 35 % of the 120 M triangle budget at h25-h30. Everything else restates the
+# broadleaf defaults (a species block replaces them wholesale); see their comments above.
+[pve_calibration.species.common_ash]
+fraction = 0.06
+palette = "twigs"
+fullness = 1.5
+relative_start = 0.85
+relative_start_by_height = [[11.0, 0.85], [25.0, 0.35]]
+phyllotaxy_formation = "PARASTICHOUS"
+max_base_scale = 1.5
+
+[pve_calibration.species.common_ash.pose]
+reset_phyllotaxy = true
+axil_angle = 70.0
+jitter = [
+    { mode = "PITCH", degrees = 25.0, seed = 11 },
+    { mode = "ROLL", degrees = 15.0, seed = 12 },
+    { mode = "YAW", degrees = 12.0, seed = 13 },
+]
+spacing_ramp = [[0.0, 0.0], [0.25, 0.366], [0.5, 0.618], [0.75, 0.823], [1.0, 1.0]]
+randomize_scale = [0.6, 1.4]
+randomize_axil_angle = [-30.0, 30.0]
+phyllotaxy_additional_angle = 137.5
+
+[pve_calibration.species.common_ash.ladder]
+scale_weight = 1.0
+minimum_candidates = 1
+cutoff_threshold = 0.1
+apex = true
+main_generation_start = 2
+
+
 # ------------------------------------------------------------------ fir ----
 
 [pve_calibration.species.silver_fir]
